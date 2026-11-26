@@ -1,3 +1,55 @@
+# Board 5084d02e: Form TP3 Excel import job and Import Log, 26 November 2026
+
+Reserve `7570_tp3_import_job`, journal index `10970`, timestamp `1795495007570`, SQL SHA-256
+`3a1388043be5589123fd925c5bae120d933a7dd23e3f8d0747cd4b083692ef79`. Taken on 26 November 2026 after a fresh fetch of
+every remote branch (6,287 refs): main and alpha end at `7500` (index `10900`); `7530`
+(`claude/search-visible-set-cost`, also in `claude/board-int-20261126`) and `7540`, `7550`, `7560`
+(`claude/board-int-20261126`, renumbered from the released 7510/7520) are taken; no branch holds or reserves a number
+above 7560. Staging's ledger watermark was 7500 on 26 November 2026 (recorded by the 7560 entry). Next free slot after
+the board lanes. Recheck both installations' watermarks and any competing reservation at admission. Releases in
+staging slot 9 (coordinator, 26 November 2026), after slot 7's 7540-7560.
+
+Inserts the `tp3_import` bulk-job kind (creator-exclusive; input `{"mode":"string","checkJobId":"string?"}`), a partial
+index `bulk_job_tp3_import_log` on `bulk_job(tenant_id, created_at DESC, id DESC) WHERE kind='tp3_import'`, and the
+SECURITY DEFINER read `app.tp3_import_log(uuid[], uuid, timestamptz, uuid, integer)` (EXECUTE to `ai_hr_app` only)
+that lists Form TP3 imports whose companies the caller administers (`app.is_admin_for`, computed once per call):
+totals, row outcomes and the uploader's name, never an uploaded file, input or amount. No table, column, policy or
+grant on an existing object changes; `bulk_job` row security stays creator-only. Depends on none of 7530-7560. This
+entry carries no deployment authority.
+
+# Board lanes renumbered after DB revamp's 7530, 26 November 2026
+
+The staging coordinator asked (26 Nov 2026) that the board lanes land after the DB revamp search fix
+`7530` (branch claude/search-visible-set-cost), which installs on staging before them: an applied 7530 would make Drizzle
+skip any lower, later-arriving entry. The earlier reservations 7510 and 7520 (and 7530, briefly given to the
+change-detection lane) were never applied anywhere and are released. In order:
+
+- `7540_employee_cp38_history_last_month`, journal index `10940`, timestamp `1795495007540`, SQL SHA-256 `3dc10e2b149d1896d5c3bee787f29a51d0fb91c6a6c7783b42249754404b8589`: CP38
+  lane (038c304b + bc6b5490). Adds the nullable `employee_cp38.last_month_amount` and the append-only, row-secured
+  `employee_cp38_revision`.
+- `7550_payroll_group_tax_opening`, journal index `10950`, timestamp `1795495007550`, SQL SHA-256 `a1b8c2d3e074f5a67943c13b0d999f285ba42377bbcc5e5245897dba5409d491`: group tax lane (4ce2c481). Adds the
+  security-definer `app.payroll_group_tax_opening` (per company and month totals only, gated by payroll administration of
+  the run's company).
+- `7560_payroll_recalc_pending`, journal index `10960`, timestamp `1795495007560`: change-detection lane (124a979e). Adds
+  the pending recalculation flags recorded when the saver cannot administer payroll for the run's company.
+
+None depends on another. Recheck both installations' watermarks and any competing reservation at admission. These
+entries carry no deployment authority.
+
+# Board change-detection lane (124a979e, plan item 9): pending recalculation marks, 26 November 2026
+
+Reserve `7560_payroll_recalc_pending`, journal index `10960`, timestamp `1795495007560`, SQL SHA-256
+`2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f`. Allocated by the integrator; renumbered from an earlier slot that the staging
+coordinator's database revamp search fix took (it installs first). It follows the
+other lanes' 7540 (CP38) and 7550 (group tax) and depends on neither. Staging's ledger watermark was 7500 (26 Nov 2026).
+Recheck both installations' watermarks and any competing reservation at admission.
+
+Creates `public.payroll_recalc_pending` (append and consume: employment, pay months reached, change categories, who and
+when), RLS forced: inserted by a principal for an employment it can see, as itself, never requiring payroll
+administration; read and deleted only where `app.can_admin_payroll_for` the employee's current company. SELECT, INSERT and
+DELETE to `ai_hr_app`, no UPDATE. FKs to tenant and employment (cascade); no company FK. No existing table, row, policy
+or function changes; the new table starts empty. This entry carries no deployment authority.
+
 # ADR 0181 search follow-up: employee search visible-set cost, 26 November 2026
 
 Reserve `7530_employment_search_visible_set`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256

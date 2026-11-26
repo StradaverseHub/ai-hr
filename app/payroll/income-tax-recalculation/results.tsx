@@ -6,6 +6,7 @@ import type {PcbNonCashSnapshot} from '@/localization/noncash-benefits';
 import type {TaxBasisValue} from '@/lib/payroll-tax-basis';
 import type {TaxBasisEmployee} from '@/lib/payroll-tax-basis';
 import {TaxBasisExemptionLimits} from './exemption-limits';
+import {TaxBasisGroupOpening} from './group-opening';
 
 const cell='p-3 text-left align-top';
 const numeric='p-3 text-right align-top tabular-nums whitespace-nowrap';
@@ -31,6 +32,7 @@ export function TaxBasisResults({employees}:{employees:TaxBasisEmployee[]}){
           <ul className="space-y-3">{employee.missingEvidence.map((missing,index)=><li key={missing.field+'-'+index}><p className="font-medium">{t.has('evidenceFields.'+missing.field)?t('evidenceFields.'+missing.field):missing.field}</p><p>{missing.reason}</p><p className="mt-1 text-muted-foreground">{t('affectsValues',{values:missing.affects.map(field=>t.has('affectedValues.'+field)?t('affectedValues.'+field):field).join(', ')})}</p></li>)}</ul>
         </section>}
         {employee.pcbComparison&&<section className="space-y-2 rounded-lg border border-border p-3 text-sm" aria-label={t('pcbComparisonTitle')}><h3 className="font-medium">{t('pcbComparisonTitle')}</h3><p className="font-medium">{t('pcbComparisonInsufficient')}</p><p>{t('pcbComparisonUnavailable')}</p><dl><div><dt className="text-muted-foreground">{t('originalRecordedPcb')}</dt><dd className="mt-1 tabular-nums">{money(employee.pcbComparison.originalPaid)}</dd></div></dl><ul className="list-inside list-disc text-muted-foreground">{employee.pcbComparison.missingInputs.map(field=><li key={field}>{t.has('evidenceFields.'+field)?t('evidenceFields.'+field):field}</li>)}</ul><p className="text-muted-foreground">{t('pcbComparisonNeverStops')}</p></section>}
+        <TaxBasisGroupOpening employee={employee}/>
         <TaxBasisExemptionLimits employee={employee}/>
         <dl className="grid gap-4 text-sm sm:grid-cols-2 lg:grid-cols-5">
           <div><dt className="text-muted-foreground">{t('beforeTaxable')}</dt><dd className="mt-1 font-medium tabular-nums">{money(employee.beforeTaxable)}</dd></div>

@@ -314,6 +314,7 @@ not allocate migrations or grant employee rights.
 | `payroll.pay_items.remarks` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |
 | `payroll.cp38_deduction.reference` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
 | `payroll.cp38_deduction.monthlyamount` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
+| `payroll.cp38_deduction.lastmonthamount` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
 | `payroll.cp38_deduction.validfrom` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
 | `payroll.cp38_deduction.validto` | Payroll | Visible | specialist | Own pay information only; no payroll configuration or transaction edits. |
 | `payroll.cp38_deduction.remarks` | Payroll | Protected | specialist | Internal administrative information or dedicated owner workflow; not an employee input. |

@@ -82,7 +82,7 @@ import { decodeJsonRow, jsonRowSql } from '../db/json-row';
 import { decodeJsonFieldRows, jsonFieldsSql, jsonRowsSql } from '../db/json-fields';
 // ADR-0077 D3 SERVICE GATE — the same binding core/tax-relief.ts uses and for the same reason: a
 // `layout.tsx` covers a RENDER and covers no server action, so the module check belongs on the service.
-import { withPayrollSnapshotTenant, withPayrollTenant as withTenant } from './module-gate';
+import { assertModuleGate, withPayrollSnapshotTenant, withPayrollTenant as withTenant } from './module-gate';
 import { actorOf, appendEvent, subjectEmploymentForPerson } from '../db/events';
 import { isAdmin } from '../lib/authz-model';
 import {
@@ -96,10 +96,22 @@ import {
 } from '../db/schema';
 import { countryPacks } from '../localization/registry';
 import type {MyTp3JoinDates} from '../lib/my-tp3-eligibility';
+import { lockPayrollHistoryReadTx } from './payroll-history-lock';
 
 /** Every refusal this service raises. Callers render `.message` — it is written to be read by HR. */
 export class Tp3Error extends Error {
-  constructor(message: string) {
+  /**
+   * `reason`, `field` and `detail` are OPTIONAL and change nothing about `.message`, which every existing caller
+   * still renders. They exist for the Form TP3 Excel import (board 5084d02e): a row problem is reported as row,
+   * Employee ID, COLUMN and reason in the reader's own language, so the import needs a stable code for the
+   * refusal and the form box (`C2(i)`, `D2`, `deductionMonth`, ...) it is about, not an English sentence.
+   */
+  constructor(
+    message: string,
+    readonly reason?: string,
+    readonly field?: string,
+    readonly detail?: Readonly<Record<string, string | number>>,
+  ) {
     super(message);
     this.name = 'Tp3Error';
   }
@@ -288,18 +300,26 @@ const TP3_MAX_AMOUNT = 10_000_000;
 const NAME_MAX = 200;
 const TIN_MAX = 40;
 const REMARKS_MAX = 2000;
+/**
+ * The text limits the checks below apply, exported for the Excel import's Instructions sheet (board 5084d02e) so the
+ * template states the limits these checks enforce rather than a second copy of them.
+ */
+export const TP3_TEXT_LIMITS = Object.freeze({ employerName: NAME_MAX, employerTin: TIN_MAX, remarks: REMARKS_MAX });
+
+/** A ringgit figure as the import reports it beside a limit: grouped, two decimals (6,000.00). */
+const rm = (n: number) => n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 function validateAmount(raw: unknown, label: string, cap?: number): number {
   if (raw == null || raw === '') return 0;
   const n = Number(raw);
-  if (!Number.isFinite(n)) throw new Tp3Error(`${label} must be a number.`);
-  if (n < 0) throw new Tp3Error(`${label} must not be negative.`);
+  if (!Number.isFinite(n)) throw new Tp3Error(`${label} must be a number.`, 'amountNotNumber', label);
+  if (n < 0) throw new Tp3Error(`${label} must not be negative.`, 'amountNegative', label);
   const v = round2(n);
-  if (v > TP3_MAX_AMOUNT) throw new Tp3Error(`${label} is implausibly large.`);
+  if (v > TP3_MAX_AMOUNT) throw new Tp3Error(`${label} is implausibly large.`, 'amountTooLarge', label, { max: rm(TP3_MAX_AMOUNT) });
   // A sourced sub-limit the agency's own form prints. ADR-0008: an item with no printed cap is captured
   // and never blocked — we do not invent one to have something to check.
   if (cap != null && v > cap) {
-    throw new Tp3Error(`${label} must not exceed its limit of RM ${cap.toFixed(2)}.`);
+    throw new Tp3Error(`${label} must not exceed its limit of RM ${cap.toFixed(2)}.`, 'overLimit', label, { limit: rm(cap) });
   }
   return v;
 }
@@ -308,13 +328,13 @@ function validateAmount(raw: unknown, label: string, cap?: number): number {
 function validateMonth(raw: unknown): number | null {
   if (raw == null || raw === '') return null;
   const m = Math.trunc(Number(raw));
-  if (!Number.isInteger(m) || m < 1 || m > 12) throw new Tp3Error('Deduction month must be between 1 and 12.');
+  if (!Number.isInteger(m) || m < 1 || m > 12) throw new Tp3Error('Deduction month must be between 1 and 12.', 'monthInvalid', 'deductionMonth');
   return m;
 }
 
 function validateYear(raw: unknown): number {
   const y = Math.trunc(Number(raw));
-  if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Tp3Error('Assessment year must be between 2000 and 2100.');
+  if (!Number.isInteger(y) || y < 2000 || y > 2100) throw new Tp3Error('Assessment year must be between 2000 and 2100.', 'yearInvalid', 'assessmentYear');
   return y;
 }
 
@@ -336,14 +356,17 @@ function validateEmployers(raw: unknown): Tp3PreviousEmployer[] {
     const name = String(src.name ?? '').trim();
     const tin = String(src.tin ?? '').trim();
     if (name === '' && tin === '') continue;
-    if (name === '') throw new Tp3Error(`Previous employer ${i + 1} has a tax reference number but no name.`);
-    if (name.length > NAME_MAX) throw new Tp3Error(`Previous employer ${i + 1}'s name is too long.`);
-    if (tin.length > TIN_MAX) throw new Tp3Error(`Previous employer ${i + 1}'s tax reference number is too long.`);
+    if (name === '') throw new Tp3Error(`Previous employer ${i + 1} has a tax reference number but no name.`, 'employerTinNoName', `employer${i + 1}Name`, { n: i + 1 });
+    if (name.length > NAME_MAX) throw new Tp3Error(`Previous employer ${i + 1}'s name is too long.`, 'employerNameTooLong', `employer${i + 1}Name`, { n: i + 1, max: NAME_MAX });
+    if (tin.length > TIN_MAX) throw new Tp3Error(`Previous employer ${i + 1}'s tax reference number is too long.`, 'employerTinTooLong', `employer${i + 1}Tin`, { n: i + 1, max: TIN_MAX });
     out.push({ name, tin: tin === '' ? null : tin });
   }
   if (out.length > TP3_MAX_EMPLOYERS) {
     throw new Tp3Error(
       `Form TP3 is ruled for ${TP3_MAX_EMPLOYERS} previous employers. The form's own note says to use an additional attachment for the next employment.`,
+      'tooManyEmployers',
+      undefined,
+      { max: TP3_MAX_EMPLOYERS },
     );
   }
   return out;
@@ -385,7 +408,7 @@ function readGroup(
     // The group ANNUAL LIMIT column. A `perSubLimit` item (D16 — the two house-price bands) has none:
     // the form gives each band its own limit AND its own accumulated box, so they are two claims.
     if (def.limit != null && !def.perSubLimit && amount > def.limit) {
-      throw new Tp3Error(`${label} must not exceed its annual limit of RM ${def.limit.toFixed(2)}.`);
+      throw new Tp3Error(`${label} must not exceed its annual limit of RM ${def.limit.toFixed(2)}.`, 'overAnnualLimit', label, { limit: rm(def.limit) });
     }
     out[def.code] = subItems ? { amount, subItems } : { amount };
     total = round2(total + amount);
@@ -409,7 +432,7 @@ export type Tp3WriteInput = {
 function readRemarks(raw: unknown): string | null {
   if (raw == null || String(raw).trim() === '') return null;
   const r = String(raw).trim();
-  if (r.length > REMARKS_MAX) throw new Tp3Error(`Remarks must be at most ${REMARKS_MAX} characters.`);
+  if (r.length > REMARKS_MAX) throw new Tp3Error(`Remarks must be at most ${REMARKS_MAX} characters.`, 'remarksTooLong', 'remarks', { max: REMARKS_MAX });
   return r;
 }
 
@@ -654,9 +677,9 @@ export type Tp3Record = {
 };
 
 function requireAdminTarget(ctx: SessionContext, personId: string | null | undefined): string {
-  if (!isAdmin(ctx)) throw new Tp3Error('Only an administrator can maintain a TP3 record.');
+  if (!isAdmin(ctx)) throw new Tp3Error('Only an administrator can maintain a TP3 record.', 'notAdmin');
   const id = personId ?? null;
-  if (!id) throw new Tp3Error('No employee selected.');
+  if (!id) throw new Tp3Error('No employee selected.', 'employeeNotFound', 'employeeId');
   return id;
 }
 
@@ -846,6 +869,27 @@ export async function resyncTp3Projections(
   });
 }
 
+/** 124a979e — did the TP3 projection's figures change (numbers compared as numbers, the ledger as sorted JSON)? */
+function tp3ProjectionMoved(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
+  const norm = (v: unknown): string => {
+    if (v == null) return 'null';
+    if (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))) return String(Number(v));
+    if (typeof v === 'object') return JSON.stringify(Object.fromEntries(Object.entries(v as object).sort(([a], [b]) => a.localeCompare(b))));
+    return String(v);
+  };
+  return Object.keys(after).some((k) => norm(before[k]) !== norm(after[k]));
+}
+/** 124a979e — mark the person's processed runs (not closed) in these assessment years, category Tax settings. One
+ * mark covering the earliest to the latest year. Lazy import through the pack facade: the payroll kernel reads this module. */
+async function markTp3YearsTx(tx: Tx, ctx: SessionContext, personId: string, years: readonly number[]) {
+  const valid = years.filter((y) => Number.isInteger(y) && y > 1900 && y < 3000);
+  if (!valid.length) return;
+  const { markRunsAffectedByEmploymentChangeTx } = await import('../packs/payroll/service');
+  await markRunsAffectedByEmploymentChangeTx(tx, ctx, {
+    personId, category: 'tax_profile', from: `${Math.min(...valid)}-01-01`, until: `${Math.max(...valid) + 1}-01-01`,
+  });
+}
+
 async function projectSeedOntoStatutory(
   tx: Tx,
   ctx: SessionContext,
@@ -924,6 +968,14 @@ async function projectSeedOntoStatutory(
     .update(employeeStatutoryMy)
     .set({ ...after, updatedAt: new Date() })
     .where(eq(employeeStatutoryMy.id, stat.id));
+  // 124a979e — the previous-employer opening balances seed PCB for the whole assessment year: when the projection
+  // moved, mark the person's processed runs in that year (and in the year it displaced, when the columns held an
+  // earlier one). A re-save that projects the same figures (and resyncTp3Projections over unchanged forms) marks nothing.
+  const projected = { tp3Year: stat.tp3Year, tp3NetRemuneration: stat.net, tp3EpfClaimed: stat.epf, tp3PcbPaid: stat.pcb,
+    tp3ZakatPaid: stat.zakat, tp3Lp: stat.lp, tp3ExemptionUsed: stat.exemptionUsed };
+  if (tp3ProjectionMoved(projected, after)) {
+    await markTp3YearsTx(tx, ctx, p.personId, [p.assessmentYear, ...(stat.tp3Year != null ? [stat.tp3Year] : [])]);
+  }
 
   // THE SAME EVENT TYPE THE HAND PATH EMITS (`setTp3ProfileMY`), on the same aggregate, so an auditor
   // reconstructing the opening balances that seeded a PCB figure reads ONE stream and does not have to
@@ -999,6 +1051,8 @@ async function clearProjectionForYear(
     .update(employeeStatutoryMy)
     .set({ ...after, updatedAt: new Date() })
     .where(eq(employeeStatutoryMy.id, stat.id));
+  // 124a979e — the form's opening balances stop seeding that year's PCB: mark the person's processed runs in it.
+  await markTp3YearsTx(tx, ctx, p.personId, [p.assessmentYear]);
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employee-statutory',
@@ -1043,10 +1097,20 @@ const seedCarriesMoney = (s: Tp3AccumulatorSeed) =>
   s.zakatPaid !== 0 ||
   s.lpDeclared !== 0;
 
+/**
+ * Whether a form's seed carries money that needs a statutory profile to land on: the SAME test
+ * `throwIfNowhereToLand` applies at save, exported so the Excel import (board 5084d02e) can report the missing
+ * profile as a row problem while it checks the file, instead of a second rule guessing at it.
+ */
+export function tp3SeedCarriesMoney(seed: Tp3AccumulatorSeed): boolean {
+  return seedCarriesMoney(seed);
+}
+
 function throwIfNowhereToLand(stat: unknown, seed: Tp3AccumulatorSeed): void {
   if (stat == null && seedCarriesMoney(seed)) {
     throw new Tp3Error(
       'This Form TP3 records previous-employment pay or reliefs, but the employee has no Malaysian statutory profile for the tax calculation to read it from. Save the employee’s identity card number on Bank & Statutory first, then save the form again.',
+      'noStatutoryProfile',
     );
   }
 }
@@ -1064,8 +1128,14 @@ function throwIfNowhereToLand(stat: unknown, seed: Tp3AccumulatorSeed): void {
  * figures did not reach payroll is precisely the state this item was raised about, and a partial commit
  * would recreate it.
  */
-type PreparedTp3 = ReturnType<typeof prepareTp3>;
-function prepareTp3(p:Tp3WriteInput) {
+export type PreparedTp3 = ReturnType<typeof prepareTp3>;
+/**
+ * Every check `saveTp3` makes before it touches the database: the same limits, the same rules for previous
+ * employers and the same totals. PURE: no read, no write. Exported for the Excel import (board 5084d02e), which
+ * runs it on every row while it checks the file and again for each row it saves, so an imported TP3 passes
+ * exactly the checks a hand-saved one does.
+ */
+export function prepareTp3(p:Tp3WriteInput) {
   const assessmentYear = validateYear(p.assessmentYear);
   const deductionMonth = validateMonth(p.deductionMonth);
   const previousEmployers = validateEmployers(p.previousEmployers);
@@ -1082,8 +1152,8 @@ function prepareTp3(p:Tp3WriteInput) {
   if (remarks != null) payload.remarks = remarks;
 
   const seed=deriveAccumulatorSeed(payload);
-  if(!seed)throw new Tp3Error('This Form TP3 could not be read for the tax calculation.');
-  if(seed.netRemuneration<0)throw new Tp3Error('Section C does not add up: the tax-exempt amounts (C2) plus the EPF contributions (C3) are more than the total remuneration (C1). Check those boxes before saving.');
+  if(!seed)throw new Tp3Error('This Form TP3 could not be read for the tax calculation.','unreadable');
+  if(seed.netRemuneration<0)throw new Tp3Error('Section C does not add up: the tax-exempt amounts (C2) plus the EPF contributions (C3) are more than the total remuneration (C1). Check those boxes before saving.','sectionCNegative','C1');
   return {assessmentYear,deductionMonth,previousEmployers,payload,remarks};
 }
 type MyTp3Storage = {draftId:string;revision:number};
@@ -1092,9 +1162,47 @@ export async function saveTp3(ctx: SessionContext,p:Tp3WriteInput):Promise<{id:s
   const personId=requireAdminTarget(ctx,p.personId),prepared=prepareTp3(p);
   return withTenant(ctx,async tx=>{await lockStatutorySourceTx(tx,ctx,{personId});return savePreparedTp3Tx(tx,ctx,personId,p,prepared);});
 }
-async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3WriteInput,prepared:PreparedTp3,self?:MyTp3Storage):Promise<{id:string;seed:Tp3SeedOutcome}> {
+/** One writer at a time for one person's TP3 for one year. The one owner of this lock key. */
+const lockTp3PersonYearTx=(tx:Tx,tenantId:string,personId:string,assessmentYear:number)=>
+  tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'tp3|'+tenantId+'|'+personId+'|'+assessmentYear},0))`);
+/** Which import and which row of its file a TP3 save came from (board 5084d02e). */
+export type Tp3ImportOrigin = { jobId: string; rowNumber: number };
+/** Key order does not matter in jsonb; compare stored and new values in one canonical shape. */
+const canonical=(v:unknown):unknown=>Array.isArray(v)?v.map(canonical)
+  :v!=null&&typeof v==='object'?Object.fromEntries(Object.keys(v as object).sort().map(k=>[k,canonical((v as Record<string,unknown>)[k])])):v;
+const sameValue=(a:unknown,b:unknown)=>JSON.stringify(canonical(a))===JSON.stringify(canonical(b));
+/**
+ * ONE row of a Form TP3 Excel import (board 5084d02e), inside the import worker's own short transaction for that
+ * row. It is `saveTp3` with these differences and no others:
+ *  - the caller's transaction instead of a new one (the same module gate and payroll-history barrier
+ *    `withPayrollTenant` gives `saveTp3`, then the same admin check, the same checks (`prepareTp3`) and the same
+ *    statutory lock), so a re-import REPLACES the year's record through the same upsert on (tenant, person, year)
+ *    and the same projection onto the payroll figures, `laterYearHoldsColumns` included;
+ *  - the event says which import and row it came from;
+ *  - THE SECTION E DECLARATION IS KEPT AS IT IS. The template carries the form's figures and no declaration column,
+ *    so a row says nothing about the employee's signature: a re-import must not withdraw a declaration somebody
+ *    recorded on the screen, and an import never records one;
+ *  - A ROW IDENTICAL TO THE STORED FORM WRITES NOTHING (`unchanged`): no second event and no re-projection. The
+ *    approved plan promises that importing the same file again saves nothing twice; the projection is already the
+ *    one this same form produced when it was saved.
+ */
+export async function saveImportedTp3Tx(tx:Tx,ctx:SessionContext,p:Tp3WriteInput,origin:Tp3ImportOrigin):Promise<{id:string;seed:Tp3SeedOutcome|null;unchanged:boolean}> {
+  ctx=captureStatutorySourceContext(ctx);p=structuredClone(p);
+  assertModuleGate(ctx,'payroll');
+  await lockPayrollHistoryReadTx(tx,ctx.tenantId);
+  const personId=requireAdminTarget(ctx,p.personId),prepared=prepareTp3(p);
+  await lockStatutorySourceTx(tx,ctx,{personId});
+  await lockTp3PersonYearTx(tx,ctx.tenantId,personId,prepared.assessmentYear);
+  const [existing]=await tx.select().from(employeeTp3)
+    .where(and(eq(employeeTp3.personId,personId),eq(employeeTp3.assessmentYear,prepared.assessmentYear))).limit(1);
+  if(existing&&existing.deductionMonth===prepared.deductionMonth&&(existing.remarks??null)===(prepared.remarks??null)
+    &&sameValue(existing.previousEmployers,prepared.previousEmployers)&&sameValue(existing.payload,prepared.payload))
+    return {id:existing.id,seed:null,unchanged:true};
+  return {...await savePreparedTp3Tx(tx,ctx,personId,p,prepared,undefined,origin),unchanged:false};
+}
+async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3WriteInput,prepared:PreparedTp3,self?:MyTp3Storage,origin?:Tp3ImportOrigin):Promise<{id:string;seed:Tp3SeedOutcome}> {
   const {assessmentYear,deductionMonth,previousEmployers,payload,remarks}=prepared;
-  await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'tp3|'+ctx.tenantId+'|'+personId+'|'+assessmentYear},0))`);
+  await lockTp3PersonYearTx(tx,ctx.tenantId,personId,assessmentYear);
     const [existing] = await tx
       .select()
       .from(employeeTp3)
@@ -1104,7 +1212,8 @@ async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3W
     // Section E. The tick is an explicit VALUE read by the form reader (never by presence), and the
     // TIMESTAMP is the server's. Unticking CLEARS it: a declaration that was withdrawn must not keep
     // printing a date under the acknowledgement.
-    let declaredAt = p.declarationAccepted ? (existing?.declaredAt ?? new Date()) : null;
+    // An import (board 5084d02e) keeps whatever declaration is already recorded: its file has no declaration column.
+    let declaredAt = origin ? (existing?.declaredAt ?? null) : p.declarationAccepted ? (existing?.declaredAt ?? new Date()) : null;
 
     const values = {
       tenantId: ctx.tenantId,
@@ -1158,6 +1267,8 @@ async function savePreparedTp3Tx(tx:Tx,ctx:SessionContext,personId:string,p:Tp3W
       payload: {
         personId,
         assessmentYear,
+        // Board 5084d02e: an imported save names its import job and the row of the file it came from.
+        ...(origin ? { source: 'tp3-import', importJobId: origin.jobId, rowNumber: origin.rowNumber } : {}),
         before: existing
           ? {
               deductionMonth: existing.deductionMonth,

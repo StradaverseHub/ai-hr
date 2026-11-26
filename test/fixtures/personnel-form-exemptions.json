@@ -108,17 +108,17 @@
       "tag": "input",
       "context": "cp38Card",
       "hidden": true,
-      "occurrences": 1,
+      "occurrences": 2,
       "name": "employmentId",
-      "reason": "Guarded action record/subject pointer (employmentId) used by cp38Card; the server owner checks subject/record scope. This does not edit a Personnel fact."
+      "reason": "Guarded action record/subject pointer (employmentId) used by cp38Card's two row forms, Terminate and Delete (bc6b5490); the server owner checks subject/record scope. This does not edit a Personnel fact."
     },
     {
       "tag": "input",
       "context": "cp38Card",
       "hidden": true,
-      "occurrences": 1,
+      "occurrences": 2,
       "name": "id",
-      "reason": "Guarded action record/subject pointer (id) used by cp38Card; the server owner checks subject/record scope. This does not edit a Personnel fact."
+      "reason": "Guarded action record/subject pointer (id) used by cp38Card's two row forms, Terminate and Delete (bc6b5490); the server owner checks subject/record scope. This does not edit a Personnel fact."
     },
     {
       "tag": "input",
@@ -1141,6 +1141,15 @@
       "occurrences": 1,
       "name": "customPcbValue",
       "reason": "ADR 0183 custom PCB number (RM or %) of the employer-scoped Income Tax Resident selection. It is saved and validated with that selection by the tax-selection service (one owner, one version), never as a separate Personnel fact; not reportable or importable."
+    }
+  ],
+  "components/cp38/last-month-field.tsx": [
+    {
+      "tag": "input",
+      "context": "Cp38LastMonthField",
+      "name": "lastMonthEnabled",
+      "reason": "Board bc6b5490: chooses whether this CP38 record has a separate last-month amount; it reveals the bound payroll.cp38_deduction.lastmonthamount field, and core/cp38.ts (lib/cp38-form.ts) clears the amount when it is unticked. A form-state chooser, not an employee master fact.",
+      "occurrences": 1
     }
   ]
 }

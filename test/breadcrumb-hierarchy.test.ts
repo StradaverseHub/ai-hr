@@ -50,8 +50,18 @@ describe('audited breadcrumb journeys',()=>{
  it('keeps explicit landing pages clickable and suppresses duplicate group labels',()=>{
   const active={...entry('/admin/holidays'),section:'System Configuration',parent:'System Configuration'};
   expect(resolveBreadcrumbTrail('/admin/holidays','',[],active,translate)?.parts.map(p=>p.label)).toEqual(['System Configuration','/admin/holidays']);
-  const security={...entry('/admin/users/access','Security Center'),parentHref:'/admin/security-center'};
-  expect(resolveBreadcrumbTrail('/admin/users/access','',[],security,translate)?.parts[1].href).toBe('/admin/security-center');
+  // Board 8fa0a31d — a Security Center page sits directly in its section; the section root links to the admitted
+  // overview landing. The overview itself reads as one current crumb, never linking to itself.
+  const security={...entry('/admin/users/access'),label:'Security & Permissions',section:'Security Center',sectionHref:'/admin/security-center'};
+  expect(resolveBreadcrumbTrail('/admin/users/access','',[],security,translate)?.parts).toEqual([
+   {label:'Security Center',href:'/admin/security-center'},{label:'Security & Permissions'},
+  ]);
+  const landing={href:'/admin/security-center',label:'Security Center',section:null,parent:null,parentHref:null};
+  expect(resolveBreadcrumbTrail('/admin/security-center','',[],landing,translate)?.parts).toEqual([{label:'Security Center'}]);
+  // A section heading without an admitted landing (System Configuration, or a viewer who may not open the overview) is text.
+  const unadmitted={...security,sectionHref:null};
+  expect(resolveBreadcrumbTrail('/admin/users/access','',[],unadmitted,translate)?.parts[0]).toEqual({label:'Security Center'});
+  expect(resolveBreadcrumbTrail('/admin/users/access','',[],{...security,sectionHref:'/admin/users/access'},translate)?.parts[0]).toEqual({label:'Security Center'});
  });
  it('has translated ancestor labels in every shipped catalogue',()=>{
   const keys=new Set([...BREADCRUMB_FAMILIES.flatMap(f=>f.steps.map(s=>s.labelKey)),...Object.values(BREADCRUMB_VIEWS).flatMap(v=>Object.values(v.labels)),'payrollConfig.colCompany']);

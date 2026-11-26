@@ -70,6 +70,15 @@ const txn = (employmentId: string, payPeriod: string, day: string, amount: numbe
     amount,
   });
 
+// 124a979e — the service now writes a row keyed for a month whose run is already processed ONTO that run (and marks
+// it), so a period-keyed row that arrived after processing can only be one parked before that change. The reader
+// must keep reporting those, so they are seeded directly as the legacy rows they stand for.
+const parkedAfterProcessing = (employmentId: string, payPeriod: string, day: string, amount: number) =>
+  owner.db.insert(schema.payrollIndividualTxn).values({
+    tenantId: base.tenantId, batchId: null, companyId: base.companyId, payPeriod, employmentId,
+    kind: 'earning', txnDate: `${payPeriod}-${day}`, amount: amount.toFixed(2),
+  });
+
 const groupFor = (rows: Awaited<ReturnType<typeof listUnattachedTxnSummary>>, employmentId: string, period: string) =>
   rows.find((r) => r.employmentId === employmentId && r.payPeriod === period);
 
@@ -132,7 +141,7 @@ describe('d0d2c9d1 — listUnattachedTxnSummary', () => {
     // Generation ATTACHES 2026-04's row, which is the correct behaviour and not what this asserts —
     // so a second, later row is keyed in afterwards to leave something outstanding to report on.
     await generatePayslips(a, { batchId: apr });
-    await txn(e1.employmentId, '2026-04', '20', 100);
+    await parkedAfterProcessing(e1.employmentId, '2026-04', '20', 100);
 
     const rows = await listUnattachedTxnSummary(a, { companyIds: [base.companyId] });
     expect(groupFor(rows, e1.employmentId, '2026-02')!.runState).toBe('none');
@@ -155,7 +164,7 @@ describe('d0d2c9d1 — listUnattachedTxnSummary', () => {
       scope: { employmentIds: [inScope.employmentId] },
     });
     await generatePayslips(a, { batchId });
-    await txn(inScope.employmentId, '2026-05', '20', 900);
+    await parkedAfterProcessing(inScope.employmentId, '2026-05', '20', 900);
 
     const rows = await listUnattachedTxnSummary(a, { companyIds: [base.companyId] });
     // Comparing against payroll_batch.created_at instead of the processed event's occurred_at would

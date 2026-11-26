@@ -102,13 +102,15 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   route.pathname='/admin/organization';route.search='';view.rerender(ui());
   expect(screen.getByRole('button',{name:messages.nav.workspaceOps})).toHaveAttribute('aria-pressed','true');
   expect(screen.getByRole('button',{name:messages.nav.modulePeople})).toBeEnabled();
-  const section=document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]');
-  if(section?.getAttribute('aria-expanded')==='false')fireEvent.click(section);
-  const gears=screen.getAllByRole('button',{name:messages.nav.systemConfiguration}).filter(button=>button.hasAttribute('aria-controls')&&button.getAttribute('aria-controls')!=='nav-section-systemConfiguration');
-  expect(gears).toHaveLength(1);const gear=gears[0];
-  if(gear.getAttribute('aria-expanded')!=='true')fireEvent.click(gear);
-  const panel=document.getElementById(gear.getAttribute('aria-controls')!);expect(panel).not.toBeNull();
-  expect(within(panel!).queryByRole('link',{name:messages.nav.systemLabels})).toBeNull();
+  const section=document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]')!;
+  expect(section).not.toBeNull();
+  if(section.getAttribute('aria-expanded')==='false')fireEvent.click(section);
+  // Board 8fa0a31d — the section heading is the gear; no second System Configuration dropdown sits inside it.
+  expect(screen.getAllByRole('button',{name:messages.nav.systemConfiguration})).toEqual([section]);
+  const panel=screen.getByRole('navigation',{name:messages.nav.systemConfiguration});
+  expect(panel.id).toBe('nav-section-systemConfiguration');
+  expect(within(panel).getAllByRole('link').length).toBeGreaterThan(0);
+  expect(within(panel).queryByRole('link',{name:messages.nav.systemLabels})).toBeNull();
  });
  it('offers only self-service Payroll to employees and keeps current-link ownership out of My Profile',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me/payslip';route.search='';

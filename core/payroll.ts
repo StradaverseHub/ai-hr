@@ -19,7 +19,9 @@ import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proratio
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {processingTaxHoldsTx,runTaxSkippedSql,taxHeldRowsTx,type TaxHeldEmployee} from './payroll-tax-holds';
-import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource} from './payroll-tax-basis-read';
+import {assertGroupTaxOpeningUsable,groupTaxHoldsTx,groupTaxOpeningStamp,groupTaxOpeningTx,groupTaxPriorSlips} from './payroll-group-tax-opening';
+import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource,type SupersededTaxCorrection} from './payroll-tax-basis-read';
+import {payslipSupersededTaxCorrections} from './payslip-imported-lines';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -136,6 +138,7 @@ import {
   payrollPolicy,
   payrollReprocessJob,
   payrollRunOutstanding,
+  payrollRecalcPending,
   payrollStatusHistory,
   payrollStepUpChallenge,
   payslip,
@@ -501,11 +504,21 @@ export type ReprocessEmployeeOutcome = {
   effectiveTaxScheme?: ReprocessTaxScheme;
   /** 792053e5 — the Pay Items whose one-off transactions were re-priced with an updated formula (amount moved). */
   repricedItems?: RepricedPayItem[];
+  /** 289634a6 — earlier imported months whose saved Income Tax Correction was superseded by a newer payroll history
+   *  import, so this calculation used the imported amounts. Read back from the recalculated payslip's own stamp
+   *  (`statutory.taxBasisSupersededCorrections`); absent on every other outcome and on outcomes saved before it. */
+  taxCorrectionsReplaced?: { period: string; replacedAt: string | null }[];
   /** 792053e5 — the Pay Item whose updated formula could not price this employee's transactions (PAY_ITEM_FORMULA_FAILED). */
   formulaFailure?: { componentId: string; code: string; name: string; dates: string[]; reason: string; detail: string | null;
     /** ad6ed930 — reason 'after_leaving_date': the employee's last day (ISO). Absent on outcomes written before it. */
     leftOn?: string };
 };
+
+/** 289634a6 — the superseded-correction periods a recalculated payslip stamped, one per month, for its outcome remark. */
+export function taxCorrectionsReplacedOf(statutory: unknown): ReprocessEmployeeOutcome['taxCorrectionsReplaced'] {
+  const out = payslipSupersededTaxCorrections(statutory);
+  return out.length ? out : undefined;
+}
 
 export type ReprocessJobResult = {
   /** Fences an abandoned worker from changing a reclaimed job; never a payroll business fact. */
@@ -1000,7 +1013,8 @@ export async function markHistoryAffectedPayrollTx(tx:Tx,ctx:SessionContext,targ
  * `payroll-batch.recalc-required` event (no column, no migration) and read back by
  * `listRecalcChangeCategories` for the run screen.
  */
-export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory', 'employment_information'] as const;
+// 124a979e / 038c304b / bc6b5490 (26 Nov 2026): CP38, fixed items, Zakat, the tax profile and payroll policy mark processed runs too.
+export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory', 'employment_information', 'cp38', 'fixed_item', 'zakat', 'tax_profile', 'payroll_policy'] as const;
 export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 
 /**
@@ -1022,7 +1036,9 @@ export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 export async function markRunsAffectedByEmploymentChangeTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null; until?:string|null },
+  // 124a979e — one save can change several kinds of input at once (a full statutory save moving the EPF election and
+  // the Zakat election together): pass every category, and the one read and one lock set name all of them.
+  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory | readonly RecalcChangeCategory[]; from: string | null; until?:string|null },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
   const ids = asIdArray(p.employmentIds ?? []).filter(id=>!movementPayrollInvalidationDeferredTx(tx,id));
   if (p.personId) {
@@ -1049,28 +1065,135 @@ export async function markRunsAffectedByEmploymentChangeTx(
   const byBatch = new Map<string, Set<string>>();
   for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
   const marked = [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
-  await markBatchesNeedRecalcTx(tx, ctx, marked.map((m) => ({ ...m, category: p.category })));
+  const categories: readonly RecalcChangeCategory[] = typeof p.category === 'string' ? [p.category] : [...new Set(p.category)];
+  await markBatchesNeedRecalcTx(tx, ctx, marked.flatMap((m) => categories.map((category) => ({ ...m, category }))));
+  const untilPeriod = lastPeriodBefore(p.until ?? null);
+  await recordRecalcPendingTx(tx, ids.map((e) => ({ e, f: fromPeriod, u: untilPeriod, c: [...categories] })));
   return marked;
 }
 
+/** A pay month window: from and until are YYYY-MM (until INCLUSIVE), null = unbounded; `c` the change categories. */
+type RecalcWindow = { e: string; f: string | null; u: string | null; c: RecalcChangeCategory[] };
+/** The last pay month before an EXCLUSIVE until date (the month holding until - 1 day). */
+function lastPeriodBefore(until: string | null): string | null {
+  if (!until || !/^\d{4}-\d{2}-\d{2}$/.test(until)) return null;
+  const [y, m, d] = until.split('-').map(Number);
+  if (d > 1) return until.slice(0, 7);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 /**
- * A payroll input changed for these employments while a run of theirs is being processed by the background job
- * (fixed items and payroll policy, which do not otherwise mark a run). Marks only an employee that run has already
- * paid; the caller holds the employee's payroll inputs key, so no chunk can write a payslip for them meanwhile.
+ * 124a979e (approved plan item 9) — A SAVE BY SOMEBODY WHO CANNOT ADMINISTER PAYROLL FOR THE EMPLOYEE'S COMPANY.
+ *
+ * The mark writes payroll_batch, which only a payroll administrator of the run's company may write, and the payslip read
+ * above finds nothing for anyone else: an HR-side or self-service save of a payroll input would otherwise flag nothing.
+ * So the save records the employment, the months it reaches and the categories in payroll_recalc_pending (migration
+ * 7560), in its own transaction, for each employment whose CURRENT company it cannot administer payroll for; the next
+ * Payroll Process list refresh, run under a payroll administrator of that company, marks the runs and deletes the rows
+ * (consumeRecalcPendingTx). One INSERT ... SELECT for the whole save, whatever the number of employments: for a payroll
+ * administrator it inserts nothing. It never widens app.can_admin_payroll_for and reads no payroll row. The SELECT keeps
+ * only what the table's own insert rule admits (this tenant, an employment the saver can see, the saver as requester),
+ * so it can never fail the save.
  */
-export async function markProcessingRunsForEmploymentsTx(
+async function recordRecalcPendingTx(tx: Tx, windows: readonly RecalcWindow[]): Promise<void> {
+  if (windows.length === 0) return;
+  await tx.execute(sql`insert into ${payrollRecalcPending}(tenant_id,employment_id,from_period,until_period,categories,requested_by)
+    select e.tenant_id, e.id, w.f, w.u, array(select jsonb_array_elements_text(w.c)), app.current_user_id()
+    from jsonb_to_recordset(${JSON.stringify(windows)}::jsonb) w(e uuid, f text, u text, c jsonb)
+    join ${employment} e on e.id = w.e and e.tenant_id = app.current_tenant_id()
+    where not coalesce(app.can_admin_payroll_for(e.company_id), false) and jsonb_array_length(w.c) > 0`);
+}
+
+/** The payslip read and the mark for windows with their own categories (the windows variant and the consumer). */
+async function markRecalcWindowsTx(tx: Tx, ctx: SessionContext, windows: readonly RecalcWindow[]): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  const wanted = windows.filter((w) => typeof w.e === 'string' && w.e.length > 0 && w.c.length > 0 && !movementPayrollInvalidationDeferredTx(tx, w.e));
+  if (wanted.length === 0) return [];
+  const rows = await tx.execute<{ i: number; batchId: string; employmentId: string }>(sql`
+    select distinct w.i, s.batch_id::text as "batchId", s.employment_id::text as "employmentId"
+    from jsonb_to_recordset(${JSON.stringify(wanted.map((w, i) => ({ i, e: w.e, f: w.f, u: w.u })))}::jsonb) w(i int, e uuid, f text, u text)
+    join ${nativePayrollPayslip} s on s.employment_id = w.e
+    join ${payrollBatch} b on b.id = s.batch_id
+    where b.status in ('processed','processing')
+      and (w.f is null or b.pay_period >= w.f)
+      and (w.u is null or b.pay_period <= w.u)
+      and app.can_admin_payroll_for(b.company_id)`);
+  // Per run and category, the employments to add; every run once in `marked`.
+  const byTarget = new Map<string, Set<string>>();
+  const byBatch = new Map<string, Set<string>>();
+  for (const r of rows) {
+    byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
+    for (const c of wanted[Number(r.i)].c) {
+      const key = `${r.batchId}|${c}`;
+      byTarget.set(key, (byTarget.get(key) ?? new Set<string>()).add(r.employmentId));
+    }
+  }
+  const targets = [...byTarget].sort(([a], [b]) => a.localeCompare(b)).map(([key, set]) => {
+    const [batchId, category] = key.split('|');
+    return { batchId, employmentIds: [...set].sort(), category: category as RecalcChangeCategory };
+  });
+  await markBatchesNeedRecalcTx(tx, ctx, targets);
+  await recordRecalcPendingTx(tx, wanted);
+  return [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
+}
+
+/**
+ * 124a979e — markRunsAffectedByEmploymentChangeTx for MANY employments at once, each with its own window, in one
+ * payslip read and one markBatchesNeedRecalcTx (ADR 0181 write side). The Fixed Transaction import job calls it once
+ * per chunk with every row the chunk wrote, instead of marking once per row. Same rules as the single helper: only
+ * runs holding a payslip for the employment, processed or processing, pay_period >= month(from) and, with `until`
+ * (an EXCLUSIVE date), <= month(until - 1 day); only runs this session administers payroll for (the rest are recorded
+ * as pending, see recordRecalcPendingTx); a movement-deferred employment is skipped. `from: null` is every such run.
+ */
+export async function markRunsAffectedByEmploymentWindowsTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds: string[]; category?: RecalcChangeCategory },
-): Promise<void> {
-  const ids = asIdArray(p.employmentIds);
-  if (ids.length === 0) return;
-  const rows = await tx
-    .selectDistinct({ batchId: nativePayrollPayslip.batchId })
-    .from(nativePayrollPayslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
-    .where(and(inArray(nativePayrollPayslip.employmentId, ids), eq(payrollBatch.status, 'processing'), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
-  await markBatchesNeedRecalcTx(tx, ctx, [...rows].sort((a, b) => a.batchId.localeCompare(b.batchId)).map(({ batchId }) => ({ batchId, employmentIds: ids, category: p.category })));
+  p: { category: RecalcChangeCategory; windows: readonly { employmentId: string; from: string | null; until?: string | null }[] },
+): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  const month = (d: string | null | undefined) => (d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : null);
+  const wanted = p.windows
+    .filter((w) => typeof w.employmentId === 'string' && w.employmentId.length > 0 && !movementPayrollInvalidationDeferredTx(tx, w.employmentId));
+  if (wanted.length === 0) return [];
+  if (wanted.length === 1) {
+    const [w] = wanted;
+    return markRunsAffectedByEmploymentChangeTx(tx, ctx, { employmentIds: [w.employmentId], category: p.category, from: w.from, until: w.until ?? null });
+  }
+  return markRecalcWindowsTx(tx, ctx, wanted.map((w) => ({ e: w.employmentId, f: month(w.from), u: lastPeriodBefore(w.until ?? null), c: [p.category] })));
+}
+
+/** Pending rows one refresh step consumes at most (the rest wait for the next refresh). */
+export const RECALC_PENDING_CONSUME_LIMIT = 500;
+
+/**
+ * 124a979e (plan item 9) — THE OTHER HALF: a payroll administrator's Payroll Process list refresh (the refresh job's
+ * first step, core/payroll-run-outstanding.ts) applies the pending rows of the employees whose current company they
+ * administer payroll for: one DELETE ... RETURNING (row security names exactly those rows, up to the limit, oldest
+ * first; a row a concurrent refresh deleted first is skipped by the DELETE's own re-check), then the normal mark for all of them at once
+ * (markRecalcWindowsTx: one payslip read, one lock set). A closed run is never marked (markBatchNeedsRecalc's status
+ * rule); a row whose months reach no processed run is simply deleted, its change having nothing to flag. Same
+ * transaction, so a failed mark leaves the rows for the next refresh.
+ */
+export async function consumeRecalcPendingTx(tx: Tx, ctx: SessionContext, limit = RECALC_PENDING_CONSUME_LIMIT): Promise<{ consumed: number; marked: { batchId: string; employmentIds: string[] }[] }> {
+  const bound = Math.max(1, Math.min(RECALC_PENDING_CONSUME_LIMIT, Math.trunc(limit)));
+  const gone = await tx.execute<{ employmentId: string; fromPeriod: string | null; untilPeriod: string | null; categories: string[] }>(sql`
+    with companies as materialized (
+      select c.id from ${company} c where c.tenant_id = app.current_tenant_id() and app.can_admin_payroll_for(c.id)),
+    staff as materialized (
+      select e.id from ${employment} e where e.tenant_id = app.current_tenant_id() and e.company_id = any(array(select id from companies))),
+    picked as (
+      -- Driven from the administered companies' employments (indexed), so a company-scoped administrator's consume
+      -- evaluates the row rule only for their own employees' rows, not for every pending row of the tenant.
+      select p.id from ${payrollRecalcPending} p where p.tenant_id = app.current_tenant_id()
+        and p.employment_id = any(array(select id from staff))
+      order by p.requested_at, p.id limit ${bound})
+    delete from ${payrollRecalcPending} p using picked where p.id = picked.id
+    returning p.employment_id::text as "employmentId", p.from_period as "fromPeriod", p.until_period as "untilPeriod", p.categories`);
+  if (gone.length === 0) return { consumed: 0, marked: [] };
+  const known = new Set<string>(RECALC_CHANGE_CATEGORIES);
+  const windows = gone.map((r) => ({
+    e: r.employmentId, f: r.fromPeriod, u: r.untilPeriod,
+    c: [...new Set((r.categories ?? []).filter((c) => known.has(c)))] as RecalcChangeCategory[],
+  }));
+  return { consumed: gone.length, marked: await markRecalcWindowsTx(tx, ctx, windows) };
 }
 
 /**
@@ -3424,12 +3547,20 @@ export async function prefillTp1FromSelfRelief(
           .where(
             and(
               inArray(payslip.employmentId, targetEmpIds),
+              // Board 4ce2c481 — the SAME rule as generatePayslipsTx's ∑LP-fed replay: this company's own months here,
+              // and the other group companies' months below through the group opening (totals only). Without the
+              // company filter this read counted whatever other company's payslips the operator happened to be able
+              // to see, so the prefill and the run could disagree about one declaration.
+              eq(payrollBatch.companyId, batch.companyId),
               like(payrollBatch.payPeriod, `${pYear}-%`),
               lt(payrollBatch.payPeriod, batch.payPeriod),
             ),
           )
       : [];
     const lpAccByEmp = new Map<string, number>();
+    for (const [employmentId, opening] of await groupTaxOpeningTx(tx, {runCompanyId: batch.companyId, payPeriod: batch.payPeriod, employmentIds: targetEmpIds})) {
+      for (const m of opening.months) lpAccByEmp.set(employmentId, round2((lpAccByEmp.get(employmentId) ?? 0) + m.tp1Lp));
+    }
     for (const s of priorSlips) {
       const st = (s.statutory ?? {}) as { lpDetail?: { tp1?: number } };
       // ⚠️ THE TP1 PORTION ONLY — NOT `st.lp` (item 3fa088fb, corrected in review). `st.lp` is
@@ -5272,6 +5403,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // (auto-apply by month). Folded into deductions + stamped onto statutory.cp38 below; an additional run
     // re-charges nothing (handled per-employee with isAdditionalRun, like slipUnpaid/hrdf).
     const cp38ByEmp = await cp38ForPeriod(tx, empIds, payPeriod);
+    // Board 4ce2c481 ("Automatic group TP3", owner decision 26 November 2026) — the same person's earlier months this
+    // assessment year at OTHER companies of the group (imported or processed) open this company's accumulators the way a
+    // Form TP3 does. The replay below stays this company's own; the group months are folded beside it in period order
+    // through the same pack fold. Totals per company and month only, one statement for the chunk, through the definer
+    // (core/payroll-group-tax-opening.ts carries the rule). A month without a usable tax basis, or a TP3 that lists a
+    // group company with an outside employer, refuses here exactly as an unreadable own history does; a processing chunk
+    // has already held those employees (core/payroll-tax-holds.ts asks the same reader).
+    const groupOpeningByEmp = await groupTaxOpeningTx(tx, {runCompanyId: batch.companyId, payPeriod, employmentIds: empIds});
+    for (const e of emps) assertGroupTaxOpeningUsable(groupOpeningByEmp.get(e.employmentId), e.tp3Year === pYear);
     const priorSlips = empIds.length
       ? await tx
           .select({
@@ -5297,6 +5437,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const reprocessTaxRead = subset ? reprocessHistoryTaxBasisRead(tx,ctx,async()=>taxOpeningPrefix) : undefined;
     const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true,reprocess:reprocessTaxRead});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
+    const supersededTaxCorrectionsByEmp = new Map<string, SupersededTaxCorrection[]>();
     const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string;rulesHash:string;settingsHash?:string}[]>();
     const rememberReplayedTaxSource = (employmentId:string,payslipId:string,basis:EffectiveTaxBasis) => {
       if(!basis.replayedSourceHash)return;
@@ -5312,6 +5453,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       rememberReplayedTaxSource(slip.employmentId,slip.id,corrected);
       const refs = taxBasisCorrectionsByEmp.get(slip.employmentId) ?? [];
       if(corrected.correction)refs.push(corrected.correction); taxBasisCorrectionsByEmp.set(slip.employmentId, refs);
+      // 289634a6 — an imported month whose saved Income Tax Correction was superseded by a newer import: the run used the
+      // imported amounts, and its payslip says so (`taxBasisSupersededCorrections`) instead of implying the correction stood.
+      if(corrected.supersededCorrections?.length){
+        const replaced = supersededTaxCorrectionsByEmp.get(slip.employmentId) ?? [];
+        for(const entry of corrected.supersededCorrections) if(!replaced.some(seen=>seen.id===entry.id)) replaced.push(entry);
+        supersededTaxCorrectionsByEmp.set(slip.employmentId, replaced.sort((a,b)=>a.period.localeCompare(b.period)||a.id.localeCompare(b.id)));
+      }
     }
     priorSlips.sort((a, b) => a.period.localeCompare(b.period)||a.id.localeCompare(b.id));
     const accByEmp = new Map<string, Acc>();
@@ -5322,7 +5470,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // for every column: the one capped EPF figure that keeps Y − K = Σ(Y−K), ∑LP as the fourth
       // variable a TP3 feeds (spec printed p.22), and Y reconstructed from the two stored columns rather
       // than stored a third time.
-      const tp3Applies = e.tp3Year === pYear;
+      // 4ce2c481 — a TP3 that lists a contributing group company is REPLACED by that company's history, never added.
+      const tp3Applies = e.tp3Year === pYear && groupOpeningByEmp.get(e.employmentId)?.tp3 !== 'replaced';
       accByEmp.set(
         e.employmentId,
         pack.payroll.openingAccumulatorsFromTp3(
@@ -5371,7 +5520,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // same month any number of times consumes the previous employer's exemption exactly once (the
     // reporter's Expected Function point 9, which needs no mechanism — see `projectSeedOntoStatutory`).
     for (const e of emps) {
-      if (e.tp3Year !== pYear) continue;
+      if (e.tp3Year !== pYear || groupOpeningByEmp.get(e.employmentId)?.tp3 === 'replaced') continue;
       const opening = e.tp3ExemptionUsed;
       if (opening == null) continue;
       const seeded: Record<string, number> = {};
@@ -5390,7 +5539,19 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // payslips exactly as `lpFedByEmp` replays Section C. It is what turns the rebate into a self-
     // correcting delta rather than a figure that can be missed or applied twice; see `tp1RebateByEmp`.
     const rebateFedByEmp = new Map<string, number>();
-    for (const s of priorSlips) {
+    // 4ce2c481 — the group months enter the SAME fold, in period order and before this company's own slip of the same
+    // month (a company the person left), so Y, Σ(Y−K), the cumulative EPF relief cap, K, X, Z, ∑LP and the annual
+    // exemption ledger carry on across companies exactly as if the person had never moved. The TP1 part and the zakat
+    // rebate they carry count as already fed: the TP1 declaration is the person's, one per assessment year, so feeding it
+    // again at the new company would give the relief twice.
+    const groupPrior = emps.flatMap((e) => groupTaxPriorSlips(groupOpeningByEmp.get(e.employmentId)).map((g) => ({
+      id: `group:${g.group.companyId}:${g.period}`, employmentId: e.employmentId, period: g.period, gross: String(g.gross),
+      statutory: g.statutory as unknown, group: true as const,
+    })));
+    const foldSlips = groupPrior.length
+      ? [...groupPrior, ...priorSlips].sort((a, b) => a.period.localeCompare(b.period) || Number('group' in b) - Number('group' in a) || a.id.localeCompare(b.id))
+      : priorSlips;
+    for (const s of foldSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
       const st = (s.statutory ?? {}) as { zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
@@ -5504,6 +5665,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
       if(!saved){cur.complete=false;continue;}
       cur.bik=round2(cur.bik+saved.owned.bik);cur.vola=round2(cur.vola+saved.owned.vola);
+    }
+    // 4ce2c481 — the group months' own BIK/VOLA accumulate the same way; a month that saved no non-cash snapshot is as
+    // incomplete as one of this company's would be.
+    for(const [employmentId,opening] of groupOpeningByEmp){
+      const cur=accumulatedNonCashByEmp.get(employmentId); if(!cur)continue;
+      for(const m of opening.months){cur.bik=round2(cur.bik+m.bik);cur.vola=round2(cur.vola+m.vola);if(!m.noncashComplete)cur.complete=false;}
     }
     if (isAdditionalRun || restatesMonth || postEmploymentIds.size>0) {
       const earlier = await tx
@@ -7993,11 +8160,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxBasisImportedSources:taxOpeningPrefix.filter(source=>source.employmentId===e.employmentId&&source.importRevision!==null).map(source=>({payslipId:source.id,sourceHash:hashTaxBasisSource(source),importRevision:source.importRevision})),
         taxBasisOpeningSource:{version:1,year:pYear,employmentId:e.employmentId,companyId:batch.companyId,prefix:taxOpeningPrefix.filter(source=>source.employmentId===e.employmentId).map(source=>({payslipId:source.id,sourceHash:hashTaxBasisSource(source)}))},
         taxBasisOpeningExemptionYear: pYear,
-        taxBasisOpeningExemptionUsed: e.tp3Year === pYear
+        // 4ce2c481 — the TP3 opening actually applied: none when the group history replaced it.
+        ...(groupTaxOpeningStamp(groupOpeningByEmp.get(e.employmentId)) ? {groupTaxOpening: groupTaxOpeningStamp(groupOpeningByEmp.get(e.employmentId))} : {}),
+        taxBasisOpeningExemptionUsed: e.tp3Year === pYear && groupOpeningByEmp.get(e.employmentId)?.tp3 !== 'replaced'
           ? Object.fromEntries(Object.entries(e.tp3ExemptionUsed ?? {}).map(([code,amount]) => [code,round2(Number(amount ?? 0))] as const).filter(([,amount]) => amount > 0))
           : {},
         ...(replayedTaxSourcesByEmp.has(e.employmentId) ? {replayedTaxSources:replayedTaxSourcesByEmp.get(e.employmentId)} : {}),
         ...(taxBasisCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisCorrections: taxBasisCorrectionsByEmp.get(e.employmentId)} : {}),
+        // 289634a6 — absent unless an earlier imported month's correction was superseded by a newer import.
+        ...(supersededTaxCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisSupersededCorrections: supersededTaxCorrectionsByEmp.get(e.employmentId)} : {}),
         // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
         // so every other payslip is byte-identical.
         ...(epfManualStamp ? { epfManual: epfManualStamp } : {}),
@@ -10916,11 +11087,13 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   const [after] = await tx.select({id:nativePayrollPayslip.id,version:nativePayrollPayslip.version,statutory:nativePayrollPayslip.statutory}).from(nativePayrollPayslip)
     .where(and(eq(nativePayrollPayslip.batchId,run.batchId),eq(nativePayrollPayslip.employmentId,employmentId))).limit(1);
   const savedScheme = (after?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
+  const taxCorrectionsReplaced = outcomeState.status==='reprocessed' ? taxCorrectionsReplacedOf(after?.statutory) : undefined;
   const outcome: ReprocessEmployeeOutcome = {
     employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
     ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
       && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
     ...(taxBasisRecalculated ? {taxBasisRecalculated} : {}),
+    ...(taxCorrectionsReplaced ? {taxCorrectionsReplaced} : {}),
     resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
     ...(repricedItems?.length ? {repricedItems} : {}),
     payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
@@ -11078,6 +11251,7 @@ export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:Sele
       employmentId,name:identity.name,employeeCode:identity.employeeCode,status:'reprocessed',reasonCode:null,classification:'recalculated',
       ...(typeof savedScheme==='string' && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
       ...(recalculatedTax.has(employmentId) ? {taxBasisRecalculated:true} : {}),
+      ...(taxCorrectionsReplacedOf(now?.statutory) ? {taxCorrectionsReplaced:taxCorrectionsReplacedOf(now?.statutory)} : {}),
       resultRetained:false,
       ...(repricedItems?.length ? {repricedItems} : {}),
       payslipId:now?.id ?? null,versionBefore:was.version,
@@ -11198,6 +11372,8 @@ async function reprocessTaxReadinessTx(tx:Tx,ctx:SessionContext,batch:ReprocessT
     for(const [id,reason] of await readTaxBasisFailuresTx(tx,ctx,current.map(source=>source.id),{reprocess:{kind:'current',recordCorrection:()=>{}}})){
       if(!failures.has(id))failures.set(id,reason);
     }
+    // Board 4ce2c481 — the group opening the reprocess will read: the same holds as processing, before anything is reset.
+    for(const [id,hold] of await groupTaxHoldsTx(tx,batch.companyId,batch.payPeriod,[...members]))if(!failures.has(id))failures.set(id,hold.reason);
     const canReviewTax=await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',batch.companyId);
     // Read only the reviewed status and explanation. The preview also contains wage figures that this
     // screen does not need. A worker's employee checkpoint and published correction commit together.
@@ -11406,6 +11582,10 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
       ? r.versionBefore!==null || r.versionAfter!==1
       : r.versionBefore===null || r.versionAfter!==r.versionBefore+1)) return null;
     if (r.taxBasisRecalculated !== undefined && (r.taxBasisRecalculated !== true || r.status !== 'reprocessed')) return null;
+    // 289634a6 — superseded-correction periods ride only on a recalculated outcome, each a YYYY-MM month.
+    if (r.taxCorrectionsReplaced !== undefined && (r.status !== 'reprocessed' || !Array.isArray(r.taxCorrectionsReplaced)
+      || r.taxCorrectionsReplaced.length === 0 || r.taxCorrectionsReplaced.some(e => !e || typeof e.period !== 'string' || !/^\d{4}-\d{2}$/.test(e.period)
+        || (e.replacedAt !== null && typeof e.replacedAt !== 'string')))) return null;
     // a1a80747 — a tax hold is a skip too; jobs written before it only ever carry NOTHING_PAYABLE, which still decodes.
     if (r.status === 'skipped' && !REPROCESS_SKIP_REASONS.has(r.reasonCode ?? '')) return null;
     if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE','PAY_ITEM_FORMULA_FAILED'].includes(r.reasonCode ?? '')

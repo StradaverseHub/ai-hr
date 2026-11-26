@@ -34,6 +34,7 @@ import type { PayslipSourceTxnRow } from '@/core/payroll-view';
 import { SourceTxnBlock, SourceTxnLink } from './source-txn-block';
 // b240c0ff — imported payroll history reads "Monthly - By Import", never the stored "Adjustment".
 import { payrollRunLabel } from '@/core/payslip-cycle-label';
+import { formatDate } from '@/lib/utils';
 
 /**
  * Transaction History grid (feedback 5f8d8395 — R24 5db3ae48's deferred Phase C) — a client component so each
@@ -103,7 +104,7 @@ const OT_LEG_LABEL: Record<OtLegKind, 'otLegWorkday' | 'otLegRestDay' | 'otLegRe
   holiday_excess: 'otLegHolidayExcess',
 };
 
-function Row({ label, value, muted }: { label: string; value: React.ReactNode; muted?: boolean }) {
+function Row({ label, value, muted }: { label: React.ReactNode; value: React.ReactNode; muted?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-4 border-b border-border/60 py-1.5 text-sm last:border-0">
       <span className={muted ? 'text-muted-foreground' : ''}>{label}</span>
@@ -129,7 +130,7 @@ export function HistoryTable({
   processingOutcomes,
 }: {
   rows: ProcessedPayslipViewRow[];
-  processingOutcomes?: Record<string,Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'resultRetained'>>;
+  processingOutcomes?: Record<string,Pick<ReprocessEmployeeOutcome,'status'|'reasonCode'|'resultRetained'>&Partial<Pick<ReprocessEmployeeOutcome,'taxCorrectionsReplaced'>>>;
   /** Feedback efece4ce — companies whose HRDF Contribution Rate is set (0.5% / 1.0%). Everything else is
    *  unregistered and levies nothing, which the breakdown must SAY rather than leave blank. */
   hrdfRegisteredCompanyIds: string[];
@@ -260,7 +261,9 @@ export function HistoryTable({
                     {tBatch(`reprocessOutcomeStatus.${outcome.status}`)}</Badge> : '—'}</td>
                   <td className="min-w-56 max-w-sm px-4 py-2.5 text-xs">
                     {outcome ? <><p title={outcome.status==='skipped'?tBatch('reprocessNothingPayableFull'):undefined}>
-                      {tBatch(outcome.status==='skipped'?'reprocessNothingPayableShort':outcome.status==='reprocessed'?'reprocessSucceededReason':'reprocessConfigurationReason')}</p>
+                      {outcome.status==='reprocessed'&&outcome.taxCorrectionsReplaced?.length
+                        ? tBatch('reprocessTaxCorrectionReplacedByImport',{periods:outcome.taxCorrectionsReplaced.map(entry=>entry.period).join(', ')})
+                        : tBatch(outcome.status==='skipped'?'reprocessNothingPayableShort':outcome.status==='reprocessed'?'reprocessSucceededReason':'reprocessConfigurationReason')}</p>
                       {outcome.resultRetained && <p className="mt-1 font-medium text-amber-800 dark:text-amber-300">{tBatch('reprocessPreviousResultRetained')}</p>}
                     </> : '—'}
                   </td>
@@ -377,6 +380,16 @@ export function HistoryTable({
                               </a>
                             }
                           />
+                          {/* 289634a6 — this run used a newer payroll history import for an earlier month whose
+                              saved Income Tax Correction it superseded. Said under the figure it shaped; the
+                              correction itself stays in its own history. Absent on every other payslip. */}
+                          {b.taxCorrectionsReplaced.map((replaced) => (
+                            <p key={replaced.period} className="pb-1 text-[11px] text-muted-foreground" data-tax-correction-replaced={replaced.period}>
+                              {replaced.replacedAt
+                                ? t('view.history.taxCorrectionReplacedOn', { period: replaced.period, date: formatDate(replaced.replacedAt) })
+                                : t('view.history.taxCorrectionReplaced', { period: replaced.period })}
+                            </p>
+                          ))}
                           {/* 970e4143 — the APPLIED instalment, from the shared decider, never the
                               pre-clamp `st.cp38`. See app/me/payslip/[payslipId]/page.tsx. */}
                           {b.absence.cp38.show && (
@@ -524,8 +537,25 @@ export function HistoryTable({
                             <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                               {t('view.history.nonPayableHeading')}
                             </h3>
+                            {/* 289634a6 — an imported month's Non-Payable items arrive here too (once), with
+                                the pay item's PCB setting as the import stamped it. */}
+                            {b.importedNonPayableLines.length > 0 && (
+                              <p className="mb-1 text-xs text-muted-foreground">{t('view.history.nonPayableFromImport')}</p>
+                            )}
                             {b.nonPayableLines.map((l, i) => (
-                              <Row key={`${l.code}-${i}`} label={recordLineIdentity(l, payItemNames).label} value={rm(l.amount)} muted />
+                              <Row
+                                key={`${l.code}-${i}`}
+                                label={l.imported && typeof l.countsForPcb === 'boolean' ? (
+                                  <span className="inline-flex flex-wrap items-baseline gap-2">
+                                    <span>{recordLineIdentity(l, payItemNames).label}</span>
+                                    <Badge variant={l.countsForPcb ? 'success' : 'default'}>
+                                      {t(l.countsForPcb ? 'view.history.countsForPcb' : 'view.history.notTaxed')}
+                                    </Badge>
+                                  </span>
+                                ) : recordLineIdentity(l, payItemNames).label}
+                                value={rm(l.amount)}
+                                muted
+                              />
                             ))}
                             <div className="mt-2 flex items-baseline justify-between border-t border-border pt-2 text-sm font-semibold">
                               <span>{tSlip('nonPayableTotal')}</span>

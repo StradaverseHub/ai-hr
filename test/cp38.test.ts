@@ -2,8 +2,10 @@
  * 1.2.3 CP38 Deduction (ADR-0057) — the LHDN/court instalment deducted each payroll month in addition to
  * MTD/PCB. Covers: supersede-on-write effective dating, the gist EXCLUDE concurrency backstop, RLS
  * (admin write / self read / manager-and-peer cannot read another's amount), auto-apply by payroll month,
- * the additional-run no-re-charge invariant, the cross-run CP39 single-instalment invariant, the
- * processed-period guard, and DomainEvent substrate (events appended, no cleartext amount in payload).
+ * the additional-run no-re-charge invariant, the cross-run CP39 single-instalment invariant, corrections
+ * after processing (bc6b5490: allowed and marked, replacing the processed-period guard), and DomainEvent
+ * substrate (events appended, no cleartext amount in payload). The corrections, history, last-month amount,
+ * inclusive Effective to and the company-wide list are covered in depth by test/cp38-corrections-bc6b5490.test.ts.
  */
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -15,13 +17,14 @@ import { setCompensation } from '../core/comp';
 import { setStatutoryProfileMY } from '../localization/my/statutory';
 import { setCompanyStatutoryMY } from '../localization/my/company-statutory';
 import { createBatch, createAdditionalRun, generatePayslips, setPayrollInput } from '../core/payroll';
+import { todayInKualaLumpur } from '../lib/hr-date';
 import { cp39FileForBatch } from '../localization/my/cp39-file';
 import {
   listCp38,
   setCp38,
   updateCp38,
   terminateCp38,
-  Cp38PeriodProcessedError,
+  deleteCp38,
 } from '../core/cp38';
 import {
   adminCtx,
@@ -89,9 +92,12 @@ describe('1.2.3 CP38 Deduction', () => {
     // Latest-effective first.
     expect(rows[0].cp38Ref).toBe('CP38/2');
     expect(rows[0].validTo).toBeNull();
-    // The prior row was closed at the new row's start so the windows don't overlap.
+    // The prior row was closed at the new row's start so the windows don't overlap: its last deducted month
+    // (Effective to, inclusive since bc6b5490) is May.
     const prior = rows.find((r) => r.cp38Ref === 'CP38/1')!;
-    expect(prior.validTo).toBe('2026-06-01');
+    expect(prior.validTo).toBe('2026-05-01');
+    const [stored] = await owner.db.select({ validTo: schema.employeeCp38.validTo }).from(schema.employeeCp38).where(eq(schema.employeeCp38.id, prior.id));
+    expect(stored.validTo).toBe('2026-06-01'); // stored exclusive, the gist rule's '[)' end
   });
 
   it('normalises any input date to month-start', async () => {
@@ -114,8 +120,12 @@ describe('1.2.3 CP38 Deduction', () => {
 
     await terminateCp38(a, { id });
     [row] = await listCp38(a, { employmentId: e.employmentId });
-    expect(row.supersededAt).not.toBeNull();
-    expect(row.validTo).not.toBeNull(); // closed, stops applying
+    // bc6b5490: Terminate only sets Effective to (the month before this one); it no longer deletes the record from
+    // the months it was already deducted in.
+    expect(row.supersededAt).toBeNull();
+    const thisMonth = `${todayInKualaLumpur().slice(0, 7)}-01`;
+    expect(row.validTo).not.toBeNull();
+    expect(row.validTo! < thisMonth).toBe(true);
   });
 
   it('gist EXCLUDE rejects a direct overlapping insert (concurrency backstop)', async () => {
@@ -295,7 +305,9 @@ describe('1.2.3 CP38 Deduction', () => {
     expect(detail.slice(118, 126)).toBe('00032050'); // CP38 cents = RM320.50
   });
 
-  it('processed-period guard blocks edit/terminate once a non-draft payslip covers the period', async () => {
+  // bc6b5490 (replacing the processed-period guard pinned here until 26 Nov 2026): a record used by a processed
+  // payroll can still be edited, ended and deleted. The run is marked Reprocess Required instead of refused.
+  it('edit and end are allowed after processing and mark the processed run instead of refusing', async () => {
     const a = adminCtx(base);
     const e = await hire(a, base, 'CP38 Guard');
     await setCompensation(a, { employmentId: e.employmentId, basicSalary: 5000, monthlyAllowance: 0, effectiveFrom: '2026-01-01' });
@@ -306,8 +318,14 @@ describe('1.2.3 CP38 Deduction', () => {
     const mar = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-03' });
     await generatePayslips(a, { batchId: mar.batchId }); // batch flips to 'processed'
 
-    await expect(updateCp38(a, { id, amount: 250 })).rejects.toThrow(Cp38PeriodProcessedError);
-    await expect(terminateCp38(a, { id })).rejects.toThrow(Cp38PeriodProcessedError);
+    await expect(updateCp38(a, { id, amount: 250 })).resolves.toEqual({ id, changed: true });
+    const [batch] = await owner.db
+      .select({ ids: schema.payrollBatch.recalcEmploymentIds, at: schema.payrollBatch.needsRecalcAt })
+      .from(schema.payrollBatch)
+      .where(eq(schema.payrollBatch.id, mar.batchId));
+    expect(batch.at).not.toBeNull();
+    expect(batch.ids).toEqual([e.employmentId]);
+    await expect(terminateCp38(a, { id })).resolves.toMatchObject({ id });
   });
 
   it('appends DomainEvents on add/update/terminate without the cleartext amount in the payload', async () => {
@@ -316,9 +334,10 @@ describe('1.2.3 CP38 Deduction', () => {
     const { id } = await setCp38(a, { employmentId: e.employmentId, cp38Ref: 'CP38/EV', amount: 275, validFrom: '2026-03-01' });
     await updateCp38(a, { id, amount: 280 });
     await terminateCp38(a, { id });
+    await deleteCp38(a, { id });
 
     const types = await eventTypesFor(base.tenantId, id);
-    expect(types).toEqual(expect.arrayContaining(['employee-cp38.added', 'employee-cp38.updated', 'employee-cp38.terminated']));
+    expect(types).toEqual(expect.arrayContaining(['employee-cp38.added', 'employee-cp38.updated', 'employee-cp38.terminated', 'employee-cp38.deleted']));
 
     // No cleartext amount anywhere in any of the three payloads (ADR-0030 Layer 0: the amount lives
     // on the aggregate row; the event keeps refs and dates only).
@@ -329,7 +348,7 @@ describe('1.2.3 CP38 Deduction', () => {
     // roughly 0.73% of the time — two needles across three payloads is the ~1% clean-room failure that
     // was actually observed. It was weak because a substring scan only ever catches the one literal it
     // is handed. See test/helpers/leaf-values.ts; zakat-history.test.ts hit this first (91b2e4d).
-    for (const t of ['employee-cp38.added', 'employee-cp38.updated', 'employee-cp38.terminated']) {
+    for (const t of ['employee-cp38.added', 'employee-cp38.updated', 'employee-cp38.terminated', 'employee-cp38.deleted']) {
       const payload = await latestEventPayload(base.tenantId, id, t);
       expectNoLeakedValue(payload, 275); // the original amount
       expectNoLeakedValue(payload, 280); // the updated amount
@@ -342,7 +361,7 @@ describe('1.2.3 CP38 Deduction', () => {
     }
 
     // The `updated` event is the sharp case, and the distinction its design rests on: `diff` is
-    // `Object.keys(patch)` (core/cp38.ts:229), so it records THAT the amount changed — the literal
+    // the changed field names (core/cp38.ts updateCp38), so it records THAT the amount changed — the literal
     // field NAME 'amount' — while never recording WHAT it changed to. Both halves asserted, because
     // dropping the name would be a silent audit regression and adding the value would be the leak.
     {

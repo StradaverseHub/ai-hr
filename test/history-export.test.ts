@@ -321,6 +321,32 @@ describe('0fcb2557 — the named-item columns', () => {
     ]);
     expect(data.rows[0][col(data, 'Overtime meal')]).toBe('75.00');
   });
+
+  it('289634a6 — an imported month’s Non-Payable items are Recorded item columns, once, outside the cash figures', () => {
+    const data = build([
+      slip({
+        runType: 'adjustment',
+        historyImportAttemptId: '00000000-0000-0000-0000-0000000000a1',
+        historyImportCycleName: 'Monthly',
+        statutory: {
+          epfEmployee: 616, socsoEmployee: 27.75, eisEmployee: 11.1, pcb: 1680,
+          importedTaxBasis: {
+            version: 1, state: 'ready', year: 2026, settingsHash: 'x', missing: [],
+            settings: [{ id: 'pc-bkcar', code: 'BKCAR', name: 'Benefit-in-kind car', includedInPcb: true }],
+            lines: [{ rowNum: 3, originalCode: 'BKCAR', code: 'BKCAR', settingId: 'pc-bkcar', amount: 2083.33, direction: 'noncash' }],
+          },
+          historyMaintenance: { version: 1, items: [
+            { key: 'component:pc-bkcar', code: 'BKCAR', label: 'Benefit-in-kind car', originalCodes: ['BKCAR'], amount: '2083.33', destination: 'noncash', direction: 'noncash', sourceRows: [3] },
+          ] },
+        },
+      }),
+    ]);
+    const dynamic = data.columns.slice(HISTORY_EXPORT_FIXED_COLUMNS.length);
+    expect(dynamic).toEqual([`${RECORDED_ITEM_PREFIX}Benefit-in-kind car`]);
+    expect(data.rows[0][col(data, `${RECORDED_ITEM_PREFIX}Benefit-in-kind car`)]).toBe('2083.33');
+    // The cash figures are the stored ones: the benefit is not in gross or net.
+    expect(data.rows[0][col(data, 'Gross')]).toBe('5600.00');
+  });
 });
 
 describe('0fcb2557 — the employee-share trap', () => {

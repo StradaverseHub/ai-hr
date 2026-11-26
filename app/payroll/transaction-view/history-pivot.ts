@@ -521,7 +521,11 @@ function cellsFor(row: ProcessedPayslipViewRow, payItemNames?: PayItemNames): {
   // different remark against the same code. Printing one of them would attribute a month's typed words to
   // the whole year. The per-payslip surfaces (History's Recorded items, Individual Payslip, the ESS
   // payslip) each show a single slip and do print it.
-  for (const l of b.recordLines) {
+  // 289634a6 — an imported month's Non-Payable items (BKCAR, BKDRV) join the recorded items. The import never
+  // writes `recordLines`, so without these the Grid showed only the processed runs' own BIK rows. The pivot
+  // keys them under this payslip's run key (`import:<Pay Cycle>`), so they sit on the "Monthly - By Import"
+  // row beside the rest of the import. `reconciling: false` like every item row: never in a gross/net sum.
+  for (const l of [...b.recordLines, ...b.importedNonPayableLines]) {
     cells.push({
       kind: 'item',
       code: l.code,

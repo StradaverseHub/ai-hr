@@ -16,8 +16,9 @@ import {appendEvent,actorOf} from '../db/events';
 import {requirePackFor} from '../localization/registry';
 import type {StatutoryRuleset} from '../localization/country-pack';
 import {readHistoryField} from '../lib/payroll-history-import-schema';
-import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch,type TaxBasisOpening,type TaxBasisHoldReason,type TaxBasisLedgerEntry,type TaxBasisBounds,type TaxBasisHistoryRow,type TaxBasisHistoryCursor,type TaxBasisProgressState,TAX_BASIS_HISTORY_PAGE_SIZE} from '../lib/payroll-tax-basis';
+import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch,type TaxBasisOpening,type TaxBasisHoldReason,type TaxBasisLedgerEntry,type TaxBasisBounds,type TaxBasisHistoryRow,type TaxBasisHistoryCursor,type TaxBasisProgressState,type TaxBasisGroupOpening,TAX_BASIS_HISTORY_PAGE_SIZE} from '../lib/payroll-tax-basis';
 import {assertModuleGate} from './module-gate';
+import {groupTaxHoldReason,groupTaxOpeningTx,summarizeGroupTaxOpening,type GroupTaxOpening} from './payroll-group-tax-opening';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {lap,reportSlowTaxBasisOpening,type TaxBasisLaps} from '../lib/payroll-tax-basis-timing';
@@ -49,7 +50,7 @@ async function settingsTx(tx:Tx,lock=false){
 }
 type SourceSlip={id:string;period:string;runOrder:number;gross:string;deductions:string;basic:string;allowance:string;overtime:string;bonus:string;statutory:Record<string,unknown>;historyAttemptId:string|null;cycleId:string|null};
 type InputLine={code:string;amount:number;direction:'earning'|'deduction'|'noncash';settingId?:string;rowNum?:number;nonCashSource?:{source:'recurring'|'one_off';sourceId?:string};previousTreatment?:string|null};
-type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>;openings?:Map<string,TaxOpeningRow>;withoutLedger?:boolean};
+type SourceCache=Map<string,{retained:{name:string;sourceHash:string;rows:HistoryRevisionRow[]};rows:Awaited<ReturnType<typeof parsePayrollHistorySource>>}>&{codes?:Awaited<ReturnType<typeof resolveImportCodes>>;slips?:Map<string,SourceSlip[]>;country?:string;rules?:Map<string,Awaited<ReturnType<ReturnType<typeof requirePackFor>['payroll']['loadRulesetResolved']>>>;sourceHashes?:Map<string,string>;effective?:Awaited<ReturnType<typeof readEffectiveTaxBasesTx>>|null;superseded?:Map<string,string[]>;rulesStates?:Awaited<ReturnType<typeof importedTaxRulesStatesTx>>;openings?:Map<string,TaxOpeningRow>;withoutLedger?:boolean;group?:Map<string,RecalcGroupOpening>};
 /** Preview and atomic continuation share exact released ownership, including detached native origins. */
 async function supersededTaxBasisRowsTx(tx:Tx,sourceIds:readonly string[]):Promise<Map<string,string[]>>{
  const ids=[...new Set(sourceIds)];if(!ids.length)return new Map();
@@ -109,6 +110,32 @@ const accessHeld='Prior-employer exemption use cannot be confirmed because you a
 /** Comparison normalises the 20 November label so an unchanged zero opening creates no new revision. */
 const comparableOpeningSource=(value:unknown)=>value==='no_tp3_default_zero'?'no_accepted_tp3':value;
 
+/**
+ * Board 4ce2c481 (owner decision of 26 November 2026, "Automatic group TP3"): the recalculation of a company's months
+ * opens the annual exemption ledger exactly where live processing opened it for that company's first month: the TP3 /
+ * saved opening (dropped when the group history replaces the TP3) PLUS the exemption usage of the same person's earlier
+ * months at the group's other companies, read through the same definer, dedupe and holds as processing
+ * (core/payroll-group-tax-opening.ts). Only the exemption ledger depends on an opening in this replay: it reconstructs
+ * taxable and exempt bases, not the PCB amount, so Y, K, X, Z and ∑LP enter later, in the calculation that consumes the
+ * corrected bases. One definer read per distinct first month (at most twelve in a year) plus one at the cutoff to find a
+ * group month that falls BETWEEN this company's months (a person who moved away and back), which a single opening cannot
+ * represent and is therefore held rather than approximated. Read only; corrections stay per original employer.
+ */
+type RecalcGroupOpening={opening:GroupTaxOpening|undefined;interleaved:{companyName:string;period:string}|null};
+async function recalcGroupOpeningsTx(tx:Tx,selection:TaxBasisSelection,subjects:readonly {id:string;first:string;last:string}[]):Promise<Map<string,RecalcGroupOpening>>{
+ const out=new Map<string,RecalcGroupOpening>();if(!subjects.length)return out;
+ const byFirst=new Map<string,string[]>();for(const subject of subjects)byFirst.set(subject.first,[...(byFirst.get(subject.first)??[]),subject.id]);
+ const firstOpenings=new Map<string,GroupTaxOpening>();
+ for(const [first,ids] of [...byFirst].sort(([a],[b])=>a.localeCompare(b)))for(const [id,opening] of await groupTaxOpeningTx(tx,{runCompanyId:selection.companyId,payPeriod:first,employmentIds:ids}))firstOpenings.set(id,opening);
+ const cutoff=selection.year+'-'+String(selection.upToMonth).padStart(2,'0');
+ const all=await groupTaxOpeningTx(tx,{runCompanyId:selection.companyId,payPeriod:cutoff,employmentIds:subjects.map(subject=>subject.id)});
+ for(const subject of subjects){
+  const between=(all.get(subject.id)?.months??[]).find(month=>month.period>subject.first&&month.period<=subject.last);
+  out.set(subject.id,{opening:firstOpenings.get(subject.id),interleaved:between?{companyName:between.companyName,period:between.period}:null});
+ }
+ return out;
+}
+const addUsage=(...sets:Record<string,number>[])=>{const out:Record<string,number>={};for(const set of sets)for(const [code,amount] of Object.entries(set))if(Number(amount)){out[code]=round((out[code]??0)+Number(amount));}return out;};
 async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,who:{id:string;employeeNo:string;name:string},settings:Settings[],settingsHash:string,cache:SourceCache=new Map()):Promise<TaxBasisEmployee>{
  let pcbComparison:TaxBasisEmployee['pcbComparison'];
  const blocked=(reason:string):TaxBasisEmployee=>({...who,...(pcbComparison?{pcbComparison}:{}),status:'blocked',reason,recordCount:0,beforeTaxable:null,difference:null,taxable:null,beforeExempt:null,exempt:null,months:[]});
@@ -148,6 +175,16 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    else if(resolved.state==='unreadable')fail(resolved.reason);
    else openingInfo=resolved.opening;
   }
+  // 4ce2c481 — the group months before this company's first selected month, as processing took them.
+  let groupUsed:Record<string,number>={},tp3Replaced=false;
+  if(capped&&!hold){
+   const periods=included.map(slip=>slip.period).sort(),subject={id:who.id,first:periods[0],last:periods[periods.length-1]};
+   const group=cache.group?cache.group.get(who.id):(await recalcGroupOpeningsTx(tx,selection,[subject])).get(who.id);
+   const groupHold=group?.opening?groupTaxHoldReason(group.opening,!!openingInfo&&openingInfo.source!=='no_accepted_tp3'):null;
+   if(groupHold)hold={code:'group_history_unavailable',reason:groupHold.reason,status:'blocked'};
+   else if(group?.interleaved)hold={code:'group_history_unavailable',reason:`Income tax history from ${group.interleaved.companyName} for ${group.interleaved.period} falls between this company's selected months. Select the months before ${group.interleaved.period} and after it separately.`,status:'blocked'};
+   else if(group?.opening){tp3Replaced=group.opening.tp3==='replaced';groupUsed=addUsage(...group.opening.months.map(month=>month.exemptionUsed));}
+  }
   const replayInput={year:selection.year,upToMonth:selection.upToMonth,slips:input,settings,rulesByPeriod};
   if(hold){
    const held=heldDetail(hold.reason,'priorEmployerExemptionUsage',['taxableWages','exemptWages','optionalDeductions','pcbComparison']);
@@ -157,7 +194,8 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
    return {...held,holdReason:hold.code,status:hold.status,...(bounds?{bounds}:{}),
     ...(hold.status==='skipped'?{reason:'Saved taxable and exempt values were kept because prior-employer exemption use is unknown. '+hold.reason}:{})};
   }
-  const openingExemptionUsed=openingInfo?.used??{};
+  // 4ce2c481 — a TP3 replaced by the group history contributes nothing; the group's usage is added, as processing adds it.
+  const openingExemptionUsed=addUsage(tp3Replaced?{}:openingInfo?.used??{},groupUsed);
   let replay:ReturnType<typeof pack.payroll.replayTaxBasis>;
   try{replay=pack.payroll.replayTaxBasis({...replayInput,openingExemptionUsed,ledger:!cache.withoutLedger});}
   catch(error){
@@ -183,7 +221,8 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
      // The comparable source stays as before for a saved opening (absent); provenance and the ledger are additive keys
      // excluded from comparison(), so an unchanged employee creates no new revision.
      ...(openingInfo&&openingInfo.source!=='saved_payslip'?{openingExemptionSource:openingInfo.source}:{}),
-     ...(openingInfo?{openingExemption:openingInfo}:{})};
+     ...(openingInfo?{openingExemption:openingInfo}:{}),
+     ...(Object.keys(groupUsed).length||tp3Replaced?{groupOpeningExemption:{used:groupUsed,tp3Replaced}}:{})};
    ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
    const beforeNormal=previous?.normal??(object(st.pcbNonCash)?money(st.pcbNonCash.cashNormal):null);
    const beforeAdditional=previous?.additional??money(source.bonus);
@@ -306,6 +345,9 @@ async function computeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection):P
  }
  // One set-wise opening read for every subject with saved history in the year (SCALE rule 2).
  cache.openings=await readTaxOpeningRowsTx(tx,ctx,selection.year,employees.filter(employee=>cache.slips?.get(employee.id)?.length).map(employee=>employee.id));
+ // 4ce2c481 — the group openings for every subject with saved history, set-wise (bounded statements, SCALE rule 2).
+ const cutoffPeriod=selection.year+'-'+String(selection.upToMonth).padStart(2,'0');
+ cache.group=await recalcGroupOpeningsTx(tx,selection,employees.flatMap(employee=>{const periods=(cache.slips?.get(employee.id)??[]).map(slip=>slip.period).filter(period=>period<=cutoffPeriod).sort();return periods.length?[{id:employee.id,first:periods[0],last:periods[periods.length-1]}]:[];}));
  cache.rulesStates=await importedTaxRulesStatesTx(tx,[...new Set(allSlips.map(slip=>slip.period))]);
  const sourceRead=await createTaxBasisPreviewReadTx(tx,ctx,allSlips.map(slip=>slip.id));
  cache.sourceHashes=sourceRead.sourceHashes;
@@ -358,9 +400,44 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  * figures no longer match, so a change between the snapshot and the confirmation is never applied. */
 export async function calculateTaxBasisPreview(ctx:SessionContext,selection:TaxBasisSelection,options:{allowEmptySelection?:boolean}={}):Promise<TaxBasisPreview>{
  validateSelection(selection,options.allowEmptySelection);
- const computed=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);return computeTx(tx,ctx,selection);},{readOnlySnapshot:true});
+ const {computed,group}=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);const computed=await computeTx(tx,ctx,selection);return {computed,group:await taxBasisGroupOpeningTx(tx,selection,computed.employees)};},{readOnlySnapshot:true});
  const previewId=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();
- return {...computed,previewId,previewHash:hash({selection,computed}),createdAt,expiresAt};
+ // 4ce2c481 — the group section is attached AFTER the hash: it is display only and decides nothing a confirmation applies.
+ const previewHash=hash({selection,computed});
+ return {...computed,employees:computed.employees.map(employee=>group.has(employee.id)?{...employee,groupOpening:group.get(employee.id)}:employee),previewId,previewHash,createdAt,expiresAt};
+}
+/**
+ * Board 4ce2c481 — "Year to date from other group companies", per previewed employee: what live payroll now takes from
+ * the group's other companies as a previous-employer opening, through the same definer (totals per company and month;
+ * the caller needs payroll administration of the selected company, which `permission` has already required). The
+ * months counted are those before the employee's latest month here in the selected range, so a company the person
+ * moved to LATER is never shown as earlier history. Limits come from the assessment year's verified rules. One
+ * statement for the preview (SCALE rule 2). Read only; corrections stay per original employer (ADR-0167).
+ */
+async function taxBasisGroupOpeningTx(tx:Tx,selection:TaxBasisSelection,employees:readonly TaxBasisEmployee[]):Promise<Map<string,TaxBasisGroupOpening>>{
+ const out=new Map<string,TaxBasisGroupOpening>();
+ if(!employees.length)return out;
+ const cutoff=selection.year+'-'+String(selection.upToMonth).padStart(2,'0');
+ const openings=await groupTaxOpeningTx(tx,{runCompanyId:selection.companyId,payPeriod:cutoff,employmentIds:employees.map(employee=>employee.id)});
+ if(!openings.size)return out;
+ const [company]=await tx.execute<{country:string}>(sql`select country from company where id=${selection.companyId}::uuid`);
+ const pack=company?requirePackFor(company.country):null;
+ const resolved=pack?await pack.payroll.loadRulesetResolved(tx,{asOf:cutoff+'-01'}).catch(()=>null):null;
+ const tables=(resolved?.ruleset as unknown as {pcbExemptions?:{pcb?:Record<string,number>;lp?:Record<string,number>}}|undefined)?.pcbExemptions;
+ const capOf=(code:string):number|null=>{const cap=tables?.pcb?.[code]??tables?.lp?.[code];return typeof cap==='number'&&cap>0&&cap<9999999?cap:null;};
+ for(const employee of employees){
+  const opening=openings.get(employee.id);if(!opening)continue;
+  const last=employee.months.reduce<string>((latest,month)=>month.period>latest?month.period:latest,'');
+  const months=opening.months.filter(month=>!last||month.period<last||month.period===cutoff&&last===cutoff);
+  if(!months.length)continue;
+  const used=new Map<string,number>();
+  for(const month of months)for(const [code,amount] of Object.entries(month.exemptionUsed))used.set(code,round((used.get(code)??0)+amount));
+  out.set(employee.id,{tp3:opening.tp3,
+   companies:summarizeGroupTaxOpening(months).map(c=>({companyId:c.companyId,companyName:c.companyName,periods:c.periods,sources:c.sources,taxable:c.y,pcb:c.pcb,epf:c.epf,zakat:c.zakat,exemptionUsed:Object.entries(c.exemptionUsed).map(([code,amount])=>({code,used:amount}))})),
+   limits:[...used].sort(([a],[b])=>a.localeCompare(b)).map(([code,amount])=>{const cap=capOf(code);return {code,cap,used:amount,remaining:cap===null?null:round(Math.max(0,cap-amount))};}),
+   missing:months.filter(month=>month.unusable).map(month=>({companyName:month.companyName,period:month.period}))});
+ }
+ return out;
 }
 export async function saveTaxBasisPreviewTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,preview:TaxBasisPreview){
  await permission(tx,ctx,selection.companyId,true);
@@ -390,7 +467,9 @@ async function taxBasisInputsDigestTx(tx:Tx,ctx:SessionContext,selection:TaxBasi
  const [rows]=await lap(laps,'sourceRows',()=>tx.execute<{d:string}>(sql`select app.payroll_tax_basis_source_digest(${selection.companyId}::uuid,${selection.year}::integer) as d`));
  // The opening source, TP3 identity/revision, projection and declared answer invalidate a preview when any of them changes.
  const openings=[...(await lap(laps,'openingEvidence',()=>readTaxOpeningRowsTx(tx,ctx,selection.year,(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)))).values()].map(taxOpeningDigestRow);
- return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,openings});
+ // 4ce2c481 — the other group companies' months up to the cutoff open the ledger too, so a change there forces a fresh preview.
+ const group=[...(await lap(laps,'groupOpening',()=>groupTaxOpeningTx(tx,{runCompanyId:selection.companyId,payPeriod:selection.year+'-'+String(selection.upToMonth).padStart(2,'0'),employmentIds:(selection.employmentIds===null?subjects:selectedSubjects).map(subject=>subject.id)}))).values()].sort((a,b)=>a.employmentId.localeCompare(b.employmentId));
+ return hash({settings,subjects:[...subjects],selectedSubjects:[...selectedSubjects],company:company?.row??null,rules,rows:rows?.d??null,openings,...(group.length?{group}:{})});
 }
 async function recordEventTx(tx:Tx,ctx:SessionContext,batchId:string,companyId:string,kind:string,detail:unknown={},employmentId:string|null=null){await tx.execute(sql`insert into payroll_tax_basis_event(tenant_id,company_id,batch_id,employment_id,actor_id,kind,detail) values(${ctx.tenantId}::uuid,${companyId}::uuid,${batchId}::uuid,${employmentId}::uuid,${ctx.userId!}::uuid,${kind},${JSON.stringify(detail)}::jsonb)`);}
 type PreviewInput={previewId:string;previewHash:string};

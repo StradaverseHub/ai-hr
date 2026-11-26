@@ -11,6 +11,7 @@ import {outstandingPaymentPredicate, payrollCompensationEffectiveOn, payrollEmpl
 import {lockPayrollHistoryReadTx} from './payroll-history-lock';
 import {importedTaxReviewPeriod} from './payroll-run-group-result';
 import {readTaxBasisFailureDetailsTx} from './payroll-tax-basis-read';
+import {groupTaxHoldsTx} from './payroll-group-tax-opening';
 
 const KIND = 'payroll_draft_tax_readiness';
 const EMPLOYEES_PER_STEP = 24;
@@ -142,6 +143,12 @@ export const draftTaxReadinessJobHandler: BulkJobHandler<Step> = {
     const blockers: DraftTaxBlocker[] = [...failures].map(([employmentId, {period, reason}]) => ({
       employmentId, period, kind: importedTaxReviewPeriod(reason) ? 'importedHistory' : 'savedHistory',
     }));
+    // Board 4ce2c481 — the group opening processing will read, with the same holds (one statement for the step).
+    if (!sameMonth) {
+      for (const [employmentId, hold] of await groupTaxHoldsTx(tx, batch.companyId, batch.payPeriod, employmentIds)) {
+        if (!failures.has(employmentId)) blockers.push({employmentId, period: hold.period, kind: hold.imported ? 'importedHistory' : 'savedHistory'});
+      }
+    }
     return {result: blockers};
   },
   async finalize(ctx, job) {

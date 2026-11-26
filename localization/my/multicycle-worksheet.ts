@@ -68,6 +68,7 @@ import { computeMonthlyRuns, type MonthRunInput, type RunType } from './multicyc
 import { pcbNonCashStreams } from '../noncash-benefits';
 import { getActiveStatutoryMY } from './statutory-config';
 import { todayInKualaLumpur } from '../../lib/hr-date';
+import { groupTaxPriorSlips, readGroupTaxOpeningStamp } from '../../lib/payroll-group-tax-stamp';
 import { DEFAULT_MY_STATUTORY, type StatutoryRuleset } from './statutory-tables';
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -436,7 +437,7 @@ export async function multiCycleWorksheetMY(
         runs,
         rules,
         profile: profiles.get(runs[0].employmentId),
-        priorAcc: priorAcc.get(`${runs[0].employmentId}|${runs[0].period}`),
+        priorAcc: priorAcc.get(`${runs[0].companyId}|${runs[0].employmentId}|${runs[0].period}`),
         adjusted,
       });
       if ('reason' in outcome) {
@@ -961,6 +962,7 @@ async function loadPriorAccumulators(
     .select({
       id:payslip.id,
       employmentId: payslip.employmentId,
+      companyId: payrollBatch.companyId,
       period: payrollBatch.payPeriod,
       gross: payslip.grossPay,
       statutory: payslip.statutory,
@@ -982,14 +984,19 @@ async function loadPriorAccumulators(
 
   const corrections = await (await import('../../packs/payroll/service')).readEffectiveTaxBasesTx(tx, ctx, rows.filter(r=>years.includes(r.period.slice(0,4))).map(r=>r.id));
   evidence.refs.push(...[...corrections.values()].flatMap(value=>value.correction?[value.correction]:[]));
-  // (employment, tax year) → its months, each month → the slips written in it (a multi-run month has
+  // (employer company, employment, tax year) → its months, each month → the slips written in it (a multi-run month has
   // several, and they all belong to the SAME monthly accumulator step).
+  //
+  // Board 4ce2c481 — PER EMPLOYER COMPANY, AS THE KERNEL REPLAYS (since 6cd6667e88e): this company's own earlier months,
+  // plus the other group companies' months the run itself was given as its group opening, read back from the modelled
+  // month's own stamp (`groupTaxOpening`, totals per company and month). A month calculated before the group opening
+  // existed carries no stamp and was calculated from this company's months alone, which is then exactly what is modelled.
   const byEmpYear = new Map<string, Map<string, typeof rows>>();
   const tp3 = new Map<string, { year: number | null; net: number; epf: number; pcb: number; zakat: number; lp: number }>();
   for (const r of rows) {
     const year = r.period.slice(0, 4);
     if (!years.includes(year)) continue;
-    const ky = `${r.employmentId}|${year}`;
+    const ky = `${r.companyId}|${r.employmentId}|${year}`;
     const months = byEmpYear.get(ky) ?? new Map<string, typeof rows>();
     months.set(r.period, [...(months.get(r.period) ?? []), r]);
     byEmpYear.set(ky, months);
@@ -1008,7 +1015,7 @@ async function loadPriorAccumulators(
   }
 
   for (const [ky, months] of byEmpYear) {
-    const [employmentId, year] = ky.split('|');
+    const [companyId, employmentId, year] = ky.split('|');
     const seed = tp3.get(employmentId);
     const applies = seed?.year != null && String(seed.year) === year;
     // ══ r356 — THE SEED AND THE FOLD ARE THE KERNEL'S OWN, NOT A SECOND OPINION ABOUT THEM ══════════
@@ -1024,19 +1031,30 @@ async function loadPriorAccumulators(
     // paid. A Σ(Y−K) that is too high by an employee's tax-exempt allowances puts the modelled PCB out,
     // both readings then fail to match what was paid, and a perfectly correct month is printed as
     // `unexplained` on a document an accountant is being asked to sign off.
-    const acc: PcbAccumulators = openingAccumulatorsFromTp3(
-      applies && seed ? { netRemuneration: seed.net, epfClaimed: seed.epf, pcbPaid: seed.pcb, zakatPaid: seed.zakat, lpAccumulated: seed.lp } : null,
-      cap,
-    );
-    const correctedAcc = {...acc};
-    for (const period of [...months.keys()].sort()) {
-      // Stamp BEFORE folding this month in: what a run in `period` reads is everything before it.
-      out.set(`${employmentId}|${period}`, { ...acc });
-      if (corrections.size) evidence.prior.push({employmentId,period,accumulators:{...correctedAcc}});
-      for (const slip of months.get(period) ?? []) {
-        foldPriorSlipIntoAccumulators(acc, { gross: slip.gross, statutory: slip.statutory }, cap);
-        foldPriorSlipIntoAccumulators(correctedAcc, {gross:slip.gross,statutory:corrections.get(slip.id)?.statutory??slip.statutory},cap);
+    //
+    // 4ce2c481 — each month is rebuilt from the seed, because the group months it was given are that month's own stamp
+    // (a later month may have been given more of them). At most twelve months, so at most 144 folds per employee-year.
+    const periods = [...months.keys()].sort();
+    for (const period of periods) {
+      const stamp = (months.get(period) ?? []).map(slip => readGroupTaxOpeningStamp(slip.statutory)).find(Boolean) ?? null;
+      const replaced = stamp?.tp3 === 'replaced';
+      const opening = () => openingAccumulatorsFromTp3(
+        applies && seed && !replaced ? { netRemuneration: seed.net, epfClaimed: seed.epf, pcbPaid: seed.pcb, zakatPaid: seed.zakat, lpAccumulated: seed.lp } : null,
+        cap,
+      );
+      const acc: PcbAccumulators = opening();
+      const correctedAcc: PcbAccumulators = opening();
+      const group = groupTaxPriorSlips(stamp ? {employmentId, months: stamp.months, tp3: stamp.tp3} : undefined)
+        .map(g => ({period: g.period, group: true, slip: {gross: g.gross, statutory: g.statutory}, corrected: g.statutory as unknown}));
+      const own = periods.filter(p => p < period).flatMap(p => (months.get(p) ?? []).map(slip => ({period: p, group: false,
+        slip: {gross: slip.gross, statutory: slip.statutory as unknown}, corrected: corrections.get(slip.id)?.statutory ?? slip.statutory as unknown})));
+      for (const item of [...group, ...own].sort((a, b) => a.period.localeCompare(b.period) || Number(b.group) - Number(a.group))) {
+        foldPriorSlipIntoAccumulators(acc, item.slip, cap);
+        foldPriorSlipIntoAccumulators(correctedAcc, {gross: item.slip.gross, statutory: item.corrected}, cap);
       }
+      // What a run in `period` reads is everything before it.
+      out.set(`${companyId}|${employmentId}|${period}`, { ...acc });
+      if (corrections.size) evidence.prior.push({employmentId,period,accumulators:{...correctedAcc}});
     }
   }
   return out;

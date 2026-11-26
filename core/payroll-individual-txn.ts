@@ -490,7 +490,7 @@ export type TxnTarget = { batchId: string } | { companyId: string; payPeriod: st
 async function resolveTxnTarget(
   tx: Tx,
   ctx: SessionContext,
-  p: { batchId?: string | null; companyId?: string | null; payPeriod?: string | null },
+  p: { batchId?: string | null; companyId?: string | null; payPeriod?: string | null; intendedCycleId?: string | null },
 ): Promise<{
   batchId: string | null;
   companyId: string;
@@ -514,6 +514,16 @@ async function resolveTxnTarget(
   const [co] = await tx.select({ id: company.id }).from(company).where(eq(company.id, p.companyId)).limit(1);
   if (!co) throw new MissingTxnTargetError();
   await lockNativePayrollPeriodsTx(tx,ctx,[{companyId:p.companyId,payPeriod:p.payPeriod}]);
+  // 124a979e — A MONTH WHOSE RUN IS ALREADY PROCESSED. A period-keyed row waits for attach-on-generate, which runs
+  // when that month's run is generated (core/payroll.ts) and, after that, only for an employee ADDED to the run. Keyed
+  // after the collecting run was processed, the row was therefore left waiting for nothing: neither marked nor paid
+  // by a reprocess. It is now written ONTO that run exactly as a row keyed against the run is (scope check, widening
+  // prompt and the recalculation mark included); a closed or still-processing run refuses the save
+  // (BatchNotDraftError, "the run is closed") instead of parking the money. A draft run still collects the row when
+  // it is generated, so a month with a draft (or no) run is unchanged. The period lock above is the same key the run
+  // owners take, so the run cannot be processed between this read and the write.
+  const collecting = await collectingRunForPeriodTx(tx, { companyId: p.companyId, payPeriod: p.payPeriod, intendedCycleId: p.intendedCycleId ?? null });
+  if (collecting) return resolveTxnTarget(tx, ctx, { batchId: collecting });
   return {
     batchId: null,
     companyId: p.companyId,
@@ -523,6 +533,35 @@ async function resolveTxnTarget(
     runType: null,
     payrollCycleId: null,
   };
+}
+
+/**
+ * 124a979e — the run that already took (or would take) a period-keyed row for this month, when it is past draft: the
+ * one the row's cycle collects under `collectableCycleIds` (core/payroll.ts) — the REGULAR run for a row that names no
+ * cycle or a regular-mapped one, else the run opened under the row's own cycle. Null when no such run exists or one
+ * of them is still a draft (a draft collects the row when it is generated). One indexed read of the month's runs.
+ */
+async function collectingRunForPeriodTx(
+  tx: Tx,
+  p: { companyId: string; payPeriod: string; intendedCycleId: string | null },
+): Promise<string | null> {
+  const cycle = p.intendedCycleId && /^[0-9a-f-]{36}$/i.test(p.intendedCycleId) ? p.intendedCycleId : null;
+  const runs = await tx
+    .select({ id: payrollBatch.id, status: payrollBatch.status, runType: payrollBatch.runType })
+    .from(payrollBatch)
+    .where(and(
+      eq(payrollBatch.companyId, p.companyId),
+      eq(payrollBatch.payPeriod, p.payPeriod),
+      cycle
+        ? or(
+          eq(payrollBatch.payrollCycleId, cycle),
+          and(eq(payrollBatch.runType, 'regular'), sql`exists(select 1 from ${payrollCycle} c where c.id=${cycle}::uuid and c.company_id=${p.companyId}::uuid and c.run_type='regular')`),
+        )
+        : eq(payrollBatch.runType, 'regular'),
+    ))
+    .orderBy(asc(payrollBatch.createdAt), asc(payrollBatch.id));
+  if (runs.length === 0 || runs.some((r) => r.status === 'draft')) return null;
+  return runs[0].id;
 }
 
 export type IndividualTxnRow = {

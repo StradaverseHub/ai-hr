@@ -144,6 +144,7 @@ the `/me` portal for employees to self-serve.
 - **Cross-employer PCB:** an employee with concurrent employments across group companies (ADR-0009)
   complicates CP39/Form E correctness — already a flagged gap; reporting surfaces it but does not
   solve it.
+- **Amended 26 November 2026 (board 4ce2c481):** for sequential employment across group companies, the owner decided on 26 November 2026 ("Automatic group TP3", board item 4ce2c481) that earlier months of the same assessment year that OTHER companies of the tenant paid the same person, imported or processed, feed the current company's PCB/MTD as an automatic previous-employer opening, the role Form TP3 plays. No formula or rate changes. EA/CP8A, CP39 and Form E stay per company. A TP3 entry for the same group company is replaced, never added on top. A contributing month without a usable tax basis holds the employee with the month named. The run company's payroll administrator sees the other company's totals only, never its payslip lines (`app.payroll_group_tax_opening`, migration 7550; core/payroll-group-tax-opening.ts). Filings stay per company (section 5 is unchanged); concurrent employments keep the gap above.
 - **Not e-Invoicing:** MyInvois is revenue-side (sales invoices), out of scope here despite the TIN
   field; tracked separately if client billing is ever in scope.
 

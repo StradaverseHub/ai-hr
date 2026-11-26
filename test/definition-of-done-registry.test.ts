@@ -28,7 +28,10 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 // 96a54ed2 (owner decision, 12 November 2026, "Close it properly"): /attendance/on-behalf/request and /approve ship with their
 // semantic reads, guide links and corpus turns, so they add no gap and the ceilings are unchanged.
 // The former Rewards Shared page is now a guarded route forwarder, outside LINKABLE_PAGES.
-const CEILING={entries:349,semantic:338,guide:231,readiness:4,corpus:332} as const;
+// Board 038c304b (owner decision, 26 November 2026, "List it like its siblings"): one recorded exception, +1 entry
+// (page:/payroll/transactions/cp38, semantic+corpus; its guide gap is closed), beside Zakat, Fixed, TP1 and TP3. Its semantic
+// read would be a new AI guidance purpose, which the standing staging approval does not cover.
+const CEILING={entries:350,semantic:339,guide:231,readiness:4,corpus:333} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){

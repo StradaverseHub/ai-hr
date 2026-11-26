@@ -125,6 +125,7 @@ export const IMPORT_SUPPORT_FILES:Readonly<Record<string,string>>=Object.freeze(
  'core/employee-import-worker.ts':'Background worker of the staged employee import.',
  'core/import-history-handlers.ts':'Shared import history and revert.',
  'core/fixed-transaction-import-job.ts':'Scoped queue, audit log and background handoff for the fixed transaction import owner.',
+ 'core/tp3-import-job.ts':'Form TP3 Excel import (board 5084d02e): check-then-confirm queue, scoped Import Log and worker; each row is saved by the TP3 owner (core/tp3.ts saveImportedTp3Tx). Not yet an AI Centre catalogue import.',
  'core/individual-import-job.ts':'Scoped workbook custody, admission and confirmation queue for the individual transaction import.',
  'core/individual-import-worker.ts':'Background worker invoking the individual transaction import owner after human confirmation.',
  'core/import-history.ts':'Shared import history and revert.',

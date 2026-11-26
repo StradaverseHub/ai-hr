@@ -35,9 +35,7 @@ async function ownPolicyWriteTx(tx:Tx,ctx:SessionContext,target:{companyId:strin
   if('employmentId' in target){
     await lockAccessConfigurationTx(tx,ctx.tenantId);
     await lockPayrollInputsTx(tx,{employmentIds:[target.employmentId]});
-    // A run a background processing job has already paid this employee on reads the old assignment: mark it.
-    const {markProcessingRunsForEmploymentsTx}=await import('./payroll');
-    await markProcessingRunsForEmploymentsTx(tx,ctx,{employmentIds:[target.employmentId]});
+    // 124a979e — the assignment writer marks the runs it makes stale after its write (assignPolicy), not here.
   }else await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
   const company='companyId' in target?sql`${target.companyId}::uuid`:'policyId' in target?
     sql`(select p.company_id from public.payroll_policy p where p.id=${target.policyId}::uuid and p.tenant_id=${ctx.tenantId}::uuid)`:
@@ -384,6 +382,13 @@ export async function assignPolicy(
       .update(employment)
       .set({ payrollPolicyId: p.policyId })
       .where(eq(employment.id, p.employmentId));
+    // 124a979e — a different policy changes how a processed run computed this employee (it used to mark only a run a
+    // background job was still processing). The assignment carries no effective date the calculation reads, so every
+    // processed run of theirs that is not closed is marked; re-saving the same policy marks nothing.
+    if ((emp.before ?? null) !== (p.policyId ?? null)) {
+      const {markRunsAffectedByEmploymentChangeTx}=await import('./payroll');
+      await markRunsAffectedByEmploymentChangeTx(tx,ctx,{employmentIds:[p.employmentId],category:'payroll_policy',from:null});
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment',

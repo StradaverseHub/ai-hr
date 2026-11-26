@@ -820,7 +820,17 @@ export class PayComponentNotFoundError extends Error {
 /** Maintenance edits never create a row if the submitted code is absent or was removed concurrently. */
 export function updatePayComponent(ctx: SessionContext, p: PayComponentInput) {
   p=structuredClone(p);ctx=capturePayCatalogContext(ctx);
-  return withTenant(ctx, tx => upsertPayComponentTx(tx, ctx, p, { updateOnly: true }));
+  return withTenant(ctx, async tx => {
+    const written = await upsertPayComponentTx(tx, ctx, p, { updateOnly: true });
+    // 017d9c25 / 124a979e — a statutory-relevant edit marks the processed runs it makes stale IN THE SAVE'S OWN
+    // TRANSACTION. The action used to mark in a second transaction after this one committed, so a failure between the
+    // two left the edit saved and the runs looking settled. Lazy import: payroll imports this module.
+    if (isStatutoryRelevantChange(written.changed)) {
+      const { markRunsAffectedByPayComponentTx } = await import('./payroll');
+      await markRunsAffectedByPayComponentTx(tx, ctx, { componentId: written.id, code: p.code });
+    }
+    return written;
+  });
 }
 
 /** Process/reprocess backstop, independent of typed-pay feature flags. A stored legacy assignment
@@ -2004,7 +2014,6 @@ function writeEmploymentPayComponent(
       (effectiveTo != null && effectiveTo < p.effectiveFrom)) throw new FixedTransactionDateError();
     if (currency !== 'MYR') throw new UnsupportedFixedCurrencyError(currency);
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
-    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     const [component] = await tx.select({ code: payComponent.code, pendingInputKind: payComponent.pendingInputKind })
       .from(payComponent).where(eq(payComponent.id, p.componentId)).limit(1);
     if (component) assertPayComponentReady(component);
@@ -2191,6 +2200,15 @@ function writeEmploymentPayComponent(
         payrollCycleId,
       })
       .returning({ id: employmentPayComponent.id });
+    // 124a979e — the new row's window and every clash this write closed or superseded: a closed row changes from the
+    // new start date onward, a superseded one over its whole window (an edit's own row is one of the clashes whenever
+    // the write touches it, so an edit from June leaves a processed May unmarked). Not
+    // for the compensation backfill (supersedeOverlaps, backfill-only): it re-states BASIC/ALLOWANCE from the salary
+    // record, whose own writer marked the runs when the salary changed, and re-running it moves no figure.
+    if (!p.supersedeOverlaps) await markFixedItemWindowsTx(tx, ctx, p.employmentId, [
+      { from: p.effectiveFrom, to: effectiveTo },
+      ...clashes.map((c) => ({ from: p.effectiveFrom > c.validFrom ? p.effectiveFrom : c.validFrom, to: c.validTo })),
+    ]);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment-pay-component',
@@ -2317,7 +2335,6 @@ export function updateEmploymentPayComponent(
 ) {
   const run = async (tx: Tx) => {
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
-    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     // Load the target row (RLS-confined to the tenant). Match the caller-supplied employmentId so the edit
     // can only touch a row the admin is actually looking at; a foreign/stale id yields no row.
     const [row] = await tx
@@ -2400,9 +2417,8 @@ export function endEmploymentPayComponent(
 ) {
   const run=async(tx:Tx)=>{
     await lockFixedItemWriterTx(tx, ctx, p.employmentId);
-    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     const [row] = await tx
-      .select({ validFrom: employmentPayComponent.validFrom })
+      .select({ validFrom: employmentPayComponent.validFrom, validTo: employmentPayComponent.validTo })
       .from(employmentPayComponent)
       .where(
         and(
@@ -2419,6 +2435,8 @@ export function endEmploymentPayComponent(
       .update(employmentPayComponent)
       .set({ validTo: p.effectiveTo })
       .where(eq(employmentPayComponent.id, p.id));
+    // 124a979e — only the months between the old and the new end date change whether the item pays.
+    await markFixedItemWindowsTx(tx, ctx, p.employmentId, [endChangeWindow(row.validTo, p.effectiveTo)]);
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment-pay-component',
@@ -2551,12 +2569,51 @@ async function lockFixedItemWriterTx(tx:Tx,ctx:SessionContext,employmentId:strin
  await lockAccessConfigurationTx(tx,ctx.tenantId);
  await lockPayrollInputsTx(tx,{employmentIds:[employmentId]});
 }
-/** A fixed-item change for an employee a background payroll processing job has already paid marks that run for
- * recalculation (an employee it has not reached yet reads the change). Called by each writer after its inputs key,
- * inside the write (a rolled-back preview rolls the mark back with it). Lazy import: payroll imports this module. */
-async function markProcessingRunsForFixedItemTx(tx:Tx,ctx:SessionContext,employmentId:string){
- const {markProcessingRunsForEmploymentsTx}=await import('./payroll');
- await markProcessingRunsForEmploymentsTx(tx,ctx,{employmentIds:[employmentId]});
+/** One fixed item's pay window as the kernel reads it: `to` is the INCLUSIVE last day (null = open-ended). */
+export type FixedItemWindow = { from: string; to: string | null };
+/** 124a979e — the windows a fixed-item write moved, for one employment, as the import job collects them. */
+export type FixedItemMark = { employmentId: string; from: string; until: string | null };
+// 124a979e — the Fixed Transaction import job writes each row through the writers below inside its own step and marks
+// once for the whole chunk (core/fixed-transaction-import-job.ts). While a sink is registered for the step's
+// transaction the writers hand it their windows instead of marking themselves. Keyed by the transaction object, so a
+// writer on any other transaction is unaffected, and dropped by the caller when the step ends.
+const fixedItemMarkSinks = new WeakMap<object, FixedItemMark[]>();
+export async function withFixedItemMarksCollectedTx<T>(tx: Tx, sink: FixedItemMark[], work: () => Promise<T>): Promise<T> {
+  if (fixedItemMarkSinks.has(tx)) return work();
+  fixedItemMarkSinks.set(tx, sink);
+  try { return await work(); } finally { fixedItemMarkSinks.delete(tx); }
+}
+/** The union of the windows, as markRunsAffectedByEmploymentChangeTx's from/until (until EXCLUSIVE = last day + 1). */
+function fixedItemMarkOf(employmentId: string, windows: readonly FixedItemWindow[]): FixedItemMark | null {
+  if (windows.length === 0) return null;
+  const from = windows.map((w) => w.from).sort()[0];
+  const open = windows.some((w) => w.to == null);
+  const last = open ? null : windows.map((w) => w.to as string).sort().at(-1)!;
+  return { employmentId, from, until: last == null ? null : addDaysIso(last, 1) };
+}
+/** 124a979e — an end-date change moves only the months from the earlier end to the later one (null = open-ended).
+ * The month holding the earlier end is included: a part-month item can prorate, so its figure may move too. */
+function endChangeWindow(before: string | null, after: string | null): FixedItemWindow {
+  const lo = before == null ? after! : after == null ? before : before < after ? before : after;
+  const hi = before == null || after == null ? null : before > after ? before : after;
+  return { from: lo, to: hi };
+}
+/**
+ * 124a979e (every payroll change flags Reprocess Required) — a fixed allowance or deduction moved for these months:
+ * mark the employee on every PROCESSED (and, for an employee it already paid, PROCESSING) run of theirs whose month
+ * the union of the old and new windows touches. It used to mark processing runs only, so a fixed item added, edited,
+ * ended or removed after processing left the run looking settled. Closed runs are never marked (markBatchNeedsRecalc
+ * refuses them; each writer keeps its own closed-month refusal). A run whose month starts after the window, or ends
+ * before it, is not marked. Called by each writer after its inputs key and after its write, inside the write's
+ * transaction (a rolled-back preview rolls the mark back with it). Lazy import: payroll imports this module.
+ */
+async function markFixedItemWindowsTx(tx:Tx,ctx:SessionContext,employmentId:string,windows:readonly FixedItemWindow[]){
+ const mark=fixedItemMarkOf(employmentId,windows);
+ if(!mark)return;
+ const sink=fixedItemMarkSinks.get(tx);
+ if(sink){sink.push(mark);return;}
+ const {markRunsAffectedByEmploymentChangeTx}=await import('./payroll');
+ await markRunsAffectedByEmploymentChangeTx(tx,ctx,{employmentIds:[employmentId],category:'fixed_item',from:mark.from,until:mark.until});
 }
 /** Native archive and reviewed preview share one interval: the shared Access lock and the employee's
  * payroll inputs key, which every payroll create/close/process membership owner takes exclusively for
@@ -2602,7 +2659,6 @@ export function archiveEmploymentPayComponent(
   ctx={...ctx,roles:ctx.roles?.slice(),grants:ctx.grants?.map(g=>({...g}))};p={...p};
   const run=async(tx:Tx)=>{
     await lockFixedItemArchiveIntervalTx(tx,ctx,p);
-    await markProcessingRunsForFixedItemTx(tx, ctx, p.employmentId);
     const [row] = await tx
       .select({
         id: employmentPayComponent.id,
@@ -2635,6 +2691,8 @@ export function archiveEmploymentPayComponent(
     const [written]=await tx.update(employmentPayComponent).set({supersededAt:new Date()})
       .where(eq(employmentPayComponent.id,p.id)).returning({archiveRowHash:sql<string>`encode(sha256(convert_to(to_jsonb(employment_pay_component)::text,'UTF8')),'hex')`});
     if(!written)throw new FixedTransactionNotFoundError();
+    // 124a979e — removing the item changes every month it paid.
+    await markFixedItemWindowsTx(tx, ctx, p.employmentId, [{ from: row.validFrom, to: row.validTo }]);
     const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employment-pay-component',
@@ -2798,8 +2856,6 @@ async function endDateInPlaceTx(
   row: { id: string; employmentId: string; componentId: string; code: string; validFrom: string; validTo: string | null },
   effectiveTo: string | null,
 ) {
-  // The caller already holds the writer lock; the mark is taken only now that something will change.
-  await markProcessingRunsForFixedItemTx(tx, ctx, row.employmentId);
   if (effectiveTo != null && (!isTransactionEffectiveDate(effectiveTo) || effectiveTo < row.validFrom)) {
     throw new FixedTransactionDateError();
   }
@@ -2857,6 +2913,8 @@ async function endDateInPlaceTx(
   }
 
   await tx.update(employmentPayComponent).set({ validTo: effectiveTo }).where(eq(employmentPayComponent.id, row.id));
+  // 124a979e — the caller already holds the writer lock; the months between the old and new end date are marked.
+  await markFixedItemWindowsTx(tx, ctx, row.employmentId, [endChangeWindow(row.validTo, effectiveTo)]);
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employment-pay-component',

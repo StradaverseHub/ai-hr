@@ -17,6 +17,7 @@ import {
   TP3_MAX_EMPLOYERS,
   TP3_SECTION_C,
   TP3_SECTION_D,
+  TP3_TEXT_LIMITS,
   type Tp3AccumulatorSeed,
   type Tp3Identity,
   type Tp3Record,
@@ -37,6 +38,7 @@ import {
 import { CollapsibleEmployeePanel, EmployeeScopePanel, type ScopeEmployee } from '@/components/collapsible-employee-panel';
 import { timeInKualaLumpur, todayInKualaLumpur } from '@/lib/hr-date';
 import { deleteTp3Action, saveTp3Action } from './actions';
+import { Tp3ImportButtons } from './tp3-import-buttons';
 
 /**
  * HR Payroll → Transaction Entry → Form TP3 (item df35d60d, STAGE 1).
@@ -154,6 +156,16 @@ export default async function Tp3Page({
         back={{ href: '/payroll/transactions', label: t('tp3.backToTransactions') }}
         title={t('tp3.title')}
         description={t('tp3.intro')}
+        // 5084d02e — the Excel import. The template is generated from the same catalogue the form below renders,
+        // and its Employees sheet is the scoped list this page already read for the employee panel (no new read).
+        actions={
+          <div className="flex flex-wrap items-center gap-2">
+            <Tp3ImportButtons
+              catalogue={{ sectionC: TP3_SECTION_C, sectionD: TP3_SECTION_D, maxEmployers: TP3_MAX_EMPLOYERS, textLimits: TP3_TEXT_LIMITS }}
+              employees={employees.flatMap((e) => (e.employeeCode ? [[e.employeeCode, e.name ?? '', e.company ?? ''] as const] : []))}
+            />
+          </div>
+        }
       />
 
       <ErrorBanner message={sp.error} />

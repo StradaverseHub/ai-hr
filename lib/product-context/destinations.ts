@@ -171,6 +171,9 @@ export const NATIVE_SCOPE_ONLY_PAGES:ReadonlySet<string>=new Set([
  // Export artifacts and import outcomes are scoped to the initiating user and current Payroll grants.
  '/payroll/transaction-view/workbooks',
  '/payroll/transactions/fixed/imports',
+ // 5084d02e: the Form TP3 Import Log shows an import only to an administrator of every one of its companies
+ // (app.tp3_import_log); a coarse administrator role does not say which imports that is.
+ '/payroll/transactions/tp3/imports',
  '/admin/rewards/access/view-as',
  '/admin/rewards/earlier-plans',
  '/admin/rewards/bonus-matrices',
@@ -327,7 +330,7 @@ export const LINKABLE_PAGES:readonly PageRow[]=Object.freeze(([
  ['/payroll/statutory-forms/open','admin','payroll'],['/payroll/statutory-forms/pcb2ii','admin','payroll'],
  ['/payroll/statutory-forms/pcb2ii/receipts','admin','payroll'],['/payroll/statutory-forms/pcb2ii/view','admin','payroll'],
  ['/payroll/transaction-view','admin','payroll'],['/payroll/transactions','admin','payroll'],['/payroll/transactions/adjustments','admin','payroll'],
- ['/payroll/transactions/fixed','admin','payroll'],['/payroll/transactions/import-components','admin','payroll'],
+ ['/payroll/transactions/cp38','admin','payroll'],['/payroll/transactions/fixed','admin','payroll'],['/payroll/transactions/import-components','admin','payroll'],
  ['/payroll/transactions/individual','admin','payroll'],['/payroll/transactions/individual/imports','admin','payroll'],
  ['/payroll/transactions/tp1','admin','payroll'],['/payroll/transactions/tp1/new','admin','payroll'],['/payroll/transactions/tp3','admin','payroll'],
  ['/payroll/transactions/view','admin','payroll'],['/payroll/transactions/zakat','admin','payroll'],

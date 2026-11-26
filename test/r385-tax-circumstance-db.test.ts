@@ -119,7 +119,16 @@ describe('r385 authoritative tax circumstance transactions',()=>{
  it('worksheet replays saved None after the current profile becomes taxable',async()=>{
   await setModule(b.tenantId,'multi_cycle_payroll','active');await setModule(b.tenantId,'typed_pay_components','active');const ctx=await entitledCtx(b);await select('none','none');
   const regular=await createBatch(ctx,{companyId:b.companyId,payPeriod:period});await generatePayslips(ctx,{batchId:regular.batchId});await seedPayComponentCatalog(ctx);const [bonus]=await owner.db.select().from(schema.payComponent).where(and(eq(schema.payComponent.tenantId,b.tenantId),eq(schema.payComponent.code,'BONUS')));const extra=await createAdditionalRun(ctx,{companyId:b.companyId,payPeriod:period,runType:'bonus'});await setPayrollBatchComponent(ctx,{batchId:extra.batchId,employmentId:e.employmentId,componentId:bonus.id,amount:2000});await generatePayslips(ctx,{batchId:extra.batchId});
-  const before=await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]});expect(before.employeeMonthsCompared).toBe(1);expect(before.employeeMonthsExcluded).toBe(0);await select('widow_divorced','resident');expect(await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]})).toEqual(before);
+  const before=await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]});expect(before.employeeMonthsCompared).toBe(1);expect(before.employeeMonthsExcluded).toBe(0);await select('widow_divorced','resident');
+  // 124a979e: the tax profile change flags the processed run Reprocess Required for this employee, and the worksheet
+  // leaves a flagged run out (needs_recalc) rather than replay a stale result.
+  const [flagged]=await owner.db.select({at:schema.payrollBatch.needsRecalcAt,ids:schema.payrollBatch.recalcEmploymentIds}).from(schema.payrollBatch).where(eq(schema.payrollBatch.id,regular.batchId));
+  expect(flagged.at).toBeTruthy();expect(flagged.ids).toEqual([e.employmentId]);
+  expect(await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]})).toMatchObject({employeeMonthsCompared:0,employeeMonthsExcluded:1,skipCounts:{needs_recalc:1}});
+  // Still the r385 claim: once the run is taken as reviewed, the worksheet replays the SAVED None, not today's taxable profile.
+  // Both runs of the month carry the flag (the change reaches every unclosed processed run of the employee).
+  await owner.db.update(schema.payrollBatch).set({needsRecalcAt:null,recalcEmploymentIds:null}).where(eq(schema.payrollBatch.tenantId,b.tenantId));
+  expect(await multiCycleWorksheetMY(ctx,{companyIds:[b.companyId]})).toEqual(before);
  });
  it('cross-employer saved None bypasses and present malformed or mixed history is unavailable',async()=>{
   const [company]=await owner.db.insert(schema.company).values({tenantId:b.tenantId,legalName:'Synthetic report employer'}).returning();const [dept]=await owner.db.insert(schema.department).values({tenantId:b.tenantId,companyId:company.id,name:'Synthetic report department'}).returning();const other=await hireEmployee(adminCtx(b),{person:{id:e.personId},companyId:company.id,departmentId:dept.id,employmentType:'full_time',hiredOn});await setCompensation(adminCtx(b),{employmentId:other.employmentId,basicSalary:8000,effectiveFrom:hiredOn});await select('none','none');

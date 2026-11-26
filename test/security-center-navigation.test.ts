@@ -1,5 +1,6 @@
 import {describe,it,expect} from 'vitest';
-import {SECURITY_CENTER,SECURITY_PAGES,securityDestinationAllowed,legacySecurityDestination} from '../lib/security-center-navigation';
+import {SECURITY_CENTER,SECURITY_PAGES,SECURITY_MENU_PAGES,securityDestinationAllowed,legacySecurityDestination} from '../lib/security-center-navigation';
+import {GROUPS,isCollapsible} from '../lib/navigation/shell-inventory';
 import {navigationPlacement,navigationRouteOwner} from '../lib/navigation-workspaces';
 import en from '../messages/en.json';
 import ms from '../messages/ms.json';
@@ -28,6 +29,15 @@ describe('closed Security Center navigation',()=>{
   expect(legacySecurityDestination('#manual-account-setup',query)).toBe(`/admin/users/create?activate=${person}`);
   expect(legacySecurityDestination('#anything',query)).toBeNull();
   expect(legacySecurityDestination('#invite-user',new URLSearchParams({activate:'javascript:alert(1)'}))).toBe('/admin/users/invite');
+ });
+ it('lists every Security Center page exactly once in the menu, in the reporter order, without the overview (board 8fa0a31d)',()=>{
+  expect(SECURITY_MENU_PAGES.map(page=>page.href)).toEqual(['/admin/users/access','/admin/security-center/password-policy','/admin/users/function-access','/admin/users','/admin/users/create','/admin/users/invite']);
+  expect([...SECURITY_MENU_PAGES].sort((a,b)=>a.key.localeCompare(b.key))).toEqual([...SECURITY_PAGES].sort((a,b)=>a.key.localeCompare(b.key)));
+  const rows=GROUPS.flatMap(group=>group.items.flatMap(row=>isCollapsible(row)?row.children:[row])).map(row=>row.href);
+  expect(rows).not.toContain(SECURITY_CENTER);
+  expect(rows.filter(href=>SECURITY_PAGES.some(page=>page.href===href))).toEqual(SECURITY_MENU_PAGES.map(page=>page.href));
+  // The overview's own cards keep their established order.
+  expect(SECURITY_PAGES.map(page=>page.key)).toEqual(['permissions','functions','create','invite','users','passwordPolicy']);
  });
  it('places every page in System Configuration and chooses only the specific owner',()=>{
   const rows=[{href:SECURITY_CENTER,exactHref:true},...SECURITY_PAGES.map(p=>({...p,exactHref:true}))];

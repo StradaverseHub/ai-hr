@@ -82,6 +82,12 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
  {idx:10900,version:'7',when:1795495007500,tag:'7500_payroll_read_history_summary',breakpoints:true},
  {idx:10930,version:'7',when:1795495007530,tag:'7530_employment_search_visible_set',breakpoints:true},
+ {idx:10940,version:'7',when:1795495007540,tag:'7540_employee_cp38_history_last_month',breakpoints:true},
+ // Board 4ce2c481 — the totals-only group tax opening definer.
+ {idx:10950,version:'7',when:1795495007550,tag:'7550_payroll_group_tax_opening',breakpoints:true},
+ {idx:10960,version:'7',when:1795495007560,tag:'7560_payroll_recalc_pending',breakpoints:true},
+ // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
+ {idx:10970,version:'7',when:1795495007570,tag:'7570_tp3_import_job',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

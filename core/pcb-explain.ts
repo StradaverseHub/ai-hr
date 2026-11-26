@@ -1,6 +1,7 @@
 import {clientPackFor} from '../localization/registry.client';
 import type {SavedTaxCircumstance} from '../localization/country-pack';
 import { readPcbNonCash, pcbNonCashStreams, type NonCashFigures, type PcbNonCashSnapshot } from '../localization/noncash-benefits';
+import { readGroupTaxOpeningStamp, type GroupTaxCompanySummary } from '../lib/payroll-group-tax-stamp';
 const taxCircumstanceOf=clientPackFor('MY')!.payroll.taxCircumstanceOf!;
 const readSavedTaxCircumstance=clientPackFor('MY')!.payroll.readSavedTaxCircumstance!;
 /**
@@ -233,6 +234,9 @@ export type PcbExplanation =
     } & PcbFigures)
   | ({
       kind: 'mtd';
+      /** Board 4ce2c481 — the other group companies' earlier months this run was given as its previous-employer
+       *  opening, per company, as the run stamped them (totals only). Absent when there were none. */
+      groupOpening?: PcbGroupOpening;
       calculationScheme?: PcbCalculationScheme;
       /** Immutable employer-scoped approval used by this run; absent on legacy/normal snapshots. */
       taxSchemeDeclarationId?: string;
@@ -645,8 +649,10 @@ export function explainPcb(
   // one. The cumulative leg comes out of the same stamp the cumulative total does, so both sides of the
   // split describe the same month.
   const pcbAdditional = Math.min(delta ? delta.cumulativeBonus : n(st.pcbBonus), figures.pcbSystem);
+  const groupStamp = readGroupTaxOpeningStamp(st);
   return {
     kind: 'mtd',
+    ...(groupStamp ? {groupOpening: {tp3Replaced: groupStamp.tp3 === 'replaced', companies: groupStamp.companies}} : {}),
     ...(scheme !== undefined ? {calculationScheme: scheme as PcbCalculationScheme} : {}),
     ...(incentive && !hasSelection ? {taxSchemeDeclarationId: metaObj.taxSchemeDeclarationId as string} : {}),
     reliefSource,
@@ -910,6 +916,29 @@ function previousSection(p: PcbPreviousEmployment | null): PcbWorksheetSection {
   return { heading: 'worksheetPreviousHeading', rows, note: 'worksheetPreviousNote' };
 }
 
+/** Board 4ce2c481 — "previous group employer": what the run took from the group's other companies. */
+export type PcbGroupOpening = {tp3Replaced: boolean; companies: GroupTaxCompanySummary[]};
+
+/**
+ * Board 4ce2c481 — THE PREVIOUS GROUP EMPLOYERS, beside the TP3 section because they play the TP3's part: the same
+ * person's earlier months this assessment year at the group's other companies, folded into Y, K, X, Z and ∑LP. Each
+ * company is named with the months it covers and where the figures came from, then its totals as the run stamped them.
+ * Like the TP3 rows, no LHDN symbol: the figures are already inside the combined lines below.
+ */
+function groupSection(g: PcbGroupOpening): PcbWorksheetSection {
+  const rows: PcbWorksheetRow[] = [];
+  for (const c of g.companies) {
+    const span = c.periods.length > 1 ? `${c.periods[0]} – ${c.periods[c.periods.length - 1]}` : c.periods[0] ?? '';
+    rows.push({ symbol: '', caption: 'worksheetGroupCompany', value: { kind: 'text', text: `${c.companyName} (${span})` }, previousEmployment: true });
+    rows.push({ symbol: '', caption: c.sources.length === 1 && c.sources[0] === 'imported' ? 'worksheetGroupSourceImported' : c.sources.length === 1 && c.sources[0] === 'processed' ? 'worksheetGroupSourceProcessed' : 'worksheetGroupSourceMixed', value: { kind: 'text', text: String(c.periods.length) } });
+    rows.push({ symbol: '', caption: 'worksheetGroupY', value: money(c.y), previousEmployment: true });
+    rows.push({ symbol: '', caption: 'worksheetGroupEpf', value: money(c.epf), previousEmployment: true });
+    rows.push({ symbol: '', caption: 'worksheetGroupPcb', value: money(c.pcb), previousEmployment: true });
+  }
+  if (g.tp3Replaced) rows.push({ symbol: '', caption: 'worksheetGroupTp3', value: { kind: 'caption', caption: 'worksheetGroupTp3Replaced' } });
+  return { heading: 'worksheetGroupHeading', rows, note: 'worksheetGroupNote' };
+}
+
 /**
  * @param x  what `explainPcb` read off the payslip.
  * @param previous the employee's Form TP3 declaration for this payslip's tax year, or null when it could
@@ -1011,6 +1040,7 @@ export function pcbWorksheet(x: PcbExplanation, previous: PcbPreviousEmployment 
     shape: 'mtd',
     sections: [
       previousSection(previous),
+      ...(x.groupOpening ? [groupSection(x.groupOpening)] : []),
       { heading: 'worksheetIncomeHeading', rows: income, note: 'worksheetIncomeNote' },
       { heading: 'worksheetAdditionalHeading', rows: additional },
       { heading: 'worksheetReliefHeading', rows: reliefs },

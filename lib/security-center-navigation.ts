@@ -8,6 +8,14 @@ export const SECURITY_PAGES = [
  {href:'/admin/users',key:'users',navKey:'users'},
  {href:'/admin/security-center/password-policy',key:'passwordPolicy',navKey:'passwordPolicy'},
 ] as const;
+/**
+ * Board 8fa0a31d — the main menu's Security Center section lists the pages in the reporter's order. The overview
+ * (SECURITY_CENTER) is not a menu row: it is the section's breadcrumb landing and keeps its route and Back links.
+ * The overview's own cards keep SECURITY_PAGES order. Every page appears here exactly once
+ * (test/security-center-navigation.test.ts), so a new page must be placed deliberately.
+ */
+export const SECURITY_MENU_ORDER = ['permissions','passwordPolicy','functions','users','create','invite'] as const satisfies readonly (typeof SECURITY_PAGES)[number]['key'][];
+export const SECURITY_MENU_PAGES = SECURITY_MENU_ORDER.map(key=>SECURITY_PAGES.find(page=>page.key===key)!);
 export type SecurityAvailability = {admin:boolean;configure:boolean;provision:boolean;passwordPolicy?:boolean};
 export function securityDestinationAllowed(href:string, access:SecurityAvailability):boolean {
  if(href==='/admin/security-center/password-policy')return access.passwordPolicy===true;

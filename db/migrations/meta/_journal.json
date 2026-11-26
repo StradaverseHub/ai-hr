@@ -8156,6 +8156,34 @@
       "when": 1795495007530,
       "tag": "7530_employment_search_visible_set",
       "breakpoints": true
+    },
+    {
+      "idx": 10940,
+      "version": "7",
+      "when": 1795495007540,
+      "tag": "7540_employee_cp38_history_last_month",
+      "breakpoints": true
+    },
+    {
+      "idx": 10950,
+      "version": "7",
+      "when": 1795495007550,
+      "tag": "7550_payroll_group_tax_opening",
+      "breakpoints": true
+    },
+    {
+      "idx": 10960,
+      "version": "7",
+      "when": 1795495007560,
+      "tag": "7560_payroll_recalc_pending",
+      "breakpoints": true
+    },
+    {
+      "idx": 10970,
+      "version": "7",
+      "when": 1795495007570,
+      "tag": "7570_tp3_import_job",
+      "breakpoints": true
     }
   ]
 }

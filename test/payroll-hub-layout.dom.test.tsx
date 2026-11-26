@@ -53,13 +53,14 @@ describe('approved payroll navigation changes', () => {
     await expect(Corrections()).rejects.toThrow('forbidden');
   });
 
-  it.each([true, false])('retains seven transaction links and removes both duplicated tiles with typed-components=%s', async typed => {
+  // 038c304b added the CP38 Deduction page to Transaction Entry, after Zakat: eight links.
+  it.each([true, false])('retains eight transaction links and removes both duplicated tiles with typed-components=%s', async typed => {
     state.typed = typed;
     render(await Transactions());
     const links = screen.getAllByRole('link');
     expect(links.map(link => link.getAttribute('href'))).toEqual([
       '/payroll/transactions/fixed', '/payroll/transactions/individual', '/payroll/transactions/tp1',
-      '/payroll/transactions/tp3', '/payroll/transactions/zakat', '/admin/loans', '/payroll/history-import',
+      '/payroll/transactions/tp3', '/payroll/transactions/zakat', '/payroll/transactions/cp38', '/admin/loans', '/payroll/history-import',
     ]);
     expect(screen.queryByRole('heading', { name: messages.payroll.transactions.hub.adjustmentsTitle })).toBeNull();
     expect(screen.queryByRole('heading', { name: messages.payroll.transactions.hub.componentImportTitle })).toBeNull();

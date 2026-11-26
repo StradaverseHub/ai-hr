@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { Card } from '@/components/ui';
-import { PayslipBlock, PayslipInformation, PayslipRow } from '@/components/payslip-sections';
+import { NetPayBand, PayslipBlock, PayslipInformation, PayslipRow } from '@/components/payslip-sections';
 import { payslipPresentationRows, type PayslipPdfData, type PayslipPdfLabels } from '@/lib/payslip-pdf';
 import { formatMoney, formatRate } from '@/lib/money';
 
@@ -45,7 +45,8 @@ export function PersonalPayslipStatement({data,labels,actions,why}:{data:Payslip
       {table(labels.earnings,rows.earnings,{label:labels.totalEarnings,amount:data.gross},'earn')}
       {table(labels.deductions,rows.deductions,{label:labels.totalDeductions,amount:data.totalDeductions},'deduct',undefined,why?.deductionLink,why?.deductionPanel)}
     </div>
-    <Card className="flex items-baseline justify-between bg-primary px-6 py-5 text-primary-foreground"><span className="text-sm font-semibold uppercase tracking-wide">{labels.netPay}</span><span className="text-2xl font-bold tabular-nums">{money(data.net)}</span></Card>
+    {/* 1ebba97e — the shared band, not a Card: Atelier and Monolith repaint every Card, which left this white on white. */}
+    <NetPayBand label={labels.netPay} value={money(data.net)}/>
     {(why?.netLink||why?.netPanel)&&<div data-payslip-why="net" className="-mt-2">{why.netLink&&<div className="flex justify-end">{why.netLink}</div>}{why.netPanel}</div>}
     {data.nonPayableLines?.length ? table(labels.nonPayable,data.nonPayableLines.map(row=>({label:row.name,amount:row.amount})),undefined,'other',labels.nonPayableNote) : null}
     <div className="grid items-start gap-4 lg:grid-cols-[2fr_3fr]">

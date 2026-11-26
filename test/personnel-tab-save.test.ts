@@ -347,6 +347,7 @@ describe('420ebab5 part two — one Save per tab on Personnel → Profile', () =
       'addCp38Action',
       'editCp38Action',
       'terminateCp38Action',
+      'deleteCp38Action',
       'unfreezeEncashmentAction',
       'adjustEncashmentAction',
       'addDependentAction',
