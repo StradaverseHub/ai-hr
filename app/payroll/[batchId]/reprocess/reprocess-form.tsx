@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useMemo, useState, type KeyboardEvent } from 'react';
 import { useFormStatus } from 'react-dom';
 import { useTranslations } from 'next-intl';
 import { Button, EmployeeCode } from '@/components/ui';
@@ -214,16 +214,17 @@ export function ReprocessForm({
   // a1a80747 r2 — three places for a New row: Nothing payable (the run's skip decision, unless the run says it is owed),
   // Not owed on this run (the run says it owes them nothing), or the one Reprocess Required list.
   // a1a80747 r3 — and a fourth, for New and Changed alike: Held for income tax review (skipped for income tax on this run).
-  const inHeld = (r: ReprocessRequiredRow) => r.taxSkipped === true && (r.kind === 'recalculated' || r.owed !== false);
-  const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true && !inHeld({ kind: 'added', ...c });
-  const inNotOwed = (c: ReprocessAddCandidate) => c.owed === false && !c.skip && !inHeld({ kind: 'added', ...c });
+  const heldAdd = (c: ReprocessAddCandidate) => c.taxSkipped === true && c.owed !== false;
+  const inHeld = (r: ReprocessRequiredRow) => r.kind === 'recalculated' ? r.taxSkipped === true : heldAdd(r);
+  const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true && !heldAdd(c);
+  const inNotOwed = (c: ReprocessAddCandidate) => c.owed === false && !c.skip && !heldAdd(c);
   const heldRows = requiredRows.filter(inHeld);
   const skippedAdditions = additions.filter(inSkipped);
   const notOwedAdditions = additions.filter(inNotOwed);
   /** Ticked on arrival: ready New rows the run owes (or, when the server does not say, ready rows inside its chosen list). */
-  const addable = additions.filter((c) => !inSkipped(c) && !inNotOwed(c) && !c.skip && c.blockers.length === 0 && !inHeld({ kind: 'added', ...c }));
+  const addable = additions.filter((c) => !inSkipped(c) && !inNotOwed(c) && !c.skip && c.blockers.length === 0 && !heldAdd(c));
   /** a1a80747 r3 — held New rows that could be added (Process held employees ticks these). */
-  const heldAddable = additions.filter((c) => inHeld({ kind: 'added', ...c }) && c.blockers.length === 0);
+  const heldAddable = additions.filter((c) => heldAdd(c) && c.blockers.length === 0);
   /** The one list: every Changed row and every New row the run owes, in the server's order (owed rows come first). */
   const requiredList = requiredRows.filter((r) => !inHeld(r) && (r.kind === 'recalculated' || (!inSkipped(r) && !inNotOwed(r))));
   type Selected=ReprocessCandidate|ReprocessAddCandidate|ReprocessStaleRow;
@@ -312,23 +313,27 @@ export function ReprocessForm({
    * tab who can be ticked; they are added (never removed: a person ticked elsewhere stays ticked), the token is
    * remembered so a later render carrying it again changes nothing, and it is dropped from the address so paging on
    * does not keep reading the whole tab. Unticking somebody afterwards sticks.
+   *
+   * Applied DURING RENDER (React's "adjust state when a prop changes"), not in an effect: this screen keeps no effects
+   * at all (test/payroll-reprocess-route-e440991b.test.ts — nothing here may poll). Only the address clean-up is
+   * deferred to after the render, once per new token.
    */
   const [appliedToken, setAppliedToken] = useState<string | null>(null);
   const applied = selectAll?.applied ?? null;
-  useEffect(() => {
-    if (!applied || applied.token === appliedToken) return;
+  if (applied && applied.token !== appliedToken) {
     setAppliedToken(applied.token);
     if (!applied.tooMany) {
       setSelected((prev) => new Map([...prev, ...applied.rows.map((r) => [r.employmentId, prev.get(r.employmentId) ?? r] as [string, Selected])]));
     }
     if (typeof window !== 'undefined') {
-      const url = new URL(window.location.href);
-      if (url.searchParams.has('selectAll')) {
+      queueMicrotask(() => {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('selectAll')) return;
         url.searchParams.delete('selectAll');
         window.history.replaceState(window.history.state, '', url.toString());
-      }
+      });
     }
-  }, [applied, appliedToken]);
+  }
 
   const toggle = (id: string) => {
     setSelected((prev) => {

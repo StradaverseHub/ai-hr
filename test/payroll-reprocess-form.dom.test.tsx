@@ -1043,7 +1043,7 @@ describe('a1a80747 r3 — the Skipped tab and Select all', () => {
     it('more than can be read at once ticks nobody and says so', () => {
       const { container } = render(withSelectAll({ token: 't3', rows: [], tooMany: true, max: 20000 }));
       expect(posted(container)).toEqual([]);
-      expect(screen.getByText(/more than Select all can tick at once \(20,000\)/)).toBeTruthy();
+      expect(container.textContent).toMatch(/This tab has 60 employees, more than Select all can tick at once \(20,?000\)/);
     });
   });
 });
