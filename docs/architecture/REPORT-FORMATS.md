@@ -149,8 +149,9 @@ the obligation meanwhile. A DRAFT generator can now be built sourced, not guesse
 
 > **Drawn forms (board 66175cd2, 25 Nov 2026).** Borang A (KWSP 6) and BBCD are drawn forms with the
 > `agency-layout` fidelity. They are laid out to the reporter's references on A4, with a bold masthead
-> and, for Borang A, the KWSP 6 / BORANG / A block. The KWSP logo is drawn only from the owner-supplied
-> `assets/kwsp/kwsp-logo.png` (see `assets/kwsp/README.md`). Neither form prints footer small print of
+> and, for Borang A, the KWSP 6 / BORANG / A block. The KWSP crest is drawn from
+> `assets/kwsp/kwsp-logo.png`, cropped from the logo KWSP publishes on kwsp.gov.my (source and SHA-256 in
+> `assets/kwsp/README.md`; plan r2, 26 Nov 2026). Neither form prints footer small print of
 > ours: the provenance is in the PDF metadata and on the review screen. The Open Form step lists only
 > payroll months with processed EPF payroll. `my.epf` (the EPF contributions listing) is off the shelf
 > but still registered. See `docs/adr/2026-11-25-kwsp-forms-official-logo-and-no-footer.md`.

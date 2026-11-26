@@ -14,7 +14,7 @@
  * ── BOARD 66175cd2 (plan r1): THE REPORTER'S KWSP 6 REFERENCE, LOGO INCLUDED, NO FOOTNOTES OF OURS ──────
  * This reverses r407/r411's "no logo, and the page says it is ours" at the reporter's explicit request
  * (docs/adr/2026-11-25-kwsp-forms-official-logo-and-no-footer.md):
- *   • THE KWSP LOGO, TOP LEFT, ON EVERY SHEET — drawn ONLY from the owner-supplied official file
+ *   • THE KWSP LOGO, TOP LEFT, ON EVERY SHEET — drawn ONLY from the official KWSP file
  *     (lib/kwsp-logo.ts reads `assets/kwsp/kwsp-logo.png`; the route hands its bytes in as `opts.logo`),
  *     scaled to fit its box with its proportions kept, never stretched. Without that file the box is left
  *     blank and the masthead is laid out exactly the same: nothing is traced, redrawn or borrowed from another
@@ -225,7 +225,7 @@ export const BORANG_A_SHEET_GEOMETRY = {
   sigRight: SIG_RIGHT,
   catatanX: CATATAN_X,
   paymentRight: RX,
-  /** 66175cd2 — where the official logo is fitted, when the owner has supplied it. */
+  /** 66175cd2 — where the official logo is fitted (assets/kwsp/kwsp-logo.png). */
   logoBox: LOGO_BOX,
   /** 66175cd2 — the PERINGATAN baseline: the lowest text on the sheet. */
   warningTop: WARN_TOP,
@@ -252,7 +252,7 @@ export function borangAProvenance(form: Pick<BorangAForm, 'contributionMonth' | 
 
 /**
  * Draw the form. `opts.logo` is the official KWSP logo's PNG bytes (lib/kwsp-logo.ts `readKwspLogo()`), or
- * absent/null when the owner has not supplied one. Pass only bytes `readKwspLogo()` accepted:
+ * absent/null when no acceptable file is installed. Pass only bytes `readKwspLogo()` accepted:
  * pdf-lib does not return on a truncated PNG, and that function refuses one before it gets here — the sheet is then the same, with the logo box empty.
  */
 export async function renderBorangAPdf(form: BorangAForm, opts: { logo?: Uint8Array | null } = {}): Promise<Uint8Array> {
