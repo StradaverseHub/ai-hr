@@ -67,6 +67,12 @@ DECLARE
   WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL
    AND ($2 IS NULL OR e.company_id = ANY ($2))
  $search$;
+ -- Bounded count of a company list's employments, planned with the list (EXECUTE ... USING), so it reads
+ -- employment_company_idx: a generic plan for an unknown list reads the whole table.
+ v_count constant text := $count$
+  SELECT count(*) FROM (SELECT 1 FROM public.employment e
+   WHERE e.company_id = ANY ($1) AND e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL LIMIT $2) s
+ $count$;
  -- Employments in scope outside the caller's administrator and partner companies, counted up to this bound: at most
  -- this many, and the caller's own read (as before 7320) costs less than narrowing.
  v_outside_limit constant integer := 1000;
@@ -86,9 +92,7 @@ BEGIN
  -- Named companies holding at most v_outside_limit employments in all cannot hold more outside the caller's
  -- companies: answer before asking any authority question.
  IF p_companies IS NOT NULL THEN
-  SELECT count(*) INTO v_scope_outside FROM (SELECT 1 FROM public.employment e
-   WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (p_companies) AND e.voided_at IS NULL
-   LIMIT v_outside_limit + 1) s;
+  EXECUTE v_count INTO v_scope_outside USING p_companies, v_outside_limit + 1;
   IF v_scope_outside <= v_outside_limit THEN
    RETURN NULL;
   END IF;
@@ -98,9 +102,7 @@ BEGIN
   AND (app.is_admin_for(c.id) OR app.can_admin_payroll_for(c.id) OR app.can_admin_perfcomp_for(c.id)) ORDER BY c.id);
  v_out_companies := ARRAY(SELECT c.id FROM public.company c WHERE c.tenant_id = app.current_tenant_id()
   AND (p_companies IS NULL OR c.id = ANY (p_companies)) AND NOT (c.id = ANY (v_read)));
- SELECT count(*) INTO v_scope_outside FROM (SELECT 1 FROM public.employment e
-  WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (v_out_companies) AND e.voided_at IS NULL
-  LIMIT v_outside_limit + 1) s;
+ EXECUTE v_count INTO v_scope_outside USING v_out_companies, v_outside_limit + 1;
  IF v_scope_outside <= v_outside_limit THEN
   RETURN NULL;
  END IF;

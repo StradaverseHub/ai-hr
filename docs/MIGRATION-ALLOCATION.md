@@ -1,7 +1,7 @@
 # ADR 0181 search follow-up: employee search visible-set cost, 26 November 2026
 
 Reserve `7530_employment_search_visible_set`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
-`69fde9869879994cfe084db0f50875df9910ee0172c3e469a2ea29eccee0e1a6`. Assigned by the coordinator. 7510 and 7520 stay permanently unused; the board session moved its items to 7540, 7550
+`3a5e0426ed5ad68013240199417b701c9ff7b41ae4ca967685957cd892bff974`. Assigned by the coordinator. 7510 and 7520 stay permanently unused; the board session moved its items to 7540, 7550
 and 7560, which install after this. Built on slot 5 `c0f6cf5b9` (alpha after release 4). Recheck both installations'
 watermarks and any competing reservation at admission.
 
