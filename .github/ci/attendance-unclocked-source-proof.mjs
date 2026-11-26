@@ -12,6 +12,15 @@ const BOARD_RESET_HOOK=ORIGINAL_RESET_HOOK.replace('seedBase()','seedAttendanceS
 const START=" it.each([...( ['cash','toil'] as const).flatMap(mode=>[\n";
 const END=" it('banks canonical policy TOIL";
 const DESCRIBE="describe('immutable non-payable policy part storage',()=>{\n";
+// Gates 45792803264/45797094461 timed out the first TOIL case at 36 s against 30 s; the bound timeout text is pinned exactly.
+const CASE_TIMEOUT=["// Explicit timeout: each case is one full HR-attested request/approval/payroll or TOIL journey.",
+ "// Measured on a8f7255df: 11.2-11.7 s per case alone (focused 45807279918), but 19-20 s in a full",
+ "// gate's shared DB unit and 36.1/36.3 s for the first case while the unit starts, timing out",
+ "// against the global 30 s twice (gates 45792803264, 45797094461, unit db-150ef0d500e2e18c, whose",
+ "// hint cost was the median, so rebalancing cannot add headroom). 60 s keeps ~1.7x over the worst",
+ "// observed case. Cash mode runs the same case body and shares the limit.",
+ "const ATTESTED_CASE_TIMEOUT_MS=60_000;",""].join('\n');
+const CASE_CLOSE="\n });\n\n});\n}\n",TIMED_CASE_CLOSE="\n },ATTESTED_CASE_TIMEOUT_MS);\n\n});\n}\n";
 export const UNCLOCKED_SPLIT_PATHS=Object.freeze({baseline:'.github/ci/diagnostics/fixtures/attendance-unclocked-before-financial-split.ts.txt',remaining:'test/attendance-policy-storage-unclocked.test.ts',financial:'test/attendance-policy-storage-attested-financial.test.ts',toil:'test/attendance-policy-storage-attested-toil.test.ts',financialFixture:'test/attendance-policy-storage-attested-financial-cases.ts',boardFixture:'test/helpers/attendance-submission-fixture.ts'});
 export function readUnclockedSplitSources(root){return Object.fromEntries(Object.entries(UNCLOCKED_SPLIT_PATHS).map(([k,p])=>[k,readFileSync(join(root,p),'utf8')]));}
 export function verifyUnclockedSplit(sources){
@@ -28,9 +37,12 @@ export function verifyUnclockedSplit(sources){
  const marker='let b:Base,ctx:SessionContext;',needle=" ])('carries real HR-attested";
  assert.equal(financial.split(marker).length,2);assert.equal(financial.split(needle).length,2);
  const at=financial.indexOf(marker),registration="export function registerAttestedFinancialCases(mode:'cash'|'toil'){\n if(mode!=='cash'&&mode!=='toil')throw new Error('One exact attested financial mode required');\n";
- assert.equal(sources.financialFixture,financial.slice(0,at)+registration+financial.slice(at).replace(needle," ].filter(row=>row.mode===mode))('carries real HR-attested")+'}\n','Changed original matrix, callback, financial/time controls or per-case fixture');
+ const split=financial.slice(0,at)+registration+financial.slice(at).replace(needle," ].filter(row=>row.mode===mode))('carries real HR-attested")+'}\n';
+ // The only permitted edit: one measured per-case timeout, declared once before the describe and passed as it.each's timeout argument.
+ assert.equal(split.split(DESCRIBE).length,2);assert(split.endsWith(CASE_CLOSE),'Unique financial callback close required');
+ assert.equal(sources.financialFixture,split.replace(DESCRIBE,CASE_TIMEOUT+DESCRIBE).slice(0,-CASE_CLOSE.length)+TIMED_CASE_CLOSE,'Changed original matrix, callback, financial/time controls, per-case fixture or measured case timeout');
  const wrapper=mode=>"import {registerAttestedFinancialCases} from './attendance-policy-storage-attested-financial-cases';\nregisterAttestedFinancialCases('"+mode+"');\n";
  assert.equal(sources.financial,wrapper('cash'),'Exact cash partition registration required');
  assert.equal(sources.toil,wrapper('toil'),'Exact TOIL partition registration required');
- return Object.freeze({kind:'SOURCE_PRESERVATION_ONLY_NOT_RUNTIME_OR_RELEASE',baselineSha256:BASELINE_SHA,originalCases:32,remainingCases:14,financialCases:18,financialPartitions:{cash:9,toil:9},allRegistrationBodiesAndValuesUnchanged:true,samePerCaseResetAndLiveGetters:true,boardSubmissionFixtureBound:true,releaseAuthorized:false});
+ return Object.freeze({kind:'SOURCE_PRESERVATION_ONLY_NOT_RUNTIME_OR_RELEASE',baselineSha256:BASELINE_SHA,originalCases:32,remainingCases:14,financialCases:18,financialPartitions:{cash:9,toil:9},caseTimeoutMs:60000,allRegistrationBodiesAndValuesUnchanged:true,samePerCaseResetAndLiveGetters:true,boardSubmissionFixtureBound:true,releaseAuthorized:false});
 }

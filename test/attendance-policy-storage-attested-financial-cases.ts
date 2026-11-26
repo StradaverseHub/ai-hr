@@ -46,6 +46,13 @@ beforeEach(async()=>{await resetDb();b=await seedBase();await setModule(b.tenant
 const {capturedClock,fixture,header,part}=createAttendancePolicyStorageFixtures({get b(){return b;},get ctx(){return ctx;},day});
 
 type Fixture=Awaited<ReturnType<typeof fixture>>;
+// Explicit timeout: each case is one full HR-attested request/approval/payroll or TOIL journey.
+// Measured on a8f7255df: 11.2-11.7 s per case alone (focused 45807279918), but 19-20 s in a full
+// gate's shared DB unit and 36.1/36.3 s for the first case while the unit starts, timing out
+// against the global 30 s twice (gates 45792803264, 45797094461, unit db-150ef0d500e2e18c, whose
+// hint cost was the median, so rebalancing cannot add headroom). 60 s keeps ~1.7x over the worst
+// observed case. Cash mode runs the same case body and shares the limit.
+const ATTESTED_CASE_TIMEOUT_MS=60_000;
 describe('immutable non-payable policy part storage',()=>{
  it.each([...( ['cash','toil'] as const).flatMap(mode=>[
   ...(['requested','system_calculated','smaller_of','greater_of'] as const).map(method=>({mode,method,roundMode:'none' as const,physical:120,requested:60})),
@@ -203,7 +210,7 @@ describe('immutable non-payable policy part storage',()=>{
    await reverseLeaveCredit(ctx,{accrualId:nextCredit.id,reason:'Fictional replacement HR statement credit reversal'});
 
   }
- });
+ },ATTESTED_CASE_TIMEOUT_MS);
 
 });
 }
