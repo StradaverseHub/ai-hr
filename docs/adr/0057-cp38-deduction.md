@@ -70,12 +70,12 @@ terminate before processing" scope; bc6b5490 also supersedes 038c304b's "locked 
   input and `Cp38Row.validTo` is the inclusive last month. Rows stored before this from the screen are one month short;
   `scripts/cp38-inclusive-effective-to-bc6b5490.ts` lists them and moves only rows the owner and reporter confirm, on each
   installation separately (deployment does not run it).
-- **Last-month amount.** Migration 7510 adds nullable `employee_cp38.last_month_amount` (CHECK: zero or more, only with an
+- **Last-month amount.** Migration 7540 adds nullable `employee_cp38.last_month_amount` (CHECK: zero or more, only with an
   end). `cp38ForPeriod` charges it in the record's last charged month and the monthly amount otherwise.
 - **Delete** sets `superseded_at` (no hard delete) and appends `employee-cp38.deleted`. **Terminate** now only sets the end
   to the month before the current one; it no longer stamps `superseded_at`, which had removed the record from every
   payroll including earlier months not yet closed.
-- **Correction history.** Migration 7510 adds the append-only, row-secured `employee_cp38_revision` (before/after values,
+- **Correction history.** Migration 7540 adds the append-only, row-secured `employee_cp38_revision` (before/after values,
   actor, time). Amounts are kept there and never in events (ADR-0006 / ADR-0030 Layer 0 unchanged).
 - **Who.** Every write resolves the record to its employment and requires payroll administration of the employment's
   company (`app.can_admin_payroll_for`), and, from the CP38 Deduction page, that company in the company-switcher scope.

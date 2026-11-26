@@ -1,4 +1,4 @@
-/** ADR 0181 read budgets and the 7510 access-rule timing (docs/architecture/FUTURE-BUILD-CONTRACT.md, "Database read
+/** ADR 0181 read budgets and the 7540 access-rule timing (docs/architecture/FUTURE-BUILD-CONTRACT.md, "Database read
  * cost", rules 2, 3 and 6; docs/SCALE-AND-RELEASE-RULES.md rules 2 and 3) for board 038c304b / bc6b5490:
  *  - app/payroll/transactions/cp38/page.tsx, the Payroll > Transaction Entry > CP38 Deduction page;
  *  - app/payroll/transactions/cp38/actions.ts saveCp38DialogAction (Add and Edit) and deleteCp38DialogAction;
@@ -17,7 +17,7 @@
  *    no more than one company's grant;
  *  - the reads are real: the list's first page and its count equal an independent owner query of the same population
  *    (records of the companies the persona administers, current, non-voided), in the same order;
- *  - migration 7510's new access rules (employee_cp38_revision_read / _insert, the precomputed visible-employment
+ *  - migration 7540's new access rules (employee_cp38_revision_read / _insert, the precomputed visible-employment
  *    answer read once per statement) are timed with EXPLAIN ANALYZE on the page's real statements, "All companies" and
  *    one company, printed as CP38_EXPLAIN lines (explainStatements, test/helpers/statement-observer.ts).
  * Every measurement is printed as one `CP38_BUDGET {json}` line. All names are invented. */
@@ -169,13 +169,13 @@ describe('038c304b: the CP38 Deduction page at group scale',()=>{
   // A filter by status and company narrows in SQL.
   await render('group','all',{status:'upcoming',company:companyId});
 
-  // Migration 7510: the revision's access rule on the page's real statements, "All companies" and one company.
+  // Migration 7540: the revision's access rule on the page's real statements, "All companies" and one company.
   for(const [label,observed] of [['all',groupAll],['one',groupOne],['single',single]] as const){
    const explained=await explainStatements(observed.statements);
    const revision=explained.filter(e=>/employee_cp38_revision/.test(e.sql));
    expect(revision.length,`${label} reads the revision`).toBeGreaterThan(0);
    for(const e of explained.filter(x=>/employee_cp38/.test(x.sql))){
-    console.log('CP38_EXPLAIN '+JSON.stringify({migration:'7510',label,sql:e.sql.slice(0,120),executionMs:e.executionMs,planningMs:e.planningMs,hotspots:e.hotspots.slice(0,3)}));
+    console.log('CP38_EXPLAIN '+JSON.stringify({migration:'7540',label,sql:e.sql.slice(0,120),executionMs:e.executionMs,planningMs:e.planningMs,hotspots:e.hotspots.slice(0,3)}));
     expect(e.error,`${label}: ${e.sql.slice(0,80)}`).toBeUndefined();
    }
   }

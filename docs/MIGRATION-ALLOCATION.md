@@ -1,17 +1,21 @@
-# Board CP38 lane (038c304b + bc6b5490): CP38 correction history and last-month amount, 26 November 2026
+# Board lanes renumbered after DB revamp's 7530, 26 November 2026
 
-Reserve `7510_employee_cp38_history_last_month`, journal index `10910`, timestamp `1795495007510`, SQL SHA-256 `c82f4eb2e5f3e3d50aab08e759dda9651de6c68fbb4f68a879e05f9ff8229739`. Next free slot after
-`7500_payroll_read_history_summary`: the highest migration on every remote branch (400 most recent) and the staging
-ledger watermark (1795495007500, read 26 Nov 2026) are both 7500, and no branch reserves above it. Adds the nullable
-`employee_cp38.last_month_amount` and the append-only, row-secured `employee_cp38_revision`. Recheck both installations'
-watermarks and any competing reservation at admission. This entry carries no deployment authority.
+The staging coordinator asked (26 Nov 2026) that the board lanes land after the DB revamp search fix
+`7530` (branch claude/search-visible-set-cost), which installs on staging before them: an applied 7530 would make Drizzle
+skip any lower, later-arriving entry. The earlier reservations 7510 and 7520 (and 7530, briefly given to the
+change-detection lane) were never applied anywhere and are released. In order:
 
-# Board group tax lane (4ce2c481): totals-only group tax opening, 26 November 2026
+- `7540_employee_cp38_history_last_month`, journal index `10940`, timestamp `1795495007540`, SQL SHA-256 `3dc10e2b149d1896d5c3bee787f29a51d0fb91c6a6c7783b42249754404b8589`: CP38
+  lane (038c304b + bc6b5490). Adds the nullable `employee_cp38.last_month_amount` and the append-only, row-secured
+  `employee_cp38_revision`.
+- `7550_payroll_group_tax_opening`, journal index `10950`, timestamp `1795495007550`: group tax lane (4ce2c481). Adds the
+  security-definer `app.payroll_group_tax_opening` (per company and month totals only, gated by payroll administration of
+  the run's company).
+- `7560_payroll_recalc_pending`, journal index `10960`, timestamp `1795495007560`: change-detection lane (124a979e). Adds
+  the pending recalculation flags recorded when the saver cannot administer payroll for the run's company.
 
-Reserve `7520_payroll_group_tax_opening`, journal index `10920`, timestamp `1795495007520`, after 7510 above. Adds the
-security-definer `app.payroll_group_tax_opening` (per company and month totals only, gated by payroll administration of
-the run's company). Recheck watermarks and competing reservations at admission. This entry carries no deployment
-authority.
+None depends on another. Recheck both installations' watermarks and any competing reservation at admission. These
+entries carry no deployment authority.
 
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 

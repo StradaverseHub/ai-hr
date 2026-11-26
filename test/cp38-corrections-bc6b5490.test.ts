@@ -4,7 +4,7 @@
  *  - Effective to is the LAST month deducted: January to July deducts July, a one-month record deducts its month, and
  *    the month the screens show (listCp38 / listCp38Across) is the last month cp38ForPeriod charges;
  *  - the last-month amount replaces the monthly amount in the last charged month only (RM300 Jan–Jun, RM289.35 Jul,
- *    nothing in Aug), and needs an end (service and the 7510 CHECK);
+ *    nothing in Aug), and needs an end (service and the 7540 CHECK);
  *  - edits and deletes of a record a CLOSED payroll used succeed, the closed payslip and run stay byte-identical, the
  *    processed (not closed) run is marked Reprocess Required (category cp38), and reprocessing reads the correction;
  *  - every edit and delete writes one revision row (before/after, actor), which ai_hr_app cannot update or delete;
@@ -147,7 +147,7 @@ describe('bc6b5490 — the last-month amount', () => {
     expect(((await slip(july, e.employmentId)).statutory as Record<string, number>).cp38).toBe(289.35);
   });
 
-  it('needs an end and a non-negative amount (service), and the 7510 CHECK backs it at the database', async () => {
+  it('needs an end and a non-negative amount (service), and the 7540 CHECK backs it at the database', async () => {
     const e = await hire(a, 'Fictional Last Month Refusals');
     await expect(setCp38(a, { employmentId: e.employmentId, cp38Ref: 'CP38/X', amount: 300, lastMonthAmount: 10, validFrom: '2026-01-01' }))
       .rejects.toMatchObject({ name: 'Cp38InputError', problem: 'lastMonthNeedsEnd' });

@@ -183,7 +183,7 @@ function normalise(v: {
   if (validTo && validTo < validFrom) throw new Cp38InputError('backwards');
   if (v.lastMonthAmount != null) {
     if (!(Number.isFinite(v.lastMonthAmount) && v.lastMonthAmount >= 0)) throw new Cp38InputError('lastMonthAmount');
-    // The last-month amount is for the last month, so there has to be one (the 7510 CHECK says the same).
+    // The last-month amount is for the last month, so there has to be one (the 7540 CHECK says the same).
     if (!validTo) throw new Cp38InputError('lastMonthNeedsEnd');
   }
   return {

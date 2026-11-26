@@ -1,5 +1,5 @@
 -- Board bc6b5490 (with 038c304b and 124a979e, 26 November 2026): CP38 correction history and the last-month amount.
--- Reserved in docs/MIGRATION-ALLOCATION.md (journal index 10910, when 1795495007510).
+-- Reserved in docs/MIGRATION-ALLOCATION.md (journal index 10940, when 1795495007540; renumbered from 7510 on 26 Nov 2026 to land after 7530).
 --
 -- 1. employee_cp38.last_month_amount — the instalment for the record's LAST charged month only ("RM300.00 January to
 --    June, RM289.35 in July"). NULL keeps today's behaviour: the monthly amount applies all the way through. Nullable

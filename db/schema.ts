@@ -7430,7 +7430,7 @@ export const employeeCp38 = pgTable(
     // inclusive "Effective to" is translated by core/cp38.ts, the only writer.
     validFrom: date('valid_from').notNull(),
     validTo: date('valid_to'),
-    // bc6b5490 (migration 7510) — the instalment for the LAST charged month only; null = the monthly amount
+    // bc6b5490 (migration 7540) — the instalment for the LAST charged month only; null = the monthly amount
     // throughout. CHECK: only on a bounded window (valid_to set), and never negative.
     lastMonthAmount: numeric('last_month_amount', { precision: 12, scale: 2 }),
     remarks: text('remarks'),
@@ -7441,7 +7441,7 @@ export const employeeCp38 = pgTable(
 );
 
 /**
- * bc6b5490 (migration 7510) — the CP38 correction history: one APPEND-ONLY row per edit or delete of an
+ * bc6b5490 (migration 7540) — the CP38 correction history: one APPEND-ONLY row per edit or delete of an
  * employee_cp38 record, with the values before and after (amounts included: the event log may not carry them,
  * ADR-0006), the acting user and the time. Row security mirrors employee_cp38 (visible employments read; an
  * administrator inserts); ai_hr_app has no UPDATE or DELETE grant. Written only by core/cp38.ts, in the same
