@@ -37,6 +37,17 @@ export function preparedReadsEnabled(env: Record<string, string | undefined> = p
   return env.AIHR_PREPARED_READS !== 'off';
 }
 
+/** The settings statement of a read whose prepared statement must use its generic plan from the first call: in auto
+ * mode PostgreSQL estimated the account task statement's generic plan dearer than its custom plans and planned every
+ * call again (90 ms of 177 ms for a manager on the scale fixture), although the generic plan runs as fast. One
+ * simple-protocol statement in place of the owner's `set local jit=off`, so it costs no extra round trip; a shared
+ * read carrier holds both settings (db/shared-read.ts passedSettings) and a Today carrier's identity statement already
+ * set them (home-request-preamble.ts `genericPlans`). Transaction-local: cleared at COMMIT or ROLLBACK, so a pooled
+ * server connection never carries it to another client. With AIHR_PREPARED_READS=off, only `set local jit=off`. */
+export function genericPlanSettingsStatement(env: Record<string, string | undefined> = process.env): string {
+  return preparedReadsEnabled(env) ? 'set local jit=off; set local plan_cache_mode=force_generic_plan' : 'set local jit=off';
+}
+
 /** Statements sent through `executePrepared` in this process, by the label the caller names and how they were sent
  * (diagnostics and tests). */
 const sent = new Map<string, {prepared: number; unnamed: number}>();

@@ -4,8 +4,8 @@
 import {afterEach,describe,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
-import {PREPARED_READ_OPTIONS,executePrepared,preparedReadCounts,preparedReadsEnabled} from '../db/prepared-read';
-import {sharedReadDriver} from '../db/shared-read';
+import {PREPARED_READ_OPTIONS,executePrepared,genericPlanSettingsStatement,preparedReadCounts,preparedReadsEnabled} from '../db/prepared-read';
+import {classifySharedStatement,passedSettings,sharedReadDriver,type SharedReadCarrierControl} from '../db/shared-read';
 
 type Sent={query:string;params:unknown[]|undefined;options:unknown};
 function fakeDriver(){
@@ -76,5 +76,42 @@ describe('the shared read snapshot driver and prepared reads',()=>{
   const carrier=sharedReadDriver(driver,fakeSession() as never) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
   await expect(carrier.unsafe(`select set_config('x','y',true)`,[],PREPARED_READ_OPTIONS)).rejects.toThrow('refused setting');
   expect(sent).toEqual([]);
+ });
+});
+
+describe('generic plan settings for a prepared read',()=>{
+ it('is one simple-protocol statement in place of set local jit=off, and only jit with AIHR_PREPARED_READS=off',()=>{
+  expect(genericPlanSettingsStatement({})).toBe('set local jit=off; set local plan_cache_mode=force_generic_plan');
+  expect(genericPlanSettingsStatement({AIHR_PREPARED_READS:'off'})).toBe('set local jit=off');
+ });
+ it('passes only transaction-local planning settings through a carrier',()=>{
+  expect(passedSettings('set local jit=off; set local plan_cache_mode=force_generic_plan')).toEqual([['jit','off'],['plan_cache_mode','force_generic_plan']]);
+  expect(passedSettings('set local jit=off')).toEqual([['jit','off']]);
+  expect(passedSettings('SET TRANSACTION READ ONLY')).toEqual([['transaction','read only']]);
+  for(const refused of ['set plan_cache_mode=force_generic_plan','set local plan_cache_mode=force_custom_plan','set local jit=off; set local role x',
+   'set local jit=off; select 1','set local work_mem=\'1GB\'',''])expect(passedSettings(refused),refused).toBeNull();
+  expect(classifySharedStatement('set local jit=off; set local plan_cache_mode=force_generic_plan')).toEqual({kind:'pass'});
+  expect(classifySharedStatement('set local jit=off; set local role x').kind).toBe('refuse');
+ });
+ it('sends the settings once per carrier and answers them when the carrier already holds both',async()=>{
+  const {sent,driver}=fakeDriver();
+  const control:{current?:SharedReadCarrierControl}={};
+  const carrier=sharedReadDriver(driver,fakeSession() as never,control) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  const settings=genericPlanSettingsStatement({});
+  await carrier.unsafe(settings,[]);
+  await carrier.unsafe(settings,[]);
+  expect(sent.map(row=>row.query)).toEqual([settings]);
+  // A Today carrier's identity statement set both: the owner's statement is not sent at all.
+  const held=fakeDriver(),heldControl:{current?:SharedReadCarrierControl}={};
+  const today=sharedReadDriver(held.driver,fakeSession() as never,heldControl) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  heldControl.current!.hold('jit','off');heldControl.current!.hold('plan_cache_mode','force_generic_plan');
+  await today.unsafe(settings,[]);
+  expect(held.sent).toEqual([]);
+  // Only jit held: the combined statement is sent.
+  const partial=fakeDriver(),partialControl:{current?:SharedReadCarrierControl}={};
+  const other=sharedReadDriver(partial.driver,fakeSession() as never,partialControl) as unknown as {unsafe(q:string,p?:unknown[],o?:unknown):PromiseLike<unknown[]>};
+  partialControl.current!.hold('jit','off');
+  await other.unsafe(settings,[]);
+  expect(partial.sent.map(row=>row.query)).toEqual([settings]);
  });
 });

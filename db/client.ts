@@ -393,7 +393,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     const identityHolds = sql`current_setting('app.tenant_id', true) = ${ctx.tenantId} and current_setting('app.user_id', true) = ${ctx.userId ?? ''}
       and current_setting('app.roles', true) = ${roleNames.join(',')} and current_setting('app.grants', true) = ${JSON.stringify(grants)}
       and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1' and current_setting('app.payroll_import_tax_basis_reader',true)='1'`;
-    return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
+    return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}${preamble.genericPlans ? sql`, set_config('plan_cache_mode', 'force_generic_plan', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
   }
 
   /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
@@ -482,6 +482,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
             session.bootstrapping = false;
             if (preamble) {
               if (preamble.jitOff) control.current?.hold('jit', 'off');
+              if (preamble.genericPlans) control.current?.hold('plan_cache_mode', 'force_generic_plan');
               const value = identityRow?.request_preamble;
               if (value !== null && value !== undefined) {
                 // A value of an unexpected shape answers nothing: every owner then reads its own statement.

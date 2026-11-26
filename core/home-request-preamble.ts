@@ -21,6 +21,7 @@
  */
 import {sql,type SQL} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
+import {preparedReadsEnabled} from '../db/prepared-read';
 import {registerRequestScopePreamble,type SharedReadPreamble,type SharedReadPreambleRead,type SharedReadSeed} from '../db/shared-read';
 import type {SessionContext,Tx} from '../db/client';
 import {todayInKualaLumpur} from '../lib/hr-date';
@@ -165,6 +166,9 @@ function buildHomePreamble(ctx:SessionContext,tx:Tx,requestedEmploymentId:string
   },
   // Home's account task statement plans with JIT off; every other statement's result is the same either way.
   jitOff:true,
+  // …and uses its prepared statement's generic plan (db/prepared-read.ts genericPlanSettingsStatement); this carrier
+  // then holds that setting, so the owner's settings statement is not sent again.
+  genericPlans:preparedReadsEnabled(),
  };
 }
 

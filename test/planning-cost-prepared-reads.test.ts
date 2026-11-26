@@ -15,9 +15,10 @@
  *              plan choice (plan_cache_mode auto): five plans with the call's values, then a generic plan when it is
  *              estimated no dearer; pg_prepared_statements says which it used;
  *  - generic:  the same statement with plan_cache_mode=force_generic_plan, to show the generic plan's own cost.
- * Every call of every mode must return the rows of the first unnamed call, in the same order. Each measurement is
- * printed as one `PLANNING_COST {json}` line for the release notes; the Today render itself is also compared with
- * AIHR_PREPARED_READS off and on (`PLANNING_COST_RENDER`). All names are invented. */
+ * Every call of every mode must return the rows of the first unnamed call, in the same order, and what the
+ * application now sends (the account task statement's generic plan, every other statement prepared) must be no slower.
+ * Each measurement is printed as one `PLANNING_COST {json}` line for the release notes; the Today and Approvals renders
+ * are also compared whole with AIHR_PREPARED_READS off and on (`PLANNING_COST_RENDER`). All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {writeFileSync} from 'node:fs';
 import {join} from 'node:path';
@@ -51,6 +52,7 @@ vi.mock('../lib/session',async importOriginal=>({...await importOriginal<typeof 
  getSession:async()=>state.session,getBrowserCommandSession:async()=>state.session}));
 
 import postgres from 'postgres';
+import {drizzle} from 'drizzle-orm/postgres-js';
 import type {SessionContext} from '../db/client';
 import {applicationDatabaseUrl} from '../db/pooling';
 import {preparedReadCounts} from '../db/prepared-read';
@@ -59,6 +61,7 @@ import {MODULE_CATALOG} from '../packs/catalog';
 import {withRequestReadScope} from '../lib/request-read-scope';
 import Layout from '../app/layout';
 import HomePage from '../app/page';
+import ApprovalsPage from '../app/approvals/page';
 import {payrollChangedCompanies} from '../core/loops/payroll-freshness';
 import {recruitmentTodos} from '../packs/recruitment/tasks';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
@@ -123,10 +126,11 @@ afterAll(async()=>{
  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete process.env.AIHR_VIEWER_MENU_CACHE;delete process.env.AIHR_PREPARED_READS;await closeAll();});
 
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
-/** One Today render (the root layout and Home page) as one request, its statements captured. */
-async function renderToday(persona:Persona){
- state.session=personas[persona];state.pathname='/';state.cookies={};
- const run=()=>serverTreeSnapshot(createElement(Layout,{children:createElement(HomePage,{searchParams:Promise.resolve({})})}),normalize)
+/** One Today render (the root layout and Home page), or an Approvals render, as one request, its statements captured. */
+async function renderToday(persona:Persona,route:'today'|'approvals'='today'){
+ state.session=personas[persona];state.pathname=route==='today'?'/':'/approvals';state.cookies={};
+ const page=route==='today'?createElement(HomePage,{searchParams:Promise.resolve({})}):createElement(ApprovalsPage,{searchParams:Promise.resolve({})});
+ const run=()=>serverTreeSnapshot(createElement(Layout,{children:page}),normalize)
   .catch((error:unknown)=>{const digest=(error as {digest?:unknown})?.digest;if(typeof digest==='string'&&digest.startsWith('NEXT_'))return {redirect:digest};throw error;});
  return withRequestReadScope({},()=>observeStatements(run));
 }
@@ -172,6 +176,8 @@ const planOf=(rows:unknown)=>((rows as Record<string,unknown>[])[0]['QUERY PLAN'
  * so row security applies; a new backend, so no plan or prepared statement of the renders is reused). */
 async function measure(pair:Pair){
  const connection=postgres(applicationDatabaseUrl(process.env).url,{max:1,onnotice:()=>{}});
+ // drizzle's own driver settings (its date and JSON parameter serializers), as the application's client has them.
+ drizzle(connection);
  try{
   // Warm the backend's catalog caches (a pool's backends live for hours) without preparing anything.
   for(let i=0;i<2;i++)await call(connection,pair,false);
@@ -252,26 +258,32 @@ describe('planning cost: named prepared statements for the large combined reads'
   for(const pair of found){
    const measured=await measure(pair);
    expect(measured.differing,`${persona} ${pair.target}`).toEqual([]);
+   // What the application now sends is no slower than before (1 ms or 10% of noise): the account task statement with its
+   // generic plan from the first call (genericPlanSettingsStatement), every other statement prepared in auto mode, after
+   // its first five calls on a connection.
+   const after=pair.target==='account-tasks'?measured.generic.wallMs!:measured.prepared.laterMs!;
+   expect(after,`${persona} ${pair.target} wall after vs before`).toBeLessThanOrEqual(measured.unnamed.wallMs!*1.1+1);
    // The fixture has no recruitment work (nor had staging: the statement ran in 0.2 ms); every other read returns rows.
    if(pair.target!=='recruitment-personal-todos')expect(measured.rows,`${persona} ${pair.target} returned rows`).toBeGreaterThan(0);
   }
  },900_000);
 
- it.each(PERSONAS)('renders Today identically with prepared reads off and on, for %s',async persona=>{
+ it.each([...PERSONAS.map(persona=>['today',persona] as const),['approvals','group'] as const,['approvals','manager'] as const])
+ ('renders %s identically with prepared reads off and on, for %s',async(route,persona)=>{
   const off:number[]=[],on:number[]=[];let first:unknown;
-  for(let round=0;round<4;round++){
+  for(let round=0;round<6;round++){
    for(const mode of ['off','on'] as const){
     process.env.AIHR_PREPARED_READS=mode;
-    const rendered=await renderToday(persona);
+    const rendered=await renderToday(persona,route);
     first??=plain(rendered.result);
-    expect(JSON.stringify(plain(rendered.result))===JSON.stringify(first),`${persona} ${mode} round ${round}`).toBe(true);
+    expect(JSON.stringify(plain(rendered.result))===JSON.stringify(first),`${route} ${persona} ${mode} round ${round}`).toBe(true);
     // The first round fills process and connection caches; only later rounds are timed.
     if(round>0)(mode==='off'?off:on).push(rendered.ms);
    }
   }
   delete process.env.AIHR_PREPARED_READS;
   expect(JSON.stringify(first).length).toBeGreaterThan(500);
-  const row={persona,offMs:median(off),onMs:median(on),off:off.map(Math.round),on:on.map(Math.round)};
+  const row={route,persona,offMs:median(off),onMs:median(on),off:off.map(Math.round),on:on.map(Math.round)};
   console.log('PLANNING_COST_RENDER '+JSON.stringify(row));
   evidence.push({render:row});
  },600_000);
