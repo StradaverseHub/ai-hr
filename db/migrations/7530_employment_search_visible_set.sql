@@ -69,13 +69,13 @@ DECLARE
   WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL
    AND ($2 IS NULL OR e.company_id = ANY ($2))
  $search$;
- -- At most a few more than v_match_limit name or code matches in the tenant, counted before the search itself.
+ -- Name or code matches in the tenant, counted up to v_match_limit + 1 in all, before the search itself.
  v_broad constant text := $broad$
-  SELECT count(*) FROM (
-   (SELECT 1 FROM public.person p WHERE p.tenant_id = app.current_tenant_id() AND lower(p.full_name COLLATE "C") LIKE $1 LIMIT $2)
+  SELECT count(*) FROM (SELECT 1 FROM (
+   SELECT 1 FROM public.person p WHERE p.tenant_id = app.current_tenant_id() AND lower(p.full_name COLLATE "C") LIKE $1
    UNION ALL
-   (SELECT 1 FROM public.employment e WHERE e.tenant_id = app.current_tenant_id() AND lower(coalesce(e.employee_code, '') COLLATE "C") LIKE $1 LIMIT $2)
-  ) m
+   SELECT 1 FROM public.employment e WHERE e.tenant_id = app.current_tenant_id() AND lower(coalesce(e.employee_code, '') COLLATE "C") LIKE $1
+  ) u LIMIT $2) m
  $broad$;
  v_matches integer;
  -- The read before 7320 is cheaper than narrowing only where the caller's row security is cheap per row: at most this

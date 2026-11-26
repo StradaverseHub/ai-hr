@@ -1,7 +1,7 @@
 # ADR 0181 search follow-up: employee search visible-set cost, 26 November 2026
 
 Reserve `7530_employment_search_visible_set`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
-`92452a81e8409e681da384e191b1f7737151c08ee5eea17f493d220c93e50779`. Assigned by the coordinator: 7510 and 7520 are reserved by the board session, so 7530 is the
+`4f485db94a519d0f97ba32d5a0f23162def5bb3c9936dc89a0008bb0ff94a608`. Assigned by the coordinator: 7510 and 7520 are reserved by the board session, so 7530 is the
 next slot not held. Built on slot 5 `c0f6cf5b9` (alpha after release 4). Because Drizzle skips a pending migration whose
 timestamp is below the highest applied one, 7510 and 7520 must install before 7530 on every installation, or be
 renumbered above it. Recheck both installations' watermarks and any competing reservation at admission.
