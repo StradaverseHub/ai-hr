@@ -14858,7 +14858,9 @@
     "details": "Chi tiết",
     "homePreferences": "Tùy chọn trang chủ",
     "chooseCompanies": "Chọn lại",
-    "pendingCompanySelection": "Chọn công ty để cập nhật chế độ xem. Phạm vi công ty hiện tại chưa thay đổi."
+    "pendingCompanySelection": "Chọn công ty để cập nhật chế độ xem. Phạm vi công ty hiện tại chưa thay đổi.",
+    "employerCompanies": "Nơi bạn làm việc",
+    "employerCompaniesHint": "Chỉ hồ sơ của riêng bạn. Không thuộc các vai trò được giao cho bạn."
   },
   "components": {
     "plannedAbsences": {
