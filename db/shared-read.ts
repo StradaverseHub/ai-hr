@@ -19,6 +19,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import type {SQL} from 'drizzle-orm';
 import type {SessionContext} from './client';
+import {isPreparedReadOptions} from './prepared-read';
 
 export class SharedReadIncompatibleError extends Error{
  constructor(readonly reason:string){super('This read must use its own transaction ('+reason+').');this.name='SharedReadIncompatibleError';}
@@ -390,7 +391,9 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
     return send(query,params,options,mode);
    }
   }
-  if(statement.kind==='pass'||options!==undefined)return send(query,params,options,mode);
+  // A prepared read (db/prepared-read.ts) is a plain read sent as a named statement: the same rows, so the same memo
+  // entry as the unnamed statement (and a request preamble's answer for it). Any other option passes through.
+  if(statement.kind==='pass'||(options!==undefined&&!isPreparedReadOptions(options)))return send(query,params,options,mode);
   const key=mode+'\u0000'+query+'\u0000'+paramKey(params);
   let first=memo.get(key);
   if(first)session.stats.memoHits++;
