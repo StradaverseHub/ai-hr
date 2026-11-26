@@ -6842,7 +6842,12 @@
         "transfer": "company transfer changed",
         "compensation": "salary changed",
         "statutory": "statutory settings changed",
-        "employment_information": "employment information changed"
+        "employment_information": "employment information changed",
+        "cp38": "CP38 deduction changed",
+        "fixed_item": "fixed allowance or deduction changed",
+        "zakat": "zakat changed",
+        "tax_profile": "income tax settings changed",
+        "payroll_policy": "payroll policy changed"
       },
       "closeConfirmNo": "No",
       "closeBack": "Back to Payroll Process",

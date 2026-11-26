@@ -1000,7 +1000,8 @@ export async function markHistoryAffectedPayrollTx(tx:Tx,ctx:SessionContext,targ
  * `payroll-batch.recalc-required` event (no column, no migration) and read back by
  * `listRecalcChangeCategories` for the run screen.
  */
-export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory', 'employment_information'] as const;
+// 124a979e / 038c304b / bc6b5490 (26 Nov 2026): CP38, fixed items, Zakat, the tax profile and payroll policy mark processed runs too.
+export const RECALC_CHANGE_CATEGORIES = ['termination', 'hire_date', 'transfer', 'compensation', 'statutory', 'employment_information', 'cp38', 'fixed_item', 'zakat', 'tax_profile', 'payroll_policy'] as const;
 export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 
 /**

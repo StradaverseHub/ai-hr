@@ -7569,7 +7569,12 @@
         "transfer": "việc chuyển công ty đã thay đổi",
         "compensation": "lương đã thay đổi",
         "statutory": "thiết lập theo luật định đã thay đổi",
-        "employment_information": "thông tin việc làm đã thay đổi"
+        "employment_information": "thông tin việc làm đã thay đổi",
+        "cp38": "khoản khấu trừ CP38 đã thay đổi",
+        "fixed_item": "phụ cấp hoặc khấu trừ cố định đã thay đổi",
+        "zakat": "zakat đã thay đổi",
+        "tax_profile": "cài đặt thuế thu nhập đã thay đổi",
+        "payroll_policy": "chính sách lương đã thay đổi"
       },
       "closeConfirmNo": "Không",
       "closeBack": "Quay lại Xử lý lương",

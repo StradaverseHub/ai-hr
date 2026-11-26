@@ -7569,7 +7569,12 @@
         "transfer": "公司调动已更改",
         "compensation": "薪资已更改",
         "statutory": "法定设置已更改",
-        "employment_information": "雇佣信息已更改"
+        "employment_information": "雇佣信息已更改",
+        "cp38": "CP38 扣款已更改",
+        "fixed_item": "固定津贴或扣款已更改",
+        "zakat": "天课已更改",
+        "tax_profile": "所得税设置已更改",
+        "payroll_policy": "薪资政策已更改"
       },
       "closeConfirmNo": "否",
       "closeBack": "返回薪资处理",

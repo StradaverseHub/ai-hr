@@ -7569,7 +7569,12 @@
         "transfer": "pertukaran syarikat diubah",
         "compensation": "gaji diubah",
         "statutory": "tetapan berkanun diubah",
-        "employment_information": "maklumat pekerjaan berubah"
+        "employment_information": "maklumat pekerjaan berubah",
+        "cp38": "potongan CP38 diubah",
+        "fixed_item": "elaun atau potongan tetap diubah",
+        "zakat": "zakat diubah",
+        "tax_profile": "tetapan cukai pendapatan diubah",
+        "payroll_policy": "polisi gaji diubah"
       },
       "closeConfirmNo": "Tidak",
       "closeBack": "Kembali ke Proses Gaji",

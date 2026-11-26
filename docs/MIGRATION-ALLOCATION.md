@@ -1,3 +1,18 @@
+# Board CP38 lane (038c304b + bc6b5490): CP38 correction history and last-month amount, 26 November 2026
+
+Reserve `7510_employee_cp38_history_last_month`, journal index `10910`, timestamp `1795495007510`. Next free slot after
+`7500_payroll_read_history_summary`: the highest migration on every remote branch (400 most recent) and the staging
+ledger watermark (1795495007500, read 26 Nov 2026) are both 7500, and no branch reserves above it. Adds the nullable
+`employee_cp38.last_month_amount` and the append-only, row-secured `employee_cp38_revision`. Recheck both installations'
+watermarks and any competing reservation at admission. This entry carries no deployment authority.
+
+# Board group tax lane (4ce2c481): totals-only group tax opening, 26 November 2026
+
+Reserve `7520_payroll_group_tax_opening`, journal index `10920`, timestamp `1795495007520`, after 7510 above. Adds the
+security-definer `app.payroll_group_tax_opening` (per company and month totals only, gated by payroll administration of
+the run's company). Recheck watermarks and competing reservations at admission. This entry carries no deployment
+authority.
+
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 
 Reserve `7500_payroll_read_history_summary`, journal index `10900`, timestamp `1795495007500`, SQL SHA-256 `5526740b3133f61d1431b9f44e7a1b4f2812bc7f425638f4bc5ab59ef8342f1f`. Next free
