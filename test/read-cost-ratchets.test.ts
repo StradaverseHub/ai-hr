@@ -106,14 +106,16 @@ revalidatePath(
 
 describe('read-cost ratchets on the current tree (allowlists only shrink)',()=>{
  it('adds no page-by-number list, exact list total, in-memory page or OFFSET',()=>{
+  // Guards count what was scanned, never the old pattern itself: these counts are meant to reach zero. The fixture
+  // tests above prove each detector finds its pattern through the same functions.
+  expect(rc.sourceFiles(root,rc.PAGING_DIRS).length).toBeGreaterThan(1000);
   const sites=rc.scanPaging(root);
-  expect(sites.length).toBeGreaterThan(50);
   expectRatchet({name:'Page-by-number lists',file:'page-by-number.json',sites,allowed:load('page-by-number.json'),
    rule:`Lists use parseKeysetPageQuery, keysetSlice and keysetPageState from lib/pagination.ts with cappedTotal ("1,000+" and "Count exactly"); see ${CONTRACT}.`});
  });
  it('adds no layout-wide revalidatePath',()=>{
+  expect(rc.sourceFiles(root,rc.REVALIDATE_DIRS).length).toBeGreaterThan(1000);
   const sites=rc.scanLayoutRevalidate(root);
-  expect(sites.length).toBeGreaterThan(20);
   expectRatchet({name:'Layout-wide revalidatePath',file:'layout-revalidate.json',sites,allowed:load('layout-revalidate.json'),
    rule:`A save returns its result and the next address (lib/action-navigation.ts, components/action-navigate-form.tsx) so the frame is not redrawn; see ${CONTRACT}.`});
  });
@@ -121,10 +123,6 @@ describe('read-cost ratchets on the current tree (allowlists only shrink)',()=>{
   const files=rc.requestPathFiles(root);
   expect(files.length).toBeGreaterThan(1000);
   const sites=files.flatMap(file=>rc.requestLoopSites(file,rc.read(root,file)));
-  // The scanner must still see known loops. The first canary (the Personnel import page) was fixed by PR 343, so the
-  // canary is now the largest remaining allowlisted site; when it is fixed too, move it to the next one.
-  expect(sites.length).toBeGreaterThan(20);
-  expect(sites.some(s=>s.file==='app/roster/actions.ts')).toBe(true);
   expectRatchet({name:'Request-path loops',file:'request-loops.json',sites,allowed:load('request-loops.json'),
    rule:`Read the set once (one statement with an id array; company lists take one array parameter, db/sql-arrays.ts) instead of one call per company or row; see docs/SCALE-AND-RELEASE-RULES.md rule 2 and ${CONTRACT}.`});
  });
@@ -146,8 +144,10 @@ describe('read-cost ratchets on the current tree (allowlists only shrink)',()=>{
  });
  it('gives every migration that rewrites access-rule text a scale timing test',()=>{
   const authority=load<string[]>('policy-authority.json').map(key=>key.split(' | ')[2].replace(/^.*\./,''));
-  const functions=new Set([...rc.policyStatementFunctions(root),...authority]);
-  expect(functions.size).toBeGreaterThan(50);
+  const statementFunctions=rc.policyStatementFunctions(root);
+  // Applied migrations are immutable, so the functions their policy statements name never shrink.
+  expect(statementFunctions.size).toBeGreaterThan(50);
+  const functions=new Set([...statementFunctions,...authority]);
   const rewrites=rc.policyRewriteMigrations(root,functions);
   const evidence=load<Record<string,string>>('policy-rewrite-evidence.json');
   const problems=Object.entries(evidence).map(([migration,test])=>rc.rewriteEvidenceProblem(root,migration,test)).filter((p):p is string=>p!==null);
