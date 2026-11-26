@@ -10217,7 +10217,18 @@
       "worksheetCustomRate": "所用的自定义税率",
       "worksheetCustomAmount": "由 HR 设定的每月固定金额",
       "worksheetCustomRateNote": "HR 为该员工设定了自定义税率，按非居民税率的方式用于本月薪酬。LHDN 没有为此发布计算工作表，因此上面各行就是完整的计算。",
-      "worksheetCustomFixedNote": "HR 为该员工设定了每月固定 PCB。没有进行任何计算：上面的金额就是扣除额，因此没有可对照的 LHDN 工作表。"
+      "worksheetCustomFixedNote": "HR 为该员工设定了每月固定 PCB。没有进行任何计算：上面的金额就是扣除额，因此没有可对照的 LHDN 工作表。",
+      "worksheetGroupHeading": "集团前雇主",
+      "worksheetGroupNote": "本税务年度较早月份在集团其他公司的收入，如同 TP3 表格作为前雇主收入计算。它们已包含在下方的合并行中。",
+      "worksheetGroupCompany": "公司及月份",
+      "worksheetGroupSourceImported": "来自导入薪资历史的月份",
+      "worksheetGroupSourceProcessed": "在薪资中处理的月份",
+      "worksheetGroupSourceMixed": "已导入及已处理的月份",
+      "worksheetGroupY": "该公司的应税薪资 — Y 的一部分",
+      "worksheetGroupEpf": "该公司的 EPF — K 的一部分",
+      "worksheetGroupPcb": "该公司已扣的 PCB — X 的一部分",
+      "worksheetGroupTp3": "TP3 表格",
+      "worksheetGroupTp3Replaced": "此公司由集团记录取代，不重复相加"
     },
     "multiCycleWorksheet": {
       "title": "多次发薪法定核对表",
@@ -36127,7 +36138,26 @@
     "employeeGroup": "员工组 {number}",
     "companyProgressFor": "{company} 的进度",
     "submittedBy": "提交人",
-    "submittedAt": "提交时间"
+    "submittedAt": "提交时间",
+    "groupOpeningTitle": "集团其他公司的年初至今",
+    "groupOpeningHelp": "本课税年度较早月份由集团其他公司支付给该员工的款项。薪资现在将其作为前雇主收入计入每月 PCB，与使用 TP3 表格的方式相同。仅显示合计；下方的重新计算仍只更正本公司自己的月份。",
+    "groupOpeningMissing": "这些月份暂时无法使用，因此该员工被暂扣以待所得税审核：{months}。",
+    "groupOpeningTp3Replaced": "该员工的 TP3 表格列出了一家集团公司。该公司的月份改为取自集团的薪资记录，因此不会重复计算。",
+    "groupOpeningTp3Conflict": "该员工的 TP3 表格将一家集团公司与另一雇主一并列出。金额无法分开，因此在 TP3 单独列出另一雇主之前，该员工被暂扣以待所得税审核。",
+    "groupOpeningCompany": "公司",
+    "groupOpeningMonths": "月份",
+    "groupOpeningSource": "来源",
+    "groupOpeningSources": {
+      "imported": "已导入",
+      "processed": "已处理",
+      "mixed": "已导入及已处理"
+    },
+    "groupOpeningTaxable": "应税薪资",
+    "groupOpeningPcb": "已扣 PCB",
+    "groupOpeningEpf": "EPF",
+    "groupOpeningLimits": "在集团其他公司已使用的豁免限额",
+    "groupOpeningUsed": "至今已使用",
+    "groupOpeningNoLimit": "无限额"
   },
   "entra": {
     "title": "Microsoft Entra ID",

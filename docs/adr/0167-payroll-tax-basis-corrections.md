@@ -90,3 +90,22 @@ did, and now also keep an additional run's Close shut. They join the same run
 through the existing selective reprocess add path once their history is
 corrected. Without the multi-cycle module, that path admits exactly the run's
 outstanding held employees and nothing else.
+
+## Amendment, 26 November 2026: automatic group TP3 (board 4ce2c481)
+
+The owner decided on 26 November 2026 ("Automatic group TP3") that live PCB/MTD at a company takes the same person's
+earlier months of the assessment year at the tenant's OTHER companies (imported or processed) as an automatic
+previous-employer opening, the role Form TP3 plays. The canonical effective tax basis of each contributing payslip is
+used (latest correction revision, otherwise an accepted ready import projection, otherwise the native stamp); a month
+with none holds the employee with the month named, through the same processing hold, draft readiness and reprocess
+readiness paths as an unreadable own history. A TP3 listing a contributing group company is replaced by that history;
+a TP3 listing such a company together with an outside employer holds, because its single total cannot be split. TP3s
+for employers outside the group, and the 23 November accepted-TP3-or-RM0 rule for them, are unchanged.
+
+Historical correction authority is unchanged: Recalculate Income Tax Value still corrects only the selected original
+employer's own months and its opening resolution is as above. Its preview gains a read-only "Year to date from other
+group companies" section (per contributing company: months, source, taxable pay, PCB, EPF, exemption use and remaining
+limit, missing months), attached outside the preview hash. Totals cross companies only through the definer
+`app.payroll_group_tax_opening` (migration 7520), gated by payroll administration of the selected or run company; no
+payslip line leaves it. Payrolls already processed are not changed by themselves; reprocessing the affected month
+applies the opening. EA/CP8A, CP39 and Form E stay per company.

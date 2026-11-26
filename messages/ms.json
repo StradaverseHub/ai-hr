@@ -10217,7 +10217,18 @@
       "worksheetCustomRate": "Kadar cukai tersuai yang digunakan",
       "worksheetCustomAmount": "Amaun bulanan tetap ditetapkan oleh HR",
       "worksheetCustomRateNote": "HR menetapkan kadar cukai tersuai untuk pekerja ini, digunakan pada saraan bulan ini seperti kadar Bukan Pemastautin. LHDN tidak menerbitkan lembaran kerja pengiraan untuknya, jadi baris di atas ialah keseluruhan pengiraan.",
-      "worksheetCustomFixedNote": "HR menetapkan PCB bulanan tetap untuk pekerja ini. Tiada apa yang dikira: amaun di atas ialah potongannya, jadi tiada lembaran kerja LHDN untuk dibandingkan."
+      "worksheetCustomFixedNote": "HR menetapkan PCB bulanan tetap untuk pekerja ini. Tiada apa yang dikira: amaun di atas ialah potongannya, jadi tiada lembaran kerja LHDN untuk dibandingkan.",
+      "worksheetGroupHeading": "Majikan kumpulan terdahulu",
+      "worksheetGroupNote": "Bulan-bulan terdahulu tahun cukai ini di syarikat lain dalam kumpulan, dikira sebagai pendapatan majikan terdahulu seperti Borang TP3. Ia sudah termasuk dalam baris gabungan di bawah.",
+      "worksheetGroupCompany": "Syarikat dan bulan",
+      "worksheetGroupSourceImported": "Bulan daripada Import Sejarah Gaji",
+      "worksheetGroupSourceProcessed": "Bulan yang diproses dalam gaji",
+      "worksheetGroupSourceMixed": "Bulan diimport dan diproses",
+      "worksheetGroupY": "Gaji bercukai di syarikat itu — sebahagian daripada Y",
+      "worksheetGroupEpf": "KWSP di syarikat itu — sebahagian daripada K",
+      "worksheetGroupPcb": "PCB dipotong di syarikat itu — sebahagian daripada X",
+      "worksheetGroupTp3": "Borang TP3",
+      "worksheetGroupTp3Replaced": "Digantikan oleh sejarah kumpulan bagi syarikat ini, tidak ditambah"
     },
     "multiCycleWorksheet": {
       "title": "Lembaran Kerja Berkanun Berbilang Kitaran",
@@ -36127,7 +36138,26 @@
     "employeeGroup": "Kumpulan pekerja {number}",
     "companyProgressFor": "Kemajuan untuk {company}",
     "submittedBy": "Dihantar oleh",
-    "submittedAt": "Dihantar"
+    "submittedAt": "Dihantar",
+    "groupOpeningTitle": "Tahun hingga kini daripada syarikat kumpulan lain",
+    "groupOpeningHelp": "Bulan-bulan terdahulu tahun taksiran ini yang dibayar kepada pekerja ini oleh syarikat lain dalam kumpulan. Gaji kini mengambil kira bulan-bulan itu dalam PCB bulanan sebagai pendapatan majikan terdahulu, seperti Borang TP3 digunakan. Jumlah sahaja; pengiraan semula di bawah masih membetulkan bulan-bulan syarikat ini sendiri.",
+    "groupOpeningMissing": "Bulan-bulan ini belum boleh digunakan, jadi pekerja ditahan untuk semakan cukai pendapatan: {months}.",
+    "groupOpeningTp3Replaced": "Borang TP3 pekerja menyenaraikan syarikat kumpulan. Bulan-bulannya diambil daripada sejarah gaji kumpulan, jadi tidak dikira dua kali.",
+    "groupOpeningTp3Conflict": "Borang TP3 pekerja menyenaraikan syarikat kumpulan bersama majikan lain. Amaun tidak dapat dipisahkan, jadi pekerja ditahan untuk semakan cukai pendapatan sehingga TP3 menyenaraikan majikan lain itu secara berasingan.",
+    "groupOpeningCompany": "Syarikat",
+    "groupOpeningMonths": "Bulan",
+    "groupOpeningSource": "Sumber",
+    "groupOpeningSources": {
+      "imported": "Diimport",
+      "processed": "Diproses",
+      "mixed": "Diimport dan diproses"
+    },
+    "groupOpeningTaxable": "Gaji bercukai",
+    "groupOpeningPcb": "PCB dipotong",
+    "groupOpeningEpf": "KWSP",
+    "groupOpeningLimits": "Had pengecualian yang digunakan di syarikat kumpulan lain",
+    "groupOpeningUsed": "Digunakan setakat ini",
+    "groupOpeningNoLimit": "Tiada had"
   },
   "entra": {
     "title": "Microsoft Entra ID",

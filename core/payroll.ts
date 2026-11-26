@@ -19,6 +19,7 @@ import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proratio
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {processingTaxHoldsTx,runTaxSkippedSql,taxHeldRowsTx,type TaxHeldEmployee} from './payroll-tax-holds';
+import {assertGroupTaxOpeningUsable,groupTaxHoldsTx,groupTaxOpeningStamp,groupTaxOpeningTx,groupTaxPriorSlips} from './payroll-group-tax-opening';
 import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource} from './payroll-tax-basis-read';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
@@ -3425,12 +3426,20 @@ export async function prefillTp1FromSelfRelief(
           .where(
             and(
               inArray(payslip.employmentId, targetEmpIds),
+              // Board 4ce2c481 — the SAME rule as generatePayslipsTx's ∑LP-fed replay: this company's own months here,
+              // and the other group companies' months below through the group opening (totals only). Without the
+              // company filter this read counted whatever other company's payslips the operator happened to be able
+              // to see, so the prefill and the run could disagree about one declaration.
+              eq(payrollBatch.companyId, batch.companyId),
               like(payrollBatch.payPeriod, `${pYear}-%`),
               lt(payrollBatch.payPeriod, batch.payPeriod),
             ),
           )
       : [];
     const lpAccByEmp = new Map<string, number>();
+    for (const [employmentId, opening] of await groupTaxOpeningTx(tx, {runCompanyId: batch.companyId, payPeriod: batch.payPeriod, employmentIds: targetEmpIds})) {
+      for (const m of opening.months) lpAccByEmp.set(employmentId, round2((lpAccByEmp.get(employmentId) ?? 0) + m.tp1Lp));
+    }
     for (const s of priorSlips) {
       const st = (s.statutory ?? {}) as { lpDetail?: { tp1?: number } };
       // ⚠️ THE TP1 PORTION ONLY — NOT `st.lp` (item 3fa088fb, corrected in review). `st.lp` is
@@ -5273,6 +5282,15 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // (auto-apply by month). Folded into deductions + stamped onto statutory.cp38 below; an additional run
     // re-charges nothing (handled per-employee with isAdditionalRun, like slipUnpaid/hrdf).
     const cp38ByEmp = await cp38ForPeriod(tx, empIds, payPeriod);
+    // Board 4ce2c481 ("Automatic group TP3", owner decision 26 November 2026) — the same person's earlier months this
+    // assessment year at OTHER companies of the group (imported or processed) open this company's accumulators the way a
+    // Form TP3 does. The replay below stays this company's own; the group months are folded beside it in period order
+    // through the same pack fold. Totals per company and month only, one statement for the chunk, through the definer
+    // (core/payroll-group-tax-opening.ts carries the rule). A month without a usable tax basis, or a TP3 that lists a
+    // group company with an outside employer, refuses here exactly as an unreadable own history does; a processing chunk
+    // has already held those employees (core/payroll-tax-holds.ts asks the same reader).
+    const groupOpeningByEmp = await groupTaxOpeningTx(tx, {runCompanyId: batch.companyId, payPeriod, employmentIds: empIds});
+    for (const e of emps) assertGroupTaxOpeningUsable(groupOpeningByEmp.get(e.employmentId), e.tp3Year === pYear);
     const priorSlips = empIds.length
       ? await tx
           .select({
@@ -5323,7 +5341,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       // for every column: the one capped EPF figure that keeps Y − K = Σ(Y−K), ∑LP as the fourth
       // variable a TP3 feeds (spec printed p.22), and Y reconstructed from the two stored columns rather
       // than stored a third time.
-      const tp3Applies = e.tp3Year === pYear;
+      // 4ce2c481 — a TP3 that lists a contributing group company is REPLACED by that company's history, never added.
+      const tp3Applies = e.tp3Year === pYear && groupOpeningByEmp.get(e.employmentId)?.tp3 !== 'replaced';
       accByEmp.set(
         e.employmentId,
         pack.payroll.openingAccumulatorsFromTp3(
@@ -5372,7 +5391,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // same month any number of times consumes the previous employer's exemption exactly once (the
     // reporter's Expected Function point 9, which needs no mechanism — see `projectSeedOntoStatutory`).
     for (const e of emps) {
-      if (e.tp3Year !== pYear) continue;
+      if (e.tp3Year !== pYear || groupOpeningByEmp.get(e.employmentId)?.tp3 === 'replaced') continue;
       const opening = e.tp3ExemptionUsed;
       if (opening == null) continue;
       const seeded: Record<string, number> = {};
@@ -5391,7 +5410,19 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     // payslips exactly as `lpFedByEmp` replays Section C. It is what turns the rebate into a self-
     // correcting delta rather than a figure that can be missed or applied twice; see `tp1RebateByEmp`.
     const rebateFedByEmp = new Map<string, number>();
-    for (const s of priorSlips) {
+    // 4ce2c481 — the group months enter the SAME fold, in period order and before this company's own slip of the same
+    // month (a company the person left), so Y, Σ(Y−K), the cumulative EPF relief cap, K, X, Z, ∑LP and the annual
+    // exemption ledger carry on across companies exactly as if the person had never moved. The TP1 part and the zakat
+    // rebate they carry count as already fed: the TP1 declaration is the person's, one per assessment year, so feeding it
+    // again at the new company would give the relief twice.
+    const groupPrior = emps.flatMap((e) => groupTaxPriorSlips(groupOpeningByEmp.get(e.employmentId)).map((g) => ({
+      id: `group:${g.group.companyId}:${g.period}`, employmentId: e.employmentId, period: g.period, gross: String(g.gross),
+      statutory: g.statutory as unknown, group: true as const,
+    })));
+    const foldSlips = groupPrior.length
+      ? [...groupPrior, ...priorSlips].sort((a, b) => a.period.localeCompare(b.period) || Number('group' in b) - Number('group' in a) || a.id.localeCompare(b.id))
+      : priorSlips;
+    for (const s of foldSlips) {
       const acc = accByEmp.get(s.employmentId);
       if (!acc) continue;
       const st = (s.statutory ?? {}) as { zakatRebateTp1?: number; exemptionUsed?: Record<string, number>; lpDetail?: { tp1?: number } };
@@ -5505,6 +5536,12 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
       if(!saved){cur.complete=false;continue;}
       cur.bik=round2(cur.bik+saved.owned.bik);cur.vola=round2(cur.vola+saved.owned.vola);
+    }
+    // 4ce2c481 — the group months' own BIK/VOLA accumulate the same way; a month that saved no non-cash snapshot is as
+    // incomplete as one of this company's would be.
+    for(const [employmentId,opening] of groupOpeningByEmp){
+      const cur=accumulatedNonCashByEmp.get(employmentId); if(!cur)continue;
+      for(const m of opening.months){cur.bik=round2(cur.bik+m.bik);cur.vola=round2(cur.vola+m.vola);if(!m.noncashComplete)cur.complete=false;}
     }
     if (isAdditionalRun || restatesMonth || postEmploymentIds.size>0) {
       const earlier = await tx
@@ -7994,7 +8031,9 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
         taxBasisImportedSources:taxOpeningPrefix.filter(source=>source.employmentId===e.employmentId&&source.importRevision!==null).map(source=>({payslipId:source.id,sourceHash:hashTaxBasisSource(source),importRevision:source.importRevision})),
         taxBasisOpeningSource:{version:1,year:pYear,employmentId:e.employmentId,companyId:batch.companyId,prefix:taxOpeningPrefix.filter(source=>source.employmentId===e.employmentId).map(source=>({payslipId:source.id,sourceHash:hashTaxBasisSource(source)}))},
         taxBasisOpeningExemptionYear: pYear,
-        taxBasisOpeningExemptionUsed: e.tp3Year === pYear
+        // 4ce2c481 — the TP3 opening actually applied: none when the group history replaced it.
+        ...(groupTaxOpeningStamp(groupOpeningByEmp.get(e.employmentId)) ? {groupTaxOpening: groupTaxOpeningStamp(groupOpeningByEmp.get(e.employmentId))} : {}),
+        taxBasisOpeningExemptionUsed: e.tp3Year === pYear && groupOpeningByEmp.get(e.employmentId)?.tp3 !== 'replaced'
           ? Object.fromEntries(Object.entries(e.tp3ExemptionUsed ?? {}).map(([code,amount]) => [code,round2(Number(amount ?? 0))] as const).filter(([,amount]) => amount > 0))
           : {},
         ...(replayedTaxSourcesByEmp.has(e.employmentId) ? {replayedTaxSources:replayedTaxSourcesByEmp.get(e.employmentId)} : {}),
@@ -11199,6 +11238,8 @@ async function reprocessTaxReadinessTx(tx:Tx,ctx:SessionContext,batch:ReprocessT
     for(const [id,reason] of await readTaxBasisFailuresTx(tx,ctx,current.map(source=>source.id),{reprocess:{kind:'current',recordCorrection:()=>{}}})){
       if(!failures.has(id))failures.set(id,reason);
     }
+    // Board 4ce2c481 — the group opening the reprocess will read: the same holds as processing, before anything is reset.
+    for(const [id,hold] of await groupTaxHoldsTx(tx,batch.companyId,batch.payPeriod,[...members]))if(!failures.has(id))failures.set(id,hold.reason);
     const canReviewTax=await resolvePayrollPermission(tx,ctx,'payroll.tax-basis.view',batch.companyId);
     // Read only the reviewed status and explanation. The preview also contains wage figures that this
     // screen does not need. A worker's employee checkpoint and published correction commit together.

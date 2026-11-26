@@ -260,12 +260,16 @@ describe('authorized immutable historical income tax corrections',()=>{
   await expect(confirm(p)).rejects.toThrow(/access/);expect(await listTaxBasisBatches(narrowed)).toEqual([]);
   await expect(previewTaxBasisRecalculation(ctx,{...selection(),companyId:randomUUID()})).rejects.toThrow(/access|unavailable/);
  });
- it('retains original employer scope after a transfer without borrowing destination history',async()=>{
+ // Updated deliberately for the owner decision of 26 November 2026 ("Automatic group TP3", board 4ce2c481). Live PCB now
+ // takes the same person's EARLIER months at other group companies as a previous-employer opening, and the preview shows
+ // them read-only. Correction authority is unchanged: the original employer still corrects only its own months, and a
+ // company the person moved to LATER is never shown or used as earlier history.
+ it('retains original employer scope after a transfer and never takes later destination history as an opening',async()=>{
   const other=await createCompany(ctx,{legalName:'Fictional destination employer',country:'MY',currency:'MYR'});
   await owner.db.update(schema.employment).set({companyId:other.id}).where(eq(schema.employment.id,employee));
   const originalCompanyOnly={...ctx,grants:[{role:'hr_admin',companyId:b.companyId}]};
   const options=await taxBasisOptions(originalCompanyOnly);expect(options.employees).toContainEqual(expect.objectContaining({id:employee,companyId:b.companyId}));
-  const p=await previewTaxBasisRecalculation(originalCompanyOnly,selection());expect(p.employees[0].status).toBe('ready');const batch=await confirmTaxBasisRecalculation(originalCompanyOnly,{previewId:p.previewId,previewHash:p.previewHash});expect((await getTaxBasisBatch(ctx,batch.id))?.completedCount).toBe(1);
+  const p=await previewTaxBasisRecalculation(originalCompanyOnly,selection());expect(p.employees[0].status).toBe('ready');expect(p.employees[0].groupOpening).toBeUndefined();const batch=await confirmTaxBasisRecalculation(originalCompanyOnly,{previewId:p.previewId,previewHash:p.previewHash});expect((await getTaxBasisBatch(ctx,batch.id))?.completedCount).toBe(1);
   await expect(previewTaxBasisRecalculation(originalCompanyOnly,{...selection(),companyId:other.id,employmentIds:null})).rejects.toThrow(/access|unavailable/);
   const destination=await previewTaxBasisRecalculation(ctx,{...selection(),companyId:other.id,employmentIds:null});expect(destination.employees).toEqual([]);
  });
