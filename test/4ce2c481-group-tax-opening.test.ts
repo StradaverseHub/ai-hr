@@ -248,7 +248,7 @@ describe('Recalculate Income Tax Value opens from the same group usage as proces
     // The recalculation of B's year: the same allocation month by month, the same limits, for the moved employee and the control.
     const preview = await previewTaxBasisRecalculation(ctx, {companyId: coB, year: 2026, upToMonth: 11, employmentIds: [moved.employmentId, control.employmentId]});
     const movedRow = preview.employees.find(e => e.id === moved.employmentId)!, controlRow = preview.employees.find(e => e.id === control.employmentId)!;
-    expect(movedRow.status).not.toBe('blocked');
+    for (const row of [movedRow, controlRow]) expect(row.status, JSON.stringify({name: row.name, reason: row.reason, missing: row.missingEvidence, hold: row.holdReason})).not.toBe('blocked');
     const nonzero = (u: Record<string, number>) => Object.fromEntries(Object.entries(u).filter(([, v]) => Number(v) !== 0));
     const byPeriod = (row: typeof movedRow, period: string) => nonzero(row.months.find(m => m.period === period)!.basis.exemptionUsed);
     for (const [period, batchId] of [['2026-10', october], ['2026-11', november]] as const) {
