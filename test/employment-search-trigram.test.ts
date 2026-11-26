@@ -222,6 +222,8 @@ describe('employee search trigram candidates (7320)',()=>{
    return {ms,buffers,jit};
   };
   const median=(xs:number[])=>[...xs].sort((x,y)=>x-y)[Math.floor(xs.length/2)];
+  /** The most a declined candidates call may add to the search, in shared buffers. */
+  const DECLINED_BUFFERS=500;
   const ROUNDS=9;
   type Search={now:Captured[];before:Captured[];narrowed:boolean};
   const cases:{caller:string;ctx:SessionContext;screen:string;search:Search}[]=[];
@@ -243,6 +245,17 @@ describe('employee search trigram candidates (7320)',()=>{
   }
   const failures:string[]=[];
   for(const c of cases){
+   const asked=c.search.now.length>c.search.before.length;
+   const callers=c.search.now.filter(s=>!CANDIDATES.test(s.sql.trim()));
+   if(!asked||!c.search.narrowed){
+    // Not narrowed: the caller's statements are exactly the read before 7320 (same text and parameters), which is
+    // the primary proof; only a declined call adds the candidates statement, whose cost is bounded below.
+    expect(callers.map(s=>[s.sql,s.params]),`${c.caller} ${c.screen}: the read before 7320`).toEqual(c.search.before.map(s=>[s.sql,s.params]));
+   }
+   if(!asked){
+    console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:false,asked:false,statements:c.search.now.length,identical:true}));
+    continue;
+   }
    const identity=await identityOf(c.ctx);
    const runs={before7320:{ms:[] as number[],buffers:[] as number[]},now7530:{ms:[] as number[],buffers:[] as number[]}};
    const jit=new Set<string>();
@@ -259,10 +272,15 @@ describe('employee search trigram candidates (7320)',()=>{
    expect([...jit],`${c.caller} ${c.screen}: JIT as the app sets it`).toEqual(['off']);
    const row={before7320:{medianMs:Math.round(median(runs.before7320.ms)*100)/100,buffers:median(runs.before7320.buffers)},
     now7530:{medianMs:Math.round(median(runs.now7530.ms)*100)/100,buffers:median(runs.now7530.buffers)}};
-   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:c.search.narrowed,asked:c.search.now.length>c.search.before.length,statements:c.search.now.length,jit:[...jit].join(','),...row}));
-   // No slower than before 7320, with 1 ms (or 10 %) for runner noise between interleaved medians.
-   const allowance=Math.max(1,row.before7320.medianMs*0.1);
-   if(row.now7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.now7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);
+   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:c.search.narrowed,asked,statements:c.search.now.length,jit:[...jit].join(','),...row}));
+   // Primary, deterministic: shared buffers. A narrowed search reads no more than the read before 7320; a declined call
+   // adds only its own bounded checks (one index-planned count, the scope's authority questions: about 100 buffers
+   // measured, 45810044527).
+   const extra=row.now7530.buffers-row.before7320.buffers;
+   if(c.search.narrowed?extra>0:extra>DECLINED_BUFFERS)failures.push(`${c.caller} ${c.screen}: ${row.now7530.buffers} buffers against ${row.before7320.buffers} before 7320`);
+   // Secondary, a ceiling only: runner timing. Identical statements measured up to +17% between interleaved medians
+   // on shared runners (slot 7 focused run 45829033597, six cases with equal buffers), so +25% or +3 ms.
+   if(row.now7530.medianMs>row.before7320.medianMs*1.25+3)failures.push(`${c.caller} ${c.screen}: ${row.now7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320 (+25% +3 ms)`);
   }
   expect(failures).toEqual([]);
  },900_000);
