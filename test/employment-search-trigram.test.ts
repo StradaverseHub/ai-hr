@@ -126,6 +126,15 @@ describe('employee search trigram candidates (7320)',()=>{
     for(const id of await directoryExpected(ctx,[...fixture.companyIds,...await allCompanies(ctx)],q))
      expect(candidates.includes(id),`${name}/${q}: visible match ${id} is a candidate`).toBe(true);
    }
+   // A caller naming one company (at most 1,000 employments) takes 7530's direct path: the same two guarantees there.
+   const scoped=[fixture.singleCompanyId];
+   const scopedVisible=new Set((await withTenant(ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment).where(sql`${schema.employment.companyId}=${fixture.singleCompanyId}`))).map(r=>r.id));
+   for(const q of ['tan','fictional','fx-0']){
+    const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,${'{'+scoped.join(',')+'}'}::uuid[],true) as ids`));
+    const candidates=row.ids??[];
+    expect(candidates.every(id=>scopedVisible.has(id)),`${name}/${q}: one company, only visible employments of it`).toBe(true);
+    for(const id of await directoryExpected(ctx,scoped,q))expect(candidates.includes(id),`${name}/${q}: one company, visible match ${id} is a candidate`).toBe(true);
+   }
    expect(isNarrowableEmploymentSearch('am')).toBe(false);
    const [none]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates('am',null::uuid[],true) as ids`));
    expect(none.ids,`${name}: a 2-character term is not narrowed`).toBeNull();
@@ -193,16 +202,17 @@ describe('employee search trigram candidates (7320)',()=>{
   };
   /** Execution plus planning ms and shared buffers of the statements, one EXPLAIN (ANALYZE, BUFFERS) each, as the caller. */
   const timed=async(identity:Captured,statements:Captured[],variant:Variant)=>{
-   let ms=0,buffers=0;
+   let ms=0,buffers=0,jit='';
    await client.begin(async tx=>{
     await tx.unsafe(identity.sql,identity.params as never[]);
+    jit=((await tx.unsafe(`select current_setting('jit') as jit`))[0] as {jit:string}).jit;
     for(const s of statements){
      const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${variants[variant](s.sql)}`,s.params as never[]);
      const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number};'Execution Time':number;'Planning Time':number}];
      ms+=plan['Execution Time']+plan['Planning Time'];buffers+=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
     }
    });
-   return {ms,buffers};
+   return {ms,buffers,jit};
   };
   const median=(xs:number[])=>[...xs].sort((x,y)=>x-y)[Math.floor(xs.length/2)];
   const ROUNDS=9;
@@ -223,14 +233,17 @@ describe('employee search trigram candidates (7320)',()=>{
   for(const c of cases){
    const identity=await identityOf(c.ctx);
    const runs:Record<Variant,{ms:number[];buffers:number[]}>={before7320:{ms:[],buffers:[]},body7320:{ms:[],buffers:[]},body7530:{ms:[],buffers:[]}};
+   const jit=new Set<string>();
    const order:Variant[]=['before7320','body7320','body7530'];
    for(let round=0;round<ROUNDS;round++)for(let i=0;i<order.length;i++){
     const variant=order[(round+i)%order.length];
     const r=await timed(identity,c.statements,variant);
-    runs[variant].ms.push(r.ms);runs[variant].buffers.push(r.buffers);
+    runs[variant].ms.push(r.ms);runs[variant].buffers.push(r.buffers);jit.add(r.jit);
    }
    const row=Object.fromEntries(order.map(v=>[v,{medianMs:Math.round(median(runs[v].ms)*100)/100,buffers:median(runs[v].buffers)}])) as Record<Variant,{medianMs:number;buffers:number}>;
-   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,statements:c.statements.length,...row}));
+   // The app's identity statement turns JIT off for every transaction (db/client.ts), so every variant runs as the app runs it.
+   expect([...jit],`${c.caller} ${c.screen}: JIT as the app sets it`).toEqual(['off']);
+   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,statements:c.statements.length,jit:[...jit].join(','),...row}));
    // No slower than before 7320, with 1 ms (or 10 %) for runner noise between interleaved medians.
    const allowance=Math.max(1,row.before7320.medianMs*0.1);
    if(row.body7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.body7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);

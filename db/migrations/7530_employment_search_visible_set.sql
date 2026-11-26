@@ -17,7 +17,9 @@
 -- tenant), so the two are equal. 7530 asks the cheap company question first, inside the search statement, and asks
 -- for the relationship part only when some match lies outside those companies: an administrator whose companies hold
 -- every match never builds a visible set inside the function, and anyone else builds only the relationship part
--- (which 7320 also built, inside visible_employment_ids). Signature, volatility, owner, search_path, grants, the
+-- (which 7320 also built, inside visible_employment_ids). A caller that names companies holding at most 1,000
+-- employments gets the same patterns tested on those employments directly (the read before 7320), because the
+-- tenant-wide trigram search costs more than that for a small company. Signature, volatility, owner, search_path, grants, the
 -- NULL answer for unnarrowed terms and the sorted result are unchanged. The single statement between the $search$
 -- markers is the one test/employment-search-trigram explains, now with the read companies as $4.
 DO $guard$
@@ -60,6 +62,22 @@ DECLARE
   WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL
    AND ($2 IS NULL OR e.company_id = ANY ($2))
  $search$;
+ -- A caller that names a few companies: test the same patterns on their employments directly (what the callers read
+ -- before 7320), rather than the tenant-wide trigram matches. Same columns, patterns and non-ASCII rule as above.
+ v_scoped constant text := $scoped$
+  SELECT coalesce(array_agg(e.id ORDER BY e.id) FILTER (WHERE e.company_id = ANY ($4)), '{}'::uuid[]),
+   coalesce(array_agg(e.id ORDER BY e.id) FILTER (WHERE NOT (e.company_id = ANY ($4))), '{}'::uuid[])
+  FROM public.employment e JOIN public.person p ON p.id = e.person_id AND p.tenant_id = e.tenant_id
+  WHERE e.tenant_id = app.current_tenant_id() AND e.voided_at IS NULL AND e.company_id = ANY ($2)
+   AND (lower(p.full_name COLLATE "C") LIKE $1 OR lower(coalesce(e.employee_code, '') COLLATE "C") LIKE $1
+    OR ($3 AND lower(coalesce(p.primary_email, '') COLLATE "C") LIKE $1)
+    OR (p.full_name COLLATE "C") ~ '[^ -~]' OR (coalesce(e.employee_code, '') COLLATE "C") ~ '[^ -~]'
+    OR ($3 AND (coalesce(p.primary_email, '') COLLATE "C") ~ '[^ -~]'))
+ $scoped$;
+ -- Up to this many employments in the named companies, the direct test is cheaper than the tenant-wide trigram search.
+ v_scope_limit constant integer := 1000;
+ v_scope integer;
+ v_read uuid[];
  v_inside uuid[];
  v_outside uuid[];
  v_relationship uuid[];
@@ -70,7 +88,16 @@ BEGIN
  END IF;
  -- The callers' own pattern: lower case, with \, % and _ matched literally (LIKE's default escape is \).
  v_pattern := '%' || replace(replace(replace(lower(p_query COLLATE "C"), '\', '\\'), '%', '\%'), '_', '\_') || '%';
- EXECUTE v_search INTO v_inside, v_outside USING v_pattern, p_companies, coalesce(p_email, false), app.employment_read_companies();
+ v_read := app.employment_read_companies();
+ IF p_companies IS NOT NULL THEN
+  SELECT count(*) INTO v_scope FROM (SELECT 1 FROM public.employment e
+   WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (p_companies) AND e.voided_at IS NULL LIMIT v_scope_limit + 1) s;
+ END IF;
+ IF v_scope IS NOT NULL AND v_scope <= v_scope_limit THEN
+  EXECUTE v_scoped INTO v_inside, v_outside USING v_pattern, p_companies, coalesce(p_email, false), v_read;
+ ELSE
+  EXECUTE v_search INTO v_inside, v_outside USING v_pattern, p_companies, coalesce(p_email, false), v_read;
+ END IF;
  IF cardinality(v_outside) = 0 THEN
   RETURN v_inside;
  END IF;
