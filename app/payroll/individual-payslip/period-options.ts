@@ -279,6 +279,69 @@ export function resolvePayslipSelection(runs: readonly PayslipRun[], req: Paysli
   return describes(pool[0]);
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════════════════════════
+ * 1ebba97e — THE "Matching payroll runs" ROW IS GONE, AND ITS ONE JOB MOVED INTO THE PAYROLL CYCLE BOX.
+ *
+ * That row (a strip of run buttons under the filters) appeared whenever the month on screen held more
+ * than one run, and it was the only way to open the second one. The reporter asked for the row to go. It
+ * could only go once nothing became unreachable, so the Payroll Cycle select now carries ONE OPTION PER
+ * RUN for exactly the runs a cycle option cannot tell apart:
+ *
+ *   - two or more runs under the SAME configured cycle in that month (a re-issued Commission run), and
+ *   - every run under NO configured cycle (`payroll_cycle_id` null: the run type and run number are all
+ *     that separate a Monthly run from a Bonus run, and "All" opens only the newest of them),
+ *
+ * but only when the month holds more than one run. A month with one run gets exactly the options it had
+ * before, because "All" and its cycle already reach that one payslip.
+ *
+ * THE OPTION CARRIES THE PAYSLIP ID, prefixed so it can never be mistaken for a configured cycle's id (both
+ * are UUIDs). A <select> cannot set a second hidden field without script, so the id rides in the value the
+ * form already posts. The page resolves it with `resolvePayslipSelection`, which honours a payslip id only
+ * among the runs matching the company / year / month that came with it — the same company fence, and a
+ * stale run choice left over from another month is dropped rather than answered with an empty screen.
+ * ══════════════════════════════════════════════════════════════════════════════════════════════════ */
+
+const RUN_OPTION_PREFIX = 'payslip:';
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** The Payroll Cycle option value that names ONE run, by its payslip. */
+export function payslipRunOptionValue(payslipId: string): string {
+  return `${RUN_OPTION_PREFIX}${payslipId}`;
+}
+
+/** The inverse: the payslip id a run option names, or undefined for a configured cycle id, "All" or junk.
+ *  Shape-checked only — whether that payslip may be shown is decided against the fenced runs, never here. */
+export function parsePayslipRunOption(v: string | undefined): string | undefined {
+  if (!v || !v.startsWith(RUN_OPTION_PREFIX)) return undefined;
+  const id = v.slice(RUN_OPTION_PREFIX.length);
+  return UUID.test(id) ? id : undefined;
+}
+
+/**
+ * The runs in the company / year / month on screen that need their own Payroll Cycle option, ascending by
+ * run number (the order they happened in). Empty unless all three are known and the month holds more than
+ * one run.
+ *
+ * @param cycleOptionIds the configured cycle ids the box already offers. A run whose cycle is not among
+ *                       them has no option of its own, so it is treated like a run with no cycle.
+ */
+export function payslipRunsNeedingOwnOption<R extends PayslipRun>(
+  runs: readonly R[],
+  shown: { companyId?: string; year?: number; month?: number },
+  cycleOptionIds: ReadonlySet<string>,
+): R[] {
+  if (!shown.companyId || shown.year == null || shown.month == null) return [];
+  const here = runs.filter((r) => WELL_FORMED.test(r.payPeriod) && r.companyId === shown.companyId &&
+    yearOf(r) === shown.year && monthOf(r) === shown.month);
+  if (here.length < 2) return [];
+  const cycleOf = (r: R) => (r.payrollCycleId && cycleOptionIds.has(r.payrollCycleId) ? r.payrollCycleId : '');
+  const perCycle = new Map<string, number>();
+  for (const r of here) perCycle.set(cycleOf(r), (perCycle.get(cycleOf(r)) ?? 0) + 1);
+  return here
+    .filter((r) => cycleOf(r) === '' || (perCycle.get(cycleOf(r)) ?? 0) > 1)
+    .sort((a, b) => a.runSeq - b.runSeq || a.payslipId.localeCompare(b.payslipId));
+}
+
 /**
  * The Company list: every company this employee actually holds a payslip in — NOT the reader's whole
  * scope, which was the r209 gap on this box. Company sits at the top of the hierarchy and is narrowed by
