@@ -13,7 +13,7 @@ export type TaxBasisPartialMonth={payslipId:string;period:string;items:{code:str
  * no_tp3_default_zero is the 20 November label kept only so earlier saved results still read. */
 export type TaxOpeningSource='saved_payslip'|'accepted_tp3'|'no_accepted_tp3';
 export type TaxBasisOpening={source:TaxOpeningSource;used:Record<string,number>;tp3?:{kind:'form'|'statutory_projection';id:string|null;revision:string};previousEmployerDeclared?:boolean};
-export type TaxBasisHoldReason='saved_evidence_conflict'|'access_insufficient';
+export type TaxBasisHoldReason='saved_evidence_conflict'|'access_insufficient'|'group_history_unavailable';
 /** One Pay Item's draw on one annual exemption limit, in replay order. Calculated by the country pack; display only. */
 export type TaxBasisLedgerEntry={payslipId:string;period:string;itemCode:string;itemName:string;code:string;cap:number;usedBefore:number;remainingBefore:number;eligible:number;exempt:number;excess:number;usedAfter:number;remainingAfter:number};
 export type TaxBasisLedgerCode={code:string;cap:number;openingUsed:number;openingSource:TaxOpeningSource|null;eligible:number;exempt:number;excess:number;usedAfter:number;remaining:number;items:{code:string;name:string}[]};

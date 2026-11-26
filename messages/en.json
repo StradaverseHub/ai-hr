@@ -35922,7 +35922,8 @@
     "exemptionLimitsNotRecorded": "Annual exemption limit detail was not recorded for this result.",
     "holdReasons": {
       "saved_evidence_conflict": "The saved payslip records disagree about how much of the annual exemption limits a previous employer used. Review the saved records, then preview again.",
-      "access_insufficient": "You are not allowed to see this employee's tax details, so the previous employer's exemption use cannot be checked. Ask someone who administers this employee's payroll to run it."
+      "access_insufficient": "You are not allowed to see this employee's tax details, so the previous employer's exemption use cannot be checked. Ask someone who administers this employee's payroll to run it.",
+      "group_history_unavailable": "Some of this employee's earlier income tax history at another group company cannot be used yet, so the exemption limits already used there are unknown. The reason is shown above. Resolve it, then preview again."
     },
     "boundsTitle": "Figures that are certain",
     "boundsHelp": "Shown for review only. These ranges are not saved and cannot be confirmed.",

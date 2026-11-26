@@ -22,7 +22,8 @@ import {setStatutoryProfileMY} from '../localization/my/statutory';
 import {createBatch, generatePayslips} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload, confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
-import {previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
+import {confirmTaxBasisRecalculation, getTaxBasisBatch, previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
+import {listPayComponents, seedPayComponentCatalog, setEmploymentPayComponent, upsertPayComponent} from '../core/pay-components';
 import {payrollProcessJobHandler, requestPayrollProcessing} from '../core/payroll-processing-job';
 import {groupTaxOpeningTx, groupTp3Outcome, readGroupTaxOpeningStamp, summarizeGroupTaxOpening, groupTaxPriorSlips} from '../core/payroll-group-tax-opening';
 import {explainPcb, pcbWorksheet} from '../core/pcb-explain';
@@ -202,6 +203,73 @@ describe('a same-employment transfer: A imported January to September, B native 
     expect(await pcbOf(october, moved.employmentId)).toBe(await pcbOf(october, control.employmentId));
     expect(readGroupTaxOpeningStamp((await slipOf(october, moved.employmentId)).statutory)?.tp3).toBe('replaced');
     expect(((await slipOf(october, moved.employmentId)).statutory as {taxBasisOpeningExemptionUsed?: unknown}).taxBasisOpeningExemptionUsed).toEqual({});
+  }, 180000);
+});
+
+describe('Recalculate Income Tax Value opens from the same group usage as processing', () => {
+  it('A imported January to September, B native October and November: the recalculation of B gives the processed limits, as the single-employer control does', async () => {
+    // A travel allowance capped at the annual PCB_TRA_BUSINESS limit, paid RM600 every month all year.
+    await seedPayComponentCatalog(ctx);
+    await upsertPayComponent(ctx, {label: 'Travel allowance', code: 'TRV', name: 'Travel allowance', kind: 'allowance', includedInEpf: true, includedInSocsoEis: true,
+      includedInPcb: true, includedInHrdfBase: false, isNonPayable: false, prorates: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TRA_BUSINESS'});
+    await setModule(b.tenantId, 'typed_pay_components', 'active');
+    ctx = await entitledCtx(b);
+    const idOf = async (code: string) => (await listPayComponents(ctx, {includeArchived: true})).find(c => c.code === code)!.id;
+    const moved = await hire('0007', 'Fictional Chang', '850505055555', b.companyId, b.deptA);
+    const control = await hire('0008', 'Fictional Lim', '850606065555', coB, deptB);
+    for (const e of [moved, control]) {
+      await setEmploymentPayComponent(ctx, {employmentId: e.employmentId, componentId: await idOf('BASIC'), amount: 5000, effectiveFrom: '2025-01-01'});
+      await setEmploymentPayComponent(ctx, {employmentId: e.employmentId, componentId: await idOf('TRV'), amount: 600, effectiveFrom: '2026-10-01'});
+    }
+    await importHistory(historyRows('0007', 'COA', months(1, 9), [['TRV', '600']]));
+    await importHistory(historyRows('0008', 'COB', months(1, 9), [['TRV', '600']]));
+    // Each original employer reviews its own imported months (RM0 opening, no TP3): RM5,400 of the RM6,000 limit used.
+    for (const [companyId, e] of [[b.companyId, moved], [coB, control]] as const) {
+      const p = await previewTaxBasisRecalculation(ctx, {companyId, year: 2026, upToMonth: 9, employmentIds: [e.employmentId]});
+      expect(p.employees[0].status).toBe('ready');
+      const batch = await confirmTaxBasisRecalculation(ctx, {previewId: p.previewId, previewHash: p.previewHash});
+      expect((await getTaxBasisBatch(ctx, batch.id))?.completedCount).toBe(1);
+    }
+    await createMovementEvent(ctx, {employmentId: moved.employmentId, kind: 'entityTransfer', effectiveDate: '2026-10-01', companyId: coB, departmentId: deptB});
+    const october = await run(coB, '2026-10');
+    const november = await run(coB, '2026-11');
+    const used = async (batchId: string, employmentId: string) => Object.fromEntries(Object.entries((((await slipOf(batchId, employmentId)).statutory) as {exemptionUsed?: Record<string, number>}).exemptionUsed ?? {}).filter(([, v]) => Number(v) !== 0));
+    // Processing: the RM600 left goes in October, nothing in November, for both.
+    expect(await used(october, moved.employmentId)).toEqual({PCB_TRA_BUSINESS: 600});
+    expect(await used(november, moved.employmentId)).toEqual({});
+    for (const batchId of [october, november]) {
+      expect(await used(batchId, moved.employmentId)).toEqual(await used(batchId, control.employmentId));
+      expect(await pcbOf(batchId, moved.employmentId)).toBe(await pcbOf(batchId, control.employmentId));
+    }
+
+    // The recalculation of B's year: the same allocation month by month, the same limits, for the moved employee and the control.
+    const preview = await previewTaxBasisRecalculation(ctx, {companyId: coB, year: 2026, upToMonth: 11, employmentIds: [moved.employmentId, control.employmentId]});
+    const movedRow = preview.employees.find(e => e.id === moved.employmentId)!, controlRow = preview.employees.find(e => e.id === control.employmentId)!;
+    expect(movedRow.status).not.toBe('blocked');
+    const nonzero = (u: Record<string, number>) => Object.fromEntries(Object.entries(u).filter(([, v]) => Number(v) !== 0));
+    const byPeriod = (row: typeof movedRow, period: string) => nonzero(row.months.find(m => m.period === period)!.basis.exemptionUsed);
+    for (const [period, batchId] of [['2026-10', october], ['2026-11', november]] as const) {
+      expect(byPeriod(movedRow, period)).toEqual(await used(batchId, moved.employmentId));
+      expect(byPeriod(movedRow, period)).toEqual(byPeriod(controlRow, period));
+    }
+    expect(movedRow.exemptionLedger).toEqual([expect.objectContaining({code: 'PCB_TRA_BUSINESS', openingUsed: 5400, usedAfter: 6000, remaining: 0})]);
+    expect(controlRow.exemptionLedger).toEqual([expect.objectContaining({code: 'PCB_TRA_BUSINESS', openingUsed: 0, usedAfter: 6000, remaining: 0})]);
+    expect(movedRow.groupOpening?.limits).toEqual([{code: 'PCB_TRA_BUSINESS', cap: 6000, used: 5400, remaining: 600}]);
+  }, 300000);
+});
+
+describe('a transfer in the middle of a month', () => {
+  it('counts the outgoing company\'s part of the month at the incoming company, and never the other way round', async () => {
+    const moved = await hire('0007', 'Fictional Chang', '850505055555', b.companyId, b.deptA);
+    await createMovementEvent(ctx, {employmentId: moved.employmentId, kind: 'entityTransfer', effectiveDate: '2026-10-16', companyId: coB, departmentId: deptB});
+    const outgoing = await run(b.companyId, '2026-10');
+    const incoming = await run(coB, '2026-10');
+    expect(readGroupTaxOpeningStamp((await slipOf(outgoing, moved.employmentId)).statutory)).toBeNull();
+    const stamp = readGroupTaxOpeningStamp((await slipOf(incoming, moved.employmentId)).statutory);
+    expect(stamp?.months.map(m => [m.companyId, m.period, m.source])).toEqual([[b.companyId, '2026-10', 'processed']]);
+    // Reprocessing the outgoing part afterwards still does not take the incoming part as earlier history.
+    await generatePayslips(ctx, {batchId: outgoing, reprocessSubset: {employmentIds: [moved.employmentId]}});
+    expect(readGroupTaxOpeningStamp((await slipOf(outgoing, moved.employmentId)).statutory)).toBeNull();
   }, 180000);
 });
 

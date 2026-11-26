@@ -35922,7 +35922,8 @@
     "exemptionLimitsNotRecorded": "Chi tiết hạn mức miễn thuế hằng năm không được ghi lại cho kết quả này.",
     "holdReasons": {
       "saved_evidence_conflict": "Các hồ sơ phiếu lương đã lưu mâu thuẫn về mức hạn mức miễn thuế hằng năm mà chủ lao động trước đã dùng. Hãy kiểm tra hồ sơ đã lưu rồi xem trước lại.",
-      "access_insufficient": "Bạn không được phép xem thông tin thuế của nhân viên này nên không thể kiểm tra mức miễn thuế chủ lao động trước đã dùng. Hãy nhờ người quản trị lương của nhân viên này thực hiện."
+      "access_insufficient": "Bạn không được phép xem thông tin thuế của nhân viên này nên không thể kiểm tra mức miễn thuế chủ lao động trước đã dùng. Hãy nhờ người quản trị lương của nhân viên này thực hiện.",
+      "group_history_unavailable": "Một phần lịch sử thuế thu nhập trước đây của nhân viên này tại công ty khác trong tập đoàn chưa thể dùng, nên chưa biết hạn mức miễn trừ đã dùng ở đó. Lý do được hiển thị ở trên. Hãy xử lý rồi xem trước lại."
     },
     "boundsTitle": "Các số liệu chắc chắn",
     "boundsHelp": "Chỉ để xem xét. Các khoảng này không được lưu và không thể xác nhận.",

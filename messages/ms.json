@@ -35922,7 +35922,8 @@
     "exemptionLimitsNotRecorded": "Butiran had pengecualian tahunan tidak direkodkan untuk keputusan ini.",
     "holdReasons": {
       "saved_evidence_conflict": "Rekod slip gaji yang disimpan bercanggah tentang jumlah had pengecualian tahunan yang digunakan oleh majikan terdahulu. Semak rekod yang disimpan, kemudian pratonton semula.",
-      "access_insufficient": "Anda tidak dibenarkan melihat butiran cukai pekerja ini, jadi penggunaan pengecualian majikan terdahulu tidak dapat disemak. Minta pentadbir gaji pekerja ini menjalankannya."
+      "access_insufficient": "Anda tidak dibenarkan melihat butiran cukai pekerja ini, jadi penggunaan pengecualian majikan terdahulu tidak dapat disemak. Minta pentadbir gaji pekerja ini menjalankannya.",
+      "group_history_unavailable": "Sebahagian sejarah cukai pendapatan terdahulu pekerja ini di syarikat kumpulan lain belum boleh digunakan, jadi had pengecualian yang telah digunakan di sana tidak diketahui. Sebabnya ditunjukkan di atas. Selesaikannya, kemudian pratonton semula."
     },
     "boundsTitle": "Angka yang pasti",
     "boundsHelp": "Dipaparkan untuk semakan sahaja. Julat ini tidak disimpan dan tidak boleh disahkan.",
