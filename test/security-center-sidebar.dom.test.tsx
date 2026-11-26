@@ -47,7 +47,7 @@ describe.each(['classic','monolith','atelier'])('%s Security Center navigation',
   const securityHeading=screen.getByRole('button',{name:en.nav.securityCenter});
   for(const heading of [system[0],securityHeading])expect(heading.querySelectorAll('svg')).toHaveLength(theme==='monolith'?0:2);
   const config=screen.getByRole('navigation',{name:en.nav.systemConfiguration});
-  expect(linkHrefs(config)).toContain('/admin/holidays');expect(linkHrefs(config).some(isSecurityDestination)).toBe(false);
+  expect(linkHrefs(config)).toContain('/admin/holidays');expect(linkHrefs(config).some(href=>href!==null&&isSecurityDestination(href))).toBe(false);
   const security=open();expect(linkHrefs(security)).toEqual(hrefs);
   // The section's name is never repeated as a row, and the overview is no menu row anywhere in the rail.
   expect(within(security).queryByRole('link',{name:en.nav.securityCenter})).toBeNull();

@@ -209,7 +209,7 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
 
   it('keeps render policy wired to this resolver, and disabled rows out of links, active ownership, and command entries', () => {
     const sidebar = readFileSync(new URL('../components/sidebar.tsx',import.meta.url),'utf8');
-    expect(sidebar).toContain('const { destinations, lifecycleNavigation, canSeeChild } = resolveShellNavigation({');
+    expect(sidebar).toContain('const { destinations, lifecycleNavigation, canSeeChild, securityLanding } = resolveShellNavigation({');
     expect(sidebar).not.toContain('const moduleAllows');
     expect(sidebar).not.toContain('const canSeeChild');
     expect(sidebar).toContain('destinations.filter(row => !row.disabled)');
