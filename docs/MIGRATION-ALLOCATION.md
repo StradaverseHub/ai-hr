@@ -1,16 +1,17 @@
 # ADR 0181 search follow-up: employee search visible-set cost, 26 November 2026
 
 Reserve `7530_employment_search_visible_set`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
-`a8252781428c402dd83e81ff0a8bf3752b21478231b8c1c923bd0ab6e3dae31d`. Assigned by the coordinator. 7510 and 7520 stay permanently unused; the board session moved its items to 7540, 7550
+`69fde9869879994cfe084db0f50875df9910ee0172c3e469a2ea29eccee0e1a6`. Assigned by the coordinator. 7510 and 7520 stay permanently unused; the board session moved its items to 7540, 7550
 and 7560, which install after this. Built on slot 5 `c0f6cf5b9` (alpha after release 4). Recheck both installations'
 watermarks and any competing reservation at admission.
 
 Replaces only the body of `app.employment_search_candidates` (7320), guarded by the 7320 body's md5. Same signature,
 grants and answer set when it narrows. It asks the caller's administrator and partner companies only among the
 companies in scope, and answers NULL (the caller reads as before 7320) when at most 1,000 employments in scope lie
-outside them. Otherwise it narrows by trigram and asks `app.access_visible_employment_ids()` only for matches outside
-those companies. The application skips the call for a group-wide administrator and asks at most once per search
-(core/employment-search.ts). The owner held the production release for this on 26 November 2026.
+outside them (named companies holding at most 1,000 in all are answered by one bounded count first). Otherwise it
+narrows by trigram and asks `app.access_visible_employment_ids()` only for matches outside those companies. The
+application skips the call for a group-wide administrator or a caller whose grants name every company asked, and
+asks at most once per search (core/employment-search.ts). The owner held the production release for this on 26 November 2026.
 
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 

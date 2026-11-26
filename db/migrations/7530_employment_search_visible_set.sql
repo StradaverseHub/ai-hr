@@ -15,8 +15,10 @@
 --     the tenant's when NULL): app.is_admin_for, app.can_admin_payroll_for, app.can_admin_perfcomp_for, the predicate
 --     of app.employment_read_companies (7240).
 --   * When at most 1,000 employments in scope lie outside those companies, the function answers NULL: do not narrow,
---     and core/employment-search.ts reads exactly as before 7320. The application does not ask at all for a
---     group-wide administrator, whose row security admits every row through the company question.
+--     and core/employment-search.ts reads exactly as before 7320. Named companies holding at most 1,000 employments
+--     in all are answered first, by one bounded count, before any authority question. The application does not ask
+--     at all for a group-wide administrator, or for a caller whose administrator or partner grants name every
+--     company asked: their row security admits every row through the company question.
 --   * Otherwise it searches as 7320 did and keeps matches in those companies, and asks the relationship part of
 --     visibility (app.access_visible_employment_ids, 7240) only for matches outside them. The answer set equals 7320's:
 --     matches AND (company_id IN those companies OR id IN the relationship part), because 7240's admin arm of
@@ -81,6 +83,16 @@ BEGIN
  END IF;
  -- The callers' own pattern: lower case, with \, % and _ matched literally (LIKE's default escape is \).
  v_pattern := '%' || replace(replace(replace(lower(p_query COLLATE "C"), '\', '\\'), '%', '\%'), '_', '\_') || '%';
+ -- Named companies holding at most v_outside_limit employments in all cannot hold more outside the caller's
+ -- companies: answer before asking any authority question.
+ IF p_companies IS NOT NULL THEN
+  SELECT count(*) INTO v_scope_outside FROM (SELECT 1 FROM public.employment e
+   WHERE e.tenant_id = app.current_tenant_id() AND e.company_id = ANY (p_companies) AND e.voided_at IS NULL
+   LIMIT v_outside_limit + 1) s;
+  IF v_scope_outside <= v_outside_limit THEN
+   RETURN NULL;
+  END IF;
+ END IF;
  v_read := ARRAY(SELECT c.id FROM public.company c WHERE c.tenant_id = app.current_tenant_id()
   AND (p_companies IS NULL OR c.id = ANY (p_companies))
   AND (app.is_admin_for(c.id) OR app.can_admin_payroll_for(c.id) OR app.can_admin_perfcomp_for(c.id)) ORDER BY c.id);

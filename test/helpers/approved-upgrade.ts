@@ -536,7 +536,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7480_payroll_read_own_payslips':'d446b58e65b6241da5def8c0454eece8c8b5c4a55daca7ee53e97bf8c0bc2e82',
  '7490_payroll_read_history_filter':'c70cfbe6ddbd2c754548060f22fd635e02385c9d7437fd8f0220224deaa01b97',
  '7500_payroll_read_history_summary':'5526740b3133f61d1431b9f44e7a1b4f2812bc7f425638f4bc5ab59ef8342f1f',
- '7530_employment_search_visible_set':'a8252781428c402dd83e81ff0a8bf3752b21478231b8c1c923bd0ab6e3dae31d',
+ '7530_employment_search_visible_set':'69fde9869879994cfe084db0f50875df9910ee0172c3e469a2ea29eccee0e1a6',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',
  '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',

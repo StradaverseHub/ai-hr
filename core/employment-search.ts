@@ -9,9 +9,9 @@
  * candidate), never a substitute for them.
  *
  * 7530: narrowing pays only where the caller's own read is costly: row security asks partner and relationship
- * questions for every row outside the companies the caller administers or partners. A group-wide administrator is
- * never narrowed (not asked at all). For anyone else the function answers NULL (do not narrow) when at most 1,000
- * employments in scope lie outside those companies, and the caller then reads exactly as before 7320. When it does
+ * questions for every row outside the companies the caller administers or partners. A group-wide administrator, or a
+ * caller whose grants name every company asked, is never narrowed (not asked at all). For anyone else the function
+ * answers NULL (do not narrow) when at most 1,000 employments in scope lie outside those companies, and the caller then reads exactly as before 7320. When it does
  * narrow, the candidates are asked once per search, in their own statement of the caller's transaction, and passed to
  * the caller's statements as a literal list. Only a query of 3 to 200 printable ASCII characters is narrowed at all. */
 import {sql,type SQL} from 'drizzle-orm';
@@ -25,10 +25,19 @@ export function isNarrowableEmploymentSearch(query:string|undefined):query is st
  return typeof query==='string'&&NARROWABLE.test(query);
 }
 
-/** A group-wide administrator's row security admits every row through the company question (app.allowedCompanies'
- * own rule for "group admin"), so their read before 7320 is already cheap. */
-function isGroupWideAdministrator(ctx:Pick<SessionContext,'grants'>):boolean{
- return ctx.grants?.some(grant=>(grant.role==='hr_admin'||grant.role==='super_admin')&&!grant.companyId)??false;
+/** Roles whose grant lets row security admit a company's rows by the company question alone (app.is_admin_for,
+ * app.can_admin_payroll_for, app.can_admin_perfcomp_for). */
+const COMPANY_READ_ROLES=new Set(['hr_admin','super_admin','payroll_partner','performance_comp_partner']);
+
+/** Whether the caller's own grants already make their read cheap, so narrowing cannot pay: a group-wide administrator
+ * (app.allowedCompanies' own rule for "group admin"), or grants naming every company asked. A performance decision
+ * only: row security still decides every row either way. */
+function readIsCheapByGrants(ctx:Pick<SessionContext,'grants'>,companyIds:readonly string[]|undefined):boolean{
+ const grants=ctx.grants??[];
+ if(grants.some(grant=>(grant.role==='hr_admin'||grant.role==='super_admin')&&!grant.companyId))return true;
+ if(!companyIds?.length)return false;
+ const named=new Set(grants.filter(grant=>COMPANY_READ_ROLES.has(grant.role)&&grant.companyId).map(grant=>grant.companyId));
+ return companyIds.every(id=>named.has(id));
 }
 
 /** `employmentId = any(<candidate ids>)` for this search, or undefined when the search is not narrowed (the caller
@@ -37,7 +46,7 @@ function isGroupWideAdministrator(ctx:Pick<SessionContext,'grants'>):boolean{
  * `email` adds primary e-mail. */
 export async function employmentSearchNarrowingTx(tx:Tx,ctx:Pick<SessionContext,'grants'>,employmentId:SQL|unknown,query:string|undefined,
  companyIds:readonly string[]|undefined,opts:{email:boolean}):Promise<SQL|undefined>{
- if(!isNarrowableEmploymentSearch(query)||isGroupWideAdministrator(ctx))return undefined;
+ if(!isNarrowableEmploymentSearch(query)||readIsCheapByGrants(ctx,companyIds))return undefined;
  const companies=companyIds&&companyIds.length?uuidArrayParam(companyIds):sql`null::uuid[]`;
  const [row]=await tx.execute<{ids:string[]|null}>(
   sql`select app.employment_search_candidates(${query}::text, ${companies}, ${opts.email}::boolean) as ids`);
