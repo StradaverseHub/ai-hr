@@ -63,6 +63,11 @@ export async function ReprocessOutcomeRemarks({
     : outcome.status === 'excluded' || outcome.status === 'not_eligible'
     ? t(`reprocessExclusion_${outcome.reasonCode}${exclusionDate ? 'Dated' : ''}`, exclusionDate ? { date: formatDate(exclusionDate) } : {})
     : outcome.status === 'skipped' ? t('reprocessNothingPayableFull')
+    // 289634a6 — an imported month's Income Tax Correction superseded by a newer import is said so plainly. The generic
+    // "previous correction retained" sentence stays only for a genuine retained/replayed correction elsewhere.
+    : outcome.status === 'reprocessed' && outcome.taxCorrectionsReplaced?.length
+      ? [t('reprocessTaxCorrectionReplacedByImport', { periods: outcome.taxCorrectionsReplaced.map(entry => entry.period).join(', ') }),
+        ...(outcome.taxBasisRecalculated ? [t('reprocessTaxBasisUpdated')] : [])].join(' ')
     : outcome.status === 'reprocessed' ? t(outcome.taxBasisRecalculated ? 'reprocessTaxBasisUpdated' : 'reprocessSucceededReason')
     : outcome.reasonCode === 'PAY_ITEM_FORMULA_FAILED' ? t('reprocessPayItemFormulaReason')
     : outcome.reasonCode === 'TAX_SCHEME_CONFIGURATION_INCOMPLETE' && TAX_SELECTION_CODES.has(outcome.validationCode ?? '')

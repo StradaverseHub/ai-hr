@@ -1,7 +1,7 @@
 /** Pure presentation policy over server-resolved capabilities; never grants page/service access. */
 import { modulePackById } from '@/packs/registry';
 import { navigationPlacement } from '@/lib/navigation-workspaces';
-import { isSecurityDestination, securityDestinationAllowed } from '@/lib/security-center-navigation';
+import { SECURITY_CENTER, isSecurityDestination, securityDestinationAllowed } from '@/lib/security-center-navigation';
 import { V9_AUTOMATION_NAVIGATION, V9_NAVIGATION, V9_SHARED_NAVIGATION, type V9NavigationPermissions } from '@/lib/lifecycle-v9-navigation';
 import {
   ADDITIONAL_ROWS, OFFBOARDING_POSTINGS_NAVIGATION, AI_PROVIDER_HREF, AUTOMATION_NAVIGATION, GROUPS, MODULE_OF_HREF, MY_TEAM_ROW, ONBOARDING_NODE,
@@ -82,6 +82,12 @@ export type ShellNavigationResolution = {
   destinations: ChildItem[];
   lifecycleNavigation: ChildItem[];
   canSeeChild: (row: ChildItem) => boolean;
+  /**
+   * Board 8fa0a31d — the Security Center overview when this viewer may open it and sees at least one Security Center
+   * page; otherwise null. It is the section's breadcrumb landing, not a menu row. Same predicate as the former hub row:
+   * a visible security page implies the outer administration boundary passed.
+   */
+  securityLanding: string | null;
 };
 
 export function resolveShellNavigation({
@@ -208,5 +214,6 @@ export function resolveShellNavigation({
     const placement = navigationPlacement(row.href);
     return !v9AutomationHrefs.has(row.href) && (!placement || !('module' in placement) || placement.module !== 'onboarding');
   }), ...ADDITIONAL_ROWS.filter(canSeeChild), ...lifecycleNavigation, ...lifecycleShared, ...scopedLifecycleRows, ...automationRows, ...rewardRows];
-  return { destinations, lifecycleNavigation, canSeeChild };
+  const securityLanding = securityDestinationAllowed(SECURITY_CENTER, securityAccess) && destinations.some(row => isSecurityDestination(row.href)) ? SECURITY_CENTER : null;
+  return { destinations, lifecycleNavigation, canSeeChild, securityLanding };
 }

@@ -1546,6 +1546,10 @@ export const SCREENS: readonly ScreenEntry[] = [
       // letting a screen exist that nobody can grant or revoke. (The PDF route beside it is a route.ts,
       // and route handlers are deliberately not on this matrix.)
       '/payroll/transactions/tp3',
+      // 5084d02e: the Form TP3 Excel import's Import Log and one import's row results. Same scopedAdmin guard as
+      // Form TP3; the log lists imports of the companies the viewer administers (app.tp3_import_log).
+      '/payroll/transactions/tp3/imports',
+      '/payroll/transactions/tp3/imports/[id]',
       '/payroll/transactions/zakat',
       // 038c304b: CP38 Deduction — every employee's CP38 records for the companies in scope, the same records as
       // the employee's Payroll tab. Same scopedAdmin guard as its neighbours (this set is EXACT; see TP3 above).

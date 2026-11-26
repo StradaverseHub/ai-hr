@@ -37,7 +37,14 @@ import { hireEmployee } from '../core/org';
 import { setCompensation } from '../core/comp';
 import { createBatch, generatePayslips } from '../core/payroll';
 import { listPayslipRunsFor } from '../core/payroll-view';
-import { matchingPayslipRuns, payslipPeriodOptions, resolvePayslipSelection } from '../app/payroll/individual-payslip/period-options';
+import {
+  matchingPayslipRuns,
+  parsePayslipRunOption,
+  payslipPeriodOptions,
+  payslipRunOptionValue,
+  payslipRunsNeedingOwnOption,
+  resolvePayslipSelection,
+} from '../app/payroll/individual-payslip/period-options';
 import { adminCtx, closeAll, migrateTestDb, resetDb, seedBase, type Base } from './harness';
 
 const ROOT = path.resolve(__dirname, '..');
@@ -119,8 +126,27 @@ describe('5a29686c — the screen reads the employee’s runs, and the otherRuns
     const src = code();
     expect(src).toContain('name="payrollCycleId"');
     expect(src).toContain('listPayrollCyclesForCompanies');
-    expect(src).toContain('matchingRuns.length > 1');
+    // 1ebba97e — the sibling runs are options IN that selector now, not a row of buttons under it.
+    expect(src, 'the per-run options come from the shared rule').toContain('payslipRunsNeedingOwnOption');
+    expect(src, 'and each carries its payslip in the posted value').toContain('payslipRunOptionValue(run.payslipId)');
     expect(src).toContain("t('cycleRun'");
+  });
+
+  it('1ebba97e — the "Matching payroll runs" row is gone, and no new filter control replaced it', () => {
+    const src = code();
+    expect(src, 'no run-button row may come back').not.toContain('matchingRuns.length');
+    expect(src, 'its heading is not rendered anywhere').not.toContain("t('matchingRuns')");
+    expect(src, 'nor its <nav>').not.toMatch(/<nav\b/);
+    expect(src, 'nor the per-run links it was made of').not.toContain('runHref');
+    // Still exactly four boxes posting — Company, Year, Month, Payroll Cycle.
+    expect(src.match(/<select\b/g) ?? [], 'no new filter control').toHaveLength(4);
+    // The keys stay in every catalogue (cycleRun is reused by the options; matchingRuns is retired in place,
+    // because re-adding a deleted key later is the MISSING_MESSAGE trap).
+    for (const loc of ['en', 'ms', 'zh', 'ta', 'th', 'vi']) {
+      const blk = (JSON.parse(read(`messages/${loc}.json`)) as Msgs).payroll.individualPayslip;
+      expect(blk.matchingRuns, `${loc} keeps matchingRuns`).toBeTruthy();
+      expect(blk.cycleRun, `${loc} keeps cycleRun`).toBeTruthy();
+    }
   });
 
   it('every locale carries a real run label, not the English one copied across', () => {
@@ -269,4 +295,54 @@ it('strictly matches configured cycle before a supplied payslip ID and keeps una
   expect(resolvePayslipSelection(runs,{...filter,payslipId:'other'}).payslipId).toBeNull();
   expect(resolvePayslipSelection(runs,{...filter,month:5}).payslipId).toBeNull();
   expect(resolvePayslipSelection(runs,{...filter,payrollCycleId:undefined,strictFilter:true}).payslipId).toBe('legacy');
+});
+
+describe('1ebba97e — the Payroll Cycle box offers a run of its own only where a cycle cannot tell runs apart', () => {
+  const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const run = (n: number, over: Partial<{ payPeriod: string; runType: string; runSeq: number; payrollCycleId: string | null; companyId: string }> = {}) => ({
+    payslipId: id(n), companyId: 'A', payPeriod: '2026-06', runType: 'regular', runSeq: n, payrollCycleId: null as string | null, ...over,
+  });
+  const shown = { companyId: 'A', year: 2026, month: 6 };
+  const ids = (rs: { payslipId: string }[]) => rs.map((r) => r.payslipId);
+
+  it('a one-run month gets no run options, so the box is exactly what it was', () => {
+    expect(payslipRunsNeedingOwnOption([run(1)], shown, new Set())).toEqual([]);
+    // Another month's or another company's run does not make this month "two runs".
+    expect(payslipRunsNeedingOwnOption([run(1), run(2, { payPeriod: '2026-05' }), run(3, { companyId: 'B' })], shown, new Set())).toEqual([]);
+  });
+
+  it('a bonus run beside a regular one, both under no configured cycle, are each an option, in run order', () => {
+    expect(ids(payslipRunsNeedingOwnOption([run(2, { runType: 'bonus' }), run(1)], shown, new Set()))).toEqual([id(1), id(2)]);
+  });
+
+  it('two runs under ONE configured cycle are each an option; a cycle holding one run keeps only its cycle option', () => {
+    const runs = [
+      run(1, { runType: 'bonus', payrollCycleId: 'commission' }),
+      run(2, { runType: 'bonus', payrollCycleId: 'incentive' }),
+      run(3, { runType: 'bonus', payrollCycleId: 'commission' }),
+    ];
+    expect(ids(payslipRunsNeedingOwnOption(runs, shown, new Set(['commission', 'incentive'])))).toEqual([id(1), id(3)]);
+  });
+
+  it('a run under no configured cycle beside a configured one still gets an option — "All" opens only the newest', () => {
+    const runs = [run(1), run(2, { runType: 'bonus', payrollCycleId: 'commission' })];
+    expect(ids(payslipRunsNeedingOwnOption(runs, shown, new Set(['commission'])))).toEqual([id(1)]);
+    // A cycle the box does not offer is no way to reach a run, so its runs are treated as cycle-less.
+    expect(ids(payslipRunsNeedingOwnOption(runs, shown, new Set()))).toEqual([id(1), id(2)]);
+  });
+
+  it('needs all three of company, year and month — with any of them on "All" there is no single month', () => {
+    const runs = [run(1), run(2, { runType: 'bonus' })];
+    expect(payslipRunsNeedingOwnOption(runs, { year: 2026, month: 6 }, new Set())).toEqual([]);
+    expect(payslipRunsNeedingOwnOption(runs, { companyId: 'A', year: 2026 }, new Set())).toEqual([]);
+  });
+
+  it('the option value names the payslip and round-trips; a cycle id, "All" or junk parses to nothing', () => {
+    expect(parsePayslipRunOption(payslipRunOptionValue(id(7)))).toBe(id(7));
+    expect(parsePayslipRunOption(id(7)), 'a bare UUID is a configured cycle id, not a run').toBeUndefined();
+    expect(parsePayslipRunOption('')).toBeUndefined();
+    expect(parsePayslipRunOption(undefined)).toBeUndefined();
+    expect(parsePayslipRunOption('payslip:not-a-uuid')).toBeUndefined();
+    expect(parsePayslipRunOption(`payslip:${id(7)}' OR 1=1`)).toBeUndefined();
+  });
 });

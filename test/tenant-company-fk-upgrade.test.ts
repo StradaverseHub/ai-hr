@@ -288,6 +288,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  // Board 4ce2c481 — the totals-only group tax opening definer.
  {idx:10950,version:'7',when:1795495007550,tag:'7550_payroll_group_tax_opening',breakpoints:true},
  {idx:10960,version:'7',when:1795495007560,tag:'7560_payroll_recalc_pending',breakpoints:true},
+ // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
+ {idx:10970,version:'7',when:1795495007570,tag:'7570_tp3_import_job',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1468,6 +1470,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_read_access_swap_views(text,text,text)',app:false},
    // 7550 (board 4ce2c481): the totals-only group tax opening, executed by the application's payroll calculation.
    {fn:'app.payroll_group_tax_opening(uuid,text,uuid[])',app:true},
+   // 7570 (board 5084d02e): the Form TP3 Import Log read, bounded by app.is_admin_for over each job's companies.
+   {fn:'app.tp3_import_log(uuid[],uuid,timestamp with time zone,uuid,integer)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

@@ -66,7 +66,6 @@ export const REVIEWED_SHELL_BINDINGS:Readonly<Record<string,Binding>> = {
   "audience/admin/noticeBoard": {"id": "shell.noticeBoard", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:noticeBoard", "status": "declared"},
   "audience/admin/analytics": {"id": "shell.analytics", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:analytics", "status": "declared"},
   "audience/admin/auditTrail": {"id": "shell.auditTrail", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:auditTrail", "status": "declared"},
-  "audience/admin/securityCenter": {"id": "shell.securityCenter", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:securityCenter", "status": "declared"},
   "audience/admin/systemSettings/peopleSettings": {"id": "shell.peopleSettings", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:peopleSettings", "status": "declared"},
   "audience/admin/systemSettings/dashboardCardConfig": {"id": "shell.dashboardCardConfig", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:dashboardCardConfig", "status": "declared"},
   "audience/admin/systemSettings/delegations": {"id": "shell.delegations", "sourceOwner": "lib/navigation/shell-inventory.ts", "sourceKey": "shell-slot:delegations", "status": "declared"},

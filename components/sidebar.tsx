@@ -36,7 +36,7 @@ import '@/packs/register-all';
 import { NAVIGATION_MODULES, NAVIGATION_SECTIONS, placeNavigation, navigationPlacement, navigationRouteOwner, type NavigationWorkspace } from '@/lib/navigation-workspaces';
 import { usePublishNavIndex, type NavIndexEntry } from '@/components/nav-index-context';
 import {useShellApprovalFacts} from '@/components/shell-approval-facts';
-import {SECURITY_CENTER,isSecurityDestination} from '@/lib/security-center-navigation';
+import {isSecurityDestination} from '@/lib/security-center-navigation';
 import { openCommandBar } from '@/lib/command-bar-events';
 import { V9_SHARED_NAVIGATION } from '@/lib/lifecycle-v9-navigation';
 import { NavigationSubmenus } from '@/components/navigation-submenus';
@@ -188,7 +188,7 @@ export function Sidebar({
     setRailKids({});
     setWorkspaceChoice(null);
   }, [pathname, search]);
-  const { destinations, lifecycleNavigation, canSeeChild } = resolveShellNavigation({
+  const { destinations, lifecycleNavigation, canSeeChild, securityLanding } = resolveShellNavigation({
     isAdmin, canConfigureIdentityEmail, canConfigureLoginPresentation, canConfigurePasswordPolicy,
     canPreviewIdentityEmail, canApprove, hasAssignedAttendanceApproval, hasAssignedApproval,
     canReviewProfileChanges, canAdministerAi, canAdministerSecurity, canConfigureAccess,
@@ -225,14 +225,23 @@ export function Sidebar({
   const systemRows = navigation.placed.filter(row=>row.placement.area==='system').map(row=>row.destination);
   const securityRows=systemRows.filter(row=>isSecurityDestination(row.href));
   const otherSystemRows=systemRows.filter(row=>!isSecurityDestination(row.href));
+  // Board 8fa0a31d — shared administration is two independent sections pinned to the end of the rail, each listing
+  // its pages directly: no dropdown inside a section repeats the section's name. Security Center's overview is not a
+  // row; it is the section's landing (breadcrumb root and a "Go to" entry) when this viewer may open it.
   const groups: Group[] = [
     {items:[...sharedItems,...navigation.unplaced]},
     {labelKey:selectedWorkspace==='strata'?'workspaceStrata':'workspaceOps',items:moduleRows},
-    ...(systemRows.length ? [{labelKey:'systemConfiguration',items:[
-      ...(otherSystemRows.length?[{collapsible:true,activeMatch:'children',labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows} satisfies CollapsibleGroupItem]:[]),
-      ...(securityRows.length?[{collapsible:true,activeMatch:'children',labelKey:'securityCenter',breadcrumbHref:SECURITY_CENTER,icon:ShieldCheck,children:securityRows} satisfies CollapsibleGroupItem]:[]),
-    ]}] : []),
+    ...(otherSystemRows.length ? [{labelKey:'systemConfiguration',icon:Settings2,pinEnd:true,items:otherSystemRows}] : []),
+    ...(securityRows.length ? [{labelKey:'securityCenter',icon:ShieldCheck,pinEnd:true,...(securityLanding?{landingHref:securityLanding}:{}),items:securityRows}] : []),
   ];
+  /** The first section pinned to the end of the rail takes the free space above it; later pinned sections follow it. */
+  const firstPinnedGroup = groups.findIndex(group => group.pinEnd);
+  /** In the collapsed icon rail an icon section is one trigger that opens its rows as a flyout panel. */
+  const sectionNode = (group: Group): CollapsibleGroupItem | null => group.icon && group.labelKey
+    ? {collapsible:true,activeMatch:'children',labelKey:group.labelKey,icon:group.icon,children:group.items.filter((row): row is ChildItem => !isCollapsible(row))}
+    : null;
+  const headingId = (key: string) => `nav-section-heading-${key}`;
+  const landingPath = (group: Group) => group.landingHref?.split('?')[0];
   const isWorkspaceKey = (key?:string) => key==='workspaceOps'||key==='workspaceStrata';
   const compactWorkspace = collapsed && !atelier && !monolith;
   const workspaceSwitch = () => availableWorkspaces.length > 1 ? <div role="group" aria-label={t('workspaceSwitch')}
@@ -282,7 +291,9 @@ export function Sidebar({
           ? (r.defaultHref || r.activeMatch === 'children' ? r.children.filter(canSeeChild).some(isRowActive) : isParentActive(pathname, r.children.filter(canSeeChild).flatMap(childPaths)))
           : isRowActive(r),
       ),
-    )?.labelKey ?? null;
+    )?.labelKey
+    // A section's landing page is not a row, so on it nothing above matches: the section opens anyway.
+    ?? groups.find((g) => landingPath(g) === pathname)?.labelKey ?? null;
 
   // Reset only the destination section's manual override on actual navigation (including report
   // categories sharing a pathname). A same-route rerender must retain an explicit collapse.
@@ -309,40 +320,49 @@ export function Sidebar({
   let activeEntry: NavIndexEntry | null = null;
   for (const g of groups) {
     const section = g.labelKey ? t(g.labelKey) : null;
+    const sectionHref = g.landingHref ?? null;
+    // The landing is findable under its section's own name, with no section of its own, and is the active entry on
+    // its page (the breadcrumb then reads just "Security Center").
+    if (g.landingHref && g.labelKey) {
+      const entry = { href: g.landingHref, label: t(g.labelKey), section: null, parent: null, parentHref: null };
+      navEntries.push(entry);
+      if (!activeEntry && landingPath(g) === pathname) activeEntry = entry;
+    }
     for (const r of g.items) {
       if (isCollapsible(r)) {
         const kids = r.children.filter(canSeeChild).filter((c) => !c.disabled);
         const parent = t(r.labelKey);
         // A grouping heading has no destination unless it declares a real landing page.
-        const parentHref = r.defaultHref ?? (r.breadcrumbHref && kids.some(c => c.href === r.breadcrumbHref) ? r.breadcrumbHref : null);
+        const parentHref = r.defaultHref ?? null;
         const activeKid = kids.filter((c) => isRowActive(c))
           .sort((a, b) => b.href.split('?')[0].length - a.href.split('?')[0].length)[0];
         for (const c of kids) {
-          const entry = { href: c.navigationHref ?? c.href, label: t(c.labelKey), section, parent, parentHref };
+          const entry = { href: c.navigationHref ?? c.href, label: t(c.labelKey), section, sectionHref, parent, parentHref };
           navEntries.push(entry);
           if (!activeEntry && c === activeKid) activeEntry = entry;
           // 82748f92 — a visible row's search aliases (People › Settings sections) stay findable by their own
           // names. Search entries only; a gated alias is offered only when its page would open.
           for (const alias of c.searchAliases ?? []) {
             if (alias.gate === 'peopleGeneral' && !canConfigurePeopleGeneral) continue;
-            navEntries.push({ href: alias.href, label: t(alias.labelKey), section, parent, parentHref });
+            navEntries.push({ href: alias.href, label: t(alias.labelKey), section, sectionHref, parent, parentHref });
           }
         }
       } else if (!r.disabled) {
-        const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, parent: null, parentHref: null };
+        const entry = { href: r.navigationHref ?? r.href, label: t(r.labelKey), section, sectionHref, parent: null, parentHref: null };
         navEntries.push(entry);
         if (!activeEntry && isRowActive(r)) activeEntry = entry;
         for (const alias of r.searchAliases ?? []) {
           if (alias.gate === 'peopleGeneral' && !canConfigurePeopleGeneral) continue;
-          navEntries.push({ href: alias.href, label: t(alias.labelKey), section, parent: null, parentHref: null });
+          navEntries.push({ href: alias.href, label: t(alias.labelKey), section, sectionHref, parent: null, parentHref: null });
         }
       }
     }
   }
   usePublishNavIndex(navEntries, activeEntry);
 
-  const openNode = openKey && (!monolith || openKey === 'securityCenter')
-    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed)) ?? null
+  const openNode = openKey && !monolith
+    ? groups.flatMap((g) => g.items).find((r): r is CollapsibleGroupItem => isCollapsible(r) && r.labelKey === openKey && (atelier || !r.defaultHref || collapsed))
+      ?? (collapsed ? groups.map(sectionNode).find((node) => node?.labelKey === openKey) ?? null : null)
     : null;
   const openChildren = openNode ? openNode.children.filter(canSeeChild) : [];
   // Inside a panel the LONGEST matching href wins, so exactly one row ever reads as the current page
@@ -380,11 +400,6 @@ export function Sidebar({
   const monolithModule = (item: CollapsibleGroupItem) => {
     const children = item.children.filter(canSeeChild);
     if (children.length === 0) return null;
-    if (item.labelKey === 'securityCenter') return <NavFlyout key={item.labelKey} labelKey={item.labelKey} icon={item.icon}
-      open={openKey === item.labelKey} active={children.some(isRowActive)} collapsed={false} rowBase={railRow}
-      panelId={`nav-flyout-${item.labelKey}`} onOpen={() => setOpenKey(item.labelKey)}
-      onToggle={() => setOpenKey(key => key === item.labelKey ? null : item.labelKey)}
-      triggerRef={element => { triggerRefs.current[item.labelKey] = element; }}/>;
     const active =
       item.defaultHref || item.activeMatch === 'children'
         ? children.some(isRowActive)
@@ -471,7 +486,7 @@ export function Sidebar({
       </Link>
       <nav data-tour="nav" className="relative -mr-2 flex w-full flex-1 flex-col gap-[22px] overflow-y-auto overflow-x-hidden pr-2">
         {groups.map((group, gi) => (
-          <div key={gi} className={cn('flex w-full flex-col gap-0.5',gi===2&&'mt-auto')}>
+          <div key={gi} data-nav-section={group.labelKey} className={cn('flex w-full flex-col gap-0.5',gi===firstPinnedGroup&&'mt-auto')}>
             {group.labelKey && !isWorkspaceKey(group.labelKey) && (
               <button
                 type="button"
@@ -480,13 +495,16 @@ export function Sidebar({
                 aria-controls={`nav-section-${group.labelKey}`}
                 className="mb-1.5 flex w-full items-center justify-between border-b border-hairline pb-1.5 text-left font-mono text-[11px] uppercase tracking-[0.12em] text-mid enabled:hover:text-ink"
               >
-                <span>{t(group.labelKey)}</span>
+                {/* Monolith's section headings carry no icon (README §3: no icons in the rail), board 8fa0a31d included. */}
+                <span id={headingId(group.labelKey)}>{t(group.labelKey)}</span>
                 <span aria-hidden className="text-faint">
                   {sectionOpen(group.labelKey) ? '−' : '+'}
                 </span>
               </button>
             )}
-            <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex w-full flex-col gap-0.5">
+            {(() => { const SectionBody = group.icon ? 'nav' : 'div'; return (
+            <SectionBody id={group.labelKey ? `nav-section-${group.labelKey}` : undefined}
+              aria-labelledby={group.icon && group.labelKey ? headingId(group.labelKey) : undefined} className="flex w-full flex-col gap-0.5">
               {sectionOpen(group.labelKey) &&
                 group.items.map((item) => {
                   if (isCollapsible(item)) return monolithModule(item);
@@ -518,7 +536,7 @@ export function Sidebar({
                     </Link>
                   );
                 })}
-            </div>
+            </SectionBody>); })()}
             {gi===0&&workspaceSwitch()}
           </div>
         ))}
@@ -558,12 +576,12 @@ export function Sidebar({
       const Icon = item.icon;
       const label = t(item.labelKey);
       const kidsId = `atelier-flyout-${item.labelKey}`;
-      const flip = () => setOpenKey(item.labelKey === 'securityCenter' ? item.labelKey : expanded ? null : item.labelKey);
+      const flip = () => setOpenKey(expanded ? null : item.labelKey);
       const register = (element: HTMLButtonElement | null) => { triggerRefs.current[item.labelKey] = element; };
       // Collapsed (b953a339), a module is its icon: it opens the floating sub-menu, which lists every page
       // the module has — including a landing page, which is always one of its children.
       return (
-        <div key={item.labelKey} data-atelier-module={item.labelKey} onPointerEnter={event => { if (item.labelKey === 'securityCenter' && event.pointerType === 'mouse') setOpenKey(item.labelKey); }}>
+        <div key={item.labelKey} data-atelier-module={item.labelKey}>
           {item.defaultHref && !collapsed ? (
             <div className={cn('atelier-row pr-0', active&&'bg-accent font-medium text-foreground')}>
               <Link prefetchOnIntentOnly href={item.defaultHref} onClick={()=>setMobileNavigationOpen(false)} className="flex min-w-0 flex-1 items-center gap-2.5 text-inherit no-underline">
@@ -604,8 +622,11 @@ export function Sidebar({
             <kbd aria-hidden>⌘K</kbd>
           </button>
           <nav data-tour="nav" aria-label={tCommon('appName')} className="atelier-nav">
-            {groups.map((group, gi) => (
-              <div key={gi}>
+            {groups.map((group, gi) => {
+              const SectionIcon = group.icon;
+              const node = collapsed ? sectionNode(group) : null;
+              return (
+              <div key={gi} data-nav-section={group.labelKey}>
                 {group.labelKey && !isWorkspaceKey(group.labelKey) && (collapsed ? (
                   // Collapsed there is no room for a heading to toggle, so every section shows its icons.
                   <div role="presentation" className="atelier-section atelier-section-static"><span>{t(group.labelKey)}</span></div>
@@ -617,11 +638,19 @@ export function Sidebar({
                     aria-controls={`nav-section-${group.labelKey}`}
                     className="atelier-section"
                   >
-                    <span>{t(group.labelKey)}</span>
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      {SectionIcon && <SectionIcon aria-hidden className="size-3.5 shrink-0" />}
+                      <span id={headingId(group.labelKey)}>{t(group.labelKey)}</span>
+                    </span>
                     <ChevronDown aria-hidden className={cn('size-3.5 shrink-0', !sectionOpen(group.labelKey) && '-rotate-90')} />
                   </button>
                 ))}
-                <div id={group.labelKey ? `nav-section-${group.labelKey}` : undefined} className="flex flex-col gap-px">
+                {/* Board 8fa0a31d — collapsed, an icon section is one trigger that opens its rows beside the rail. */}
+                {node ? <div id={`nav-section-${group.labelKey}`} className="flex flex-col gap-px">{atelierModule(node)}</div> : (() => {
+                const SectionBody = SectionIcon && !collapsed ? 'nav' : 'div';
+                return (
+                <SectionBody id={group.labelKey ? `nav-section-${group.labelKey}` : undefined}
+                  aria-labelledby={SectionBody === 'nav' && group.labelKey ? headingId(group.labelKey) : undefined} className="flex flex-col gap-px">
                   {(collapsed || sectionOpen(group.labelKey)) && group.items.map((item) => {
                     if (isCollapsible(item)) return atelierModule(item);
                     const Icon = item.icon;
@@ -641,10 +670,11 @@ export function Sidebar({
                       </Link>
                     );
                   })}
-                </div>
+                </SectionBody>); })()}
                 {gi===0&&workspaceSwitch()}
               </div>
-            ))}
+              );
+            })}
           </nav>
           {/* b953a339 — Classic's collapse control, in Atelier's styling. Same remembered setting (rail_collapsed). */}
           <button type="button" onClick={toggle} aria-label={collapsed ? t('expand') : t('collapse')} title={collapsed ? t('expand') : t('collapse')}
@@ -736,8 +766,12 @@ export function Sidebar({
           data-tour="nav"
           className="relative flex w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden py-3"
         >
-          {groups.map((group, gi) => (
-            <div key={gi} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center',gi===2&&'mt-auto')}>
+          {groups.map((group, gi) => {
+            const SectionIcon = group.icon;
+            const node = collapsed ? sectionNode(group) : null;
+            const SectionBody = SectionIcon && !collapsed ? 'nav' : 'div';
+            return (
+            <div key={gi} data-nav-section={group.labelKey} className={cn('flex w-full flex-col gap-1', collapsed && 'items-center',gi===firstPinnedGroup&&'mt-auto')}>
               {gi > 0 && collapsed && (
                 <span className="my-1.5 h-px w-7 rounded-full bg-border" aria-hidden />
               )}
@@ -760,7 +794,10 @@ export function Sidebar({
                     'hover:text-foreground',
                   )}
                 >
-                  <span>{t(group.labelKey)}</span>
+                  <span className="inline-flex min-w-0 items-center gap-1.5">
+                    {SectionIcon && <SectionIcon aria-hidden className="size-3.5 shrink-0" strokeWidth={2} />}
+                    <span id={headingId(group.labelKey)}>{t(group.labelKey)}</span>
+                  </span>
                   <ChevronDown
                     aria-hidden
                     className={cn(
@@ -772,11 +809,29 @@ export function Sidebar({
               )}
               {/* The id `aria-controls` on the heading points at. Without a real element to reference,
                   the attribute is a dangling promise to a screen reader. */}
-              <div
+              <SectionBody
                 id={group.labelKey ? `nav-section-${group.labelKey}` : undefined}
+                aria-labelledby={SectionBody === 'nav' && group.labelKey ? headingId(group.labelKey) : undefined}
                 className={cn('flex w-full flex-col gap-1', collapsed && 'items-center')}
               >
-              {(collapsed || sectionOpen(group.labelKey)) &&
+              {/* Board 8fa0a31d — collapsed, an icon section is one trigger that opens its rows beside the rail. */}
+              {node && (
+                <NavFlyout
+                  key={node.labelKey}
+                  labelKey={node.labelKey}
+                  icon={node.icon}
+                  open={openKey === node.labelKey}
+                  active={node.children.filter(canSeeChild).some(isRowActive)}
+                  collapsed
+                  rowBase={rowBase}
+                  panelId={`nav-flyout-${node.labelKey}`}
+                  onToggle={() => setOpenKey((k) => (k === node.labelKey ? null : node.labelKey))}
+                  triggerRef={(el) => {
+                    triggerRefs.current[node.labelKey] = el;
+                  }}
+                />
+              )}
+              {!node && (collapsed || sectionOpen(group.labelKey)) &&
               group.items.map((item) => {
                 if (isCollapsible(item)) {
                   const children = item.children.filter(canSeeChild);
@@ -804,7 +859,6 @@ export function Sidebar({
                       collapsed={collapsed}
                       rowBase={rowBase}
                       panelId={`nav-flyout-${item.labelKey}`}
-                      onOpen={item.labelKey === 'securityCenter' ? () => setOpenKey(item.labelKey) : undefined}
                       onToggle={() =>
                         setOpenKey((k) => (k === item.labelKey ? null : item.labelKey))
                       }
@@ -862,10 +916,11 @@ export function Sidebar({
                   </Link>
                 );
               })}
-              </div>
+              </SectionBody>
               {gi===0&&workspaceSwitch()}
             </div>
-          ))}
+            );
+          })}
         </nav>
 
         <button

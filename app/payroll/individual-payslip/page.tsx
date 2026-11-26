@@ -1,5 +1,5 @@
 import { recordPayrollAccess } from '@/core/payroll-audit/access-log';
-import { PayslipBlock as Block, PayslipInformation as Info, PayslipRow as Row } from '@/components/payslip-sections';
+import { NetPayBand, PayslipBlock as Block, PayslipInformation as Info, PayslipRow as Row } from '@/components/payslip-sections';
 import {PayslipCompanyLogo} from '@/components/payslip-company-logo';
 import { isRecordedEmployerContribution, payslipConfiguredContributions } from '@/core/payslip-configured-contributions';
 import { selectPayslipInformation, payslipInformationData } from '@/core/payslip-information';
@@ -115,13 +115,23 @@ import { payslipPaymentDate } from '@/lib/payslip-pdf-strings';
  *   never offered cycles — it offers the four fixed run types — and it is labelled "Run type" now. What
  *   the sentence ASSERTS is unchanged: the card's whole job lives in that dropdown.]
  *
- * The rules — the hierarchy, the dropping of a stale lower choice, and the run-number fold — live in
+ *
+ *   [1ebba97e CORRECTS THIS SECTION FOR THE SCREEN AS IT NOW IS. Since r360 the fourth box is the
+ *   company's configured PAYROLL CYCLE (`?payrollCycleId=`), not the run-type list, and `?cycle=` survives
+ *   only as a link parameter. That left two runs in one month separable only by a "Matching payroll runs"
+ *   row of buttons under the filters — the run list this section said must not come back. The reporter
+ *   asked for that row to go, and it is gone. What it did now lives in the Payroll Cycle box itself: when
+ *   the month on screen holds more than one run and a cycle option cannot tell some of them apart (two runs
+ *   under one configured cycle, or runs under none), each of those runs is its own option, "Bonus run 2",
+ *   whose value names the payslip ('payslip:<id>'). A one-run month offers exactly what it did before. No
+ *   new filter control, and every payslip the row could open is still one choice away.]
+ *
+ * The rules — the hierarchy, the dropping of a stale lower choice, and the per-run options — live in
  * ./period-options.ts with the reasoning for each. This screen also stopped reading
  * `listProcessedPayslipsAcross` for the run list: resolving the selection against the index yields one
  * payslip id, which `payslipForReview` already reads, so it no longer pulls twenty-five payslips and
  * their `statutory` blobs in order to choose one of them.
  */
-import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { listPayrollCyclesForCompanies, listReprocessEmployeeOutcomes } from '@/packs/payroll/service';
 import { ReprocessOutcomeStatus, ReprocessOutcomeRemarks } from '../[batchId]/reprocess/outcomes';
@@ -175,7 +185,11 @@ import {
   payslipPeriodOptionsFor,
   matchingPayslipRuns,
   resolvePayslipSelection,
-
+  // 1ebba97e — the Payroll Cycle box's one-option-per-run entries, which replaced the "Matching payroll
+  // runs" row.
+  parsePayslipRunOption,
+  payslipRunOptionValue,
+  payslipRunsNeedingOwnOption,
 } from './period-options';
 // 417d4937 request 10 — the shared provenance block, so this screen and Transaction View → History
 // cannot drift the way the four record-line renderers already did.
@@ -352,15 +366,24 @@ export default async function IndividualPayslipPage({
   const historicallyUsedCycles = new Set(runs.flatMap(run => run.payrollCycleId ? [run.payrollCycleId] : []));
   const configuredCycles = catalogue.filter(option => option.archivedAt == null || historicallyUsedCycles.has(option.id));
   const strictFilter = sp.payrollCycleId !== undefined;
-  const selectedCycleId = sp.payrollCycleId || undefined;
+  // 1ebba97e — a Payroll Cycle option may name ONE RUN ('payslip:<id>') instead of a configured cycle; see
+  // ./period-options.ts. Such an option is not a cycle filter: it applies no cycle, and asks for that payslip
+  // within the company / year / month posted beside it.
+  const runOption = parsePayslipRunOption(sp.payrollCycleId);
+  const selectedCycleId = runOption ? undefined : sp.payrollCycleId || undefined;
   const cycleAllowed = !selectedCycleId || configuredCycles.some(option => option.id === selectedCycleId);
   const requested = { companyId, year, month, payrollCycleId: selectedCycleId };
   const selectionAvailable = cycleAllowed && (!strictFilter || !sp.companyId || !!companyId);
   const legacyRunLink = sp.payslipId || cycle;
+  // A run choice left over from another month (Month changed, Payroll Cycle box not) is DROPPED, so the
+  // screen opens that month's latest payslip rather than "no payslip" — the stale-choice rule of
+  // ./period-options.ts note 2. Matched against the fenced runs, so a tampered id resolves to nothing.
+  const runOptionPayslipId = runOption && matchingPayslipRuns(runs, requested).some(run => run.payslipId === runOption)
+    ? runOption : undefined;
 
   const sel = resolvePayslipSelection(selectionAvailable ? runs : [], {
     ...requested,
-    payslipId: sp.payslipId,
+    payslipId: runOptionPayslipId ?? sp.payslipId,
     runType: cycle,
     runSeq: cycleRunSeq,
     strictFilter: strictFilter || (!legacyRunLink && year == null && month == null),
@@ -374,9 +397,13 @@ export default async function IndividualPayslipPage({
   const showYear = sel.year ?? year;
   const showMonth = sel.month ?? month;
   const displayedRun = runs.find(run => run.payslipId === sel.payslipId);
-  const showCycle = selectedCycleId ?? (!strictFilter ? displayedRun?.payrollCycleId ?? '' : '');
+  // The configured cycle on show. A run option (1ebba97e) shows the run's own cycle here, and is swapped
+  // for its own option below once that option is known to exist.
+  const cycleShowing = runOptionPayslipId
+    ? displayedRun?.payrollCycleId ?? ''
+    : selectedCycleId ?? (!strictFilter ? displayedRun?.payrollCycleId ?? '' : '');
   const cycleName = new Map(configuredCycles.map(option => [option.id, option.name]));
-  const visibleCycles = configuredCycles.filter(option => !showCompanyId || option.companyId === showCompanyId || option.id === showCycle);
+  const visibleCycles = configuredCycles.filter(option => !showCompanyId || option.companyId === showCompanyId || option.id === cycleShowing);
 
   // …AND WHAT EACH BOX OFFERS. Every list is narrowed by the levels ABOVE it and by nothing below —
   // Company by nothing, Year by the company showing, Month by that year, the run by that month. Narrowing
@@ -392,16 +419,23 @@ export default async function IndividualPayslipPage({
     shown,
     new Date().getFullYear(),
   );
-  const runScope = strictFilter ? requested : { ...shown, payrollCycleId: showCycle || undefined };
-  const matchingRuns = sel.payslipId ? matchingPayslipRuns(runs, runScope) : [];
-  const runHref = (payslipId: string) => {
-    const params = new URLSearchParams({ employmentId: employmentId!, payslipId, payrollCycleId: runScope.payrollCycleId ?? '' });
-    if (runScope.companyId) params.set('companyId', runScope.companyId);
-    if (runScope.year != null) params.set('year', String(runScope.year));
-    if (runScope.month != null) params.set('month', String(runScope.month));
-    if (sp.from) params.set('from', sp.from);
-    return `/payroll/individual-payslip?${params}`;
-  };
+  // 1ebba97e — the runs in the month on screen that a cycle option cannot tell apart, each offered as its
+  // own Payroll Cycle option. Empty for a one-run month, so that box renders exactly as before. This is
+  // what let the "Matching payroll runs" row go without stranding a payslip; no new query — `runs` is the
+  // index already read above.
+  const ownRunOptions = payslipRunsNeedingOwnOption(runs, shown, new Set(visibleCycles.map(option => option.id)));
+  const runOptionLabel = (run: (typeof runs)[number]) => t('cycleRun', {
+    cycle: (run.payrollCycleId && cycleName.get(run.payrollCycleId)) || payrollRunLabel(run, tTxn(`individual.cycle.${run.runType}`)),
+    n: run.runSeq,
+  });
+  const runOptionsUnder = (cycleId: string | null) => ownRunOptions
+    .filter(run => cycleId ? run.payrollCycleId === cycleId : !visibleCycles.some(option => option.id === run.payrollCycleId))
+    .map(run => <option key={run.payslipId} value={payslipRunOptionValue(run.payslipId)}>{runOptionLabel(run)}</option>);
+  // r209's rule 2: the box displays the run option only when that option is actually offered; otherwise it
+  // falls back to the run's cycle, so a <select> never shows a value missing from its own list.
+  const showRunOption = runOptionPayslipId && sel.payslipId === runOptionPayslipId
+    && ownRunOptions.some(run => run.payslipId === runOptionPayslipId) ? payslipRunOptionValue(runOptionPayslipId) : undefined;
+  const showCycle = showRunOption ?? cycleShowing;
 
   // One payslip id, one read. `companyIds` is unchanged from what the guard above produced, so the fence
   // this row is read through is exactly the fence it was read through before r210.
@@ -583,12 +617,16 @@ export default async function IndividualPayslipPage({
           <Field label={informationLabels.payrollCycle}>
             <select name="payrollCycleId" defaultValue={showCycle} className={inputCls}>
               <option value="">{tTxn('view.filters.all')}</option>
-              {showCycle && !visibleCycles.some(option => option.id === showCycle) && (
+              {showCycle && !showRunOption && !visibleCycles.some(option => option.id === showCycle) && (
                 <option value={showCycle}>{tTxn('fixed.cycleUnspecified')}</option>
               )}
-              {visibleCycles.map(option => (
-                <option key={option.id} value={option.id}>{option.name}</option>
-              ))}
+              {/* 1ebba97e — each configured cycle, followed by its own runs when it holds more than one
+                  this month; runs under no configured cycle come last. See `ownRunOptions` above. */}
+              {visibleCycles.flatMap(option => [
+                <option key={option.id} value={option.id}>{option.name}</option>,
+                ...runOptionsUnder(option.id),
+              ])}
+              {runOptionsUnder(null)}
             </select>
           </Field>
           <Button type="submit" variant="secondary">
@@ -597,20 +635,9 @@ export default async function IndividualPayslipPage({
         </form>
       </Card>
 
-      {matchingRuns.length > 1 && (
-        <nav aria-label={t('matchingRuns')} className="flex flex-wrap items-center gap-2 print:hidden">
-          <span className="text-sm text-muted-foreground">{t('matchingRuns')}</span>
-          {matchingRuns.map(run => (
-            <Button asChild key={run.payslipId} variant={run.payslipId === sel.payslipId ? 'default' : 'outline'} size="sm">
-              <Link href={runHref(run.payslipId)} aria-current={run.payslipId === sel.payslipId ? 'page' : undefined}>
-                {t('cycleRun', { cycle: (run.payrollCycleId && cycleName.get(run.payrollCycleId))
-                  || payrollRunLabel(run, tTxn(`individual.cycle.${run.runType}`)), n: run.runSeq })}
-                {(!runScope.year || !runScope.month) && ` · ${run.payPeriod}`}
-              </Link>
-            </Button>
-          ))}
-        </nav>
-      )}
+      {/* 1ebba97e — the "Matching payroll runs" row that sat here is gone; its runs are options in the
+          Payroll Cycle box above. The `matchingRuns` message key is kept in every catalogue on purpose:
+          re-adding a deleted key later is the MISSING_MESSAGE trap. */}
       {!employmentId && <p className="text-sm text-muted-foreground">{t('chooseEmployeeHint')}</p>}
       {employmentId && !row && <p className="text-sm text-muted-foreground">{t('noPayslip')}</p>}
 
@@ -929,10 +956,9 @@ export default async function IndividualPayslipPage({
               The one figure the reader looks for first, so it gets the strongest treatment on the screen
               exactly as it does on the document. Presentation only: the figure and its source are
               untouched. */}
-          <Card className="flex items-baseline justify-between bg-primary px-6 py-5 text-primary-foreground">
-            <span className="text-sm font-semibold uppercase tracking-wide">{tSlip('netPay')}</span>
-            <span className="text-2xl font-bold tabular-nums">{rm(b.net)}</span>
-          </Card>
+          {/* 1ebba97e — the shared band, not a Card: Atelier and Monolith repaint every Card, which left the
+              old `bg-primary` band white on white. See components/payslip-sections.tsx `NetPayBand`. */}
+          <NetPayBand label={tSlip('netPay')} value={rm(b.net)} />
 
           {b.recordLines.some(line => line.nonPayable === true && !isRecordedEmployerContribution(line)) && (
             <Block title={tSlip('nonPayableHeading')} tone="other">

@@ -38,21 +38,21 @@ function mount({admin = true, operator = false, manager = false, collapsed = fal
   </NextIntlClientProvider>);
   return view;
 }
-// A section heading and its submenu can share a label; operate the actual controlled submenu.
+// Board 8fa0a31d — System Configuration is a section of its own: expanded, its heading controls the section, which is
+// a navigation landmark named by that heading; in the collapsed icon rail the section is one flyout trigger. There is
+// no second System Configuration dropdown inside the section, so exactly one control carries the name.
 function settingsTrigger(label = en.nav.systemConfiguration) {
-  const triggers = screen.getAllByRole('button', {name: label}).filter(button =>
-    button.hasAttribute('aria-controls') && button.getAttribute('aria-controls') !== 'nav-section-systemConfiguration');
+  const triggers = screen.getAllByRole('button', {name: label});
   expect(triggers).toHaveLength(1);
   return triggers[0];
 }
 function openSettings(label = en.nav.systemConfiguration) {
-  const section = document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]');
-  if (section?.getAttribute('aria-expanded') === 'false') fireEvent.click(section);
   const trigger = settingsTrigger(label);
   if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
   const panel = document.getElementById(trigger.getAttribute('aria-controls')!);
   expect(panel).not.toBeNull();
-  expect(panel).toHaveAttribute('aria-label', label);
+  const name = panel!.getAttribute('aria-label') ?? document.getElementById(panel!.getAttribute('aria-labelledby') ?? '')?.textContent;
+  expect(name).toBe(label);
   return panel!;
 }
 
@@ -66,8 +66,6 @@ describe('existing admin destinations relocated into System Configuration', () =
   it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders the existing labels and routes under one parent in %s', locale => {
     mount({locale});
     const nav = catalogues[locale].nav;
-    // No relocated destination remains a flat Administration link before opening the node.
-    for (const [, key] of relocated) expect(screen.queryByRole('link', {name: nav[key]})).toBeNull();
     const panel = openSettings(nav.systemConfiguration);
     for (const [href, key] of relocated) {
       expect(within(panel).getByRole('link', {name: nav[key]})).toHaveAttribute('href', href);

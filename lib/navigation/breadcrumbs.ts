@@ -1,5 +1,5 @@
 /** Presentation ancestry only; callers supply the viewer's already-admitted navigation rows. */
-export type BreadcrumbEntry = {href:string;label:string;section:string|null;parent:string|null;parentHref:string|null};
+export type BreadcrumbEntry = {href:string;label:string;section:string|null;sectionHref?:string|null;parent:string|null;parentHref:string|null};
 type Step = {href:string;labelKey:string};
 type Family = {path:string;owner:string;steps:readonly Step[];preserve?:readonly string[];recordChildrenOnly?:boolean};
 const settings:Step={href:'/payroll/setup',labelKey:'nav.payrollSettings'};
@@ -76,7 +76,8 @@ export function resolveBreadcrumbTrail(pathname:string,search:string,entries:rea
  }
  if(family||!active)return null;
  const parts:BreadcrumbPart[]=[];
- if(active.section)parts.push({label:active.section});
+ // A section heading links only to its admitted landing page (board 8fa0a31d: Security Center), never to itself.
+ if(active.section)parts.push({label:active.section,...(active.sectionHref&&active.sectionHref.split('?')[0]!==pathname?{href:active.sectionHref}:{})});
  if(active.parent&&active.parent!==active.section)parts.push({label:active.parent,...(active.parentHref&&active.parentHref.split('?')[0]!==pathname?{href:active.parentHref}:{})});
  const view=BREADCRUMB_VIEWS[pathname];
  const selected=view&&view.labels[new URLSearchParams(search).get(view.param)??''];

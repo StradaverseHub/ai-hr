@@ -24,6 +24,39 @@ export function PayslipInformation({ label, value }: { label: string; value: Rea
   );
 }
 
+/**
+ * 1ebba97e — the Net Pay band, ONE component for the admin review screen (app/payroll/individual-payslip)
+ * and the employee's own payslip (app/me/payslip/statement.tsx).
+ *
+ * WHY IT IS NOT A <Card>. Both screens drew this band as `<Card className="bg-primary text-primary-foreground">`,
+ * and Card stamps `data-ui-card`. Atelier, the default theme, repaints every `main [data-ui-card]` with
+ * `background: var(--card)` (app/atelier.css, unlayered, so it beats the `bg-primary` utility): white text on
+ * a white card, and the figure the reader looks for first looked like an empty box. Monolith's Card appends
+ * `monolith:bg-transparent`, and its primary-foreground is the page colour, so the same clash recurs there.
+ * A plain element carries no theme hook, so no theme rule can reach it.
+ *
+ * WHY foreground/background. They are the one token pair every theme (Atelier, Monolith, Classic) defines as
+ * each other's contrast, in light and in dark — ink on paper, inverted. So the band is a dark bar with light
+ * writing on a light page and the reverse on a dark one, never one colour twice.
+ * test/payslip-net-pay-band-1ebba97e.dom.test.tsx checks the pair's contrast in all six combinations.
+ *
+ * PRINT: browsers drop background fills by default, which would leave light text on white paper, so the
+ * printed band is an outlined row in black ink instead.
+ *
+ * Presentation only: `value` is the caller's already-formatted, already-recorded net pay.
+ */
+export function NetPayBand({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div
+      data-payslip-net-pay
+      className="flex items-baseline justify-between gap-4 rounded-xl bg-foreground px-6 py-5 text-background print:border print:border-black print:bg-transparent print:text-black"
+    >
+      <span className="text-sm font-semibold uppercase tracking-wide">{label}</span>
+      <span className="text-2xl font-bold tabular-nums">{value}</span>
+    </div>
+  );
+}
+
 /** One card in the payslip stack. The screen used to be a single tall card with <section>s inside it. */
 export function PayslipBlock({ title, children, tone = "slate", aligned = false }: { title: string; children: React.ReactNode; tone?:"slate"|"earn"|"deduct"|"other"; aligned?: boolean }) {
   return (

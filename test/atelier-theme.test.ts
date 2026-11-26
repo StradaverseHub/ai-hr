@@ -112,7 +112,7 @@ describe('one navigation source', () => {
   it('the Atelier rail walks the same groups and shares the section state owner', () => {
     const rail = sidebar.slice(sidebar.indexOf('if (atelier) {'), sidebar.indexOf('// Current uses the same authorized navigation graph'));
     expect(rail.length).toBeGreaterThan(2000);
-    expect(rail).toContain('{groups.map((group, gi) => (');
+    expect(rail).toContain('{groups.map((group, gi) =>');
     expect(rail).toContain('onClick={() => toggleSection(group.labelKey!)}');
     expect(rail).toContain('item.children.filter(canSeeChild)');
     expect(rail).not.toMatch(/\bGROUPS\b/);

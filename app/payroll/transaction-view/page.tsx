@@ -391,6 +391,8 @@ export default async function TransactionViewPage({
     const outcome=byResult.get(`${row.batchId}:${row.employmentId}`);
     return outcome?.payslipId === row.id && outcome.versionAfter === row.version ? [[row.id, {
       status:outcome.status, reasonCode:outcome.reasonCode, resultRetained:outcome.resultRetained,
+      // 289634a6 — the periods only (no correction ids cross the client boundary).
+      ...(outcome.taxCorrectionsReplaced?.length ? {taxCorrectionsReplaced:outcome.taxCorrectionsReplaced} : {}),
     }]] : [];
   }));
   // …and the EMPLOYMENTS on screen. Batch + company alone would return every employee's ledger rows on
