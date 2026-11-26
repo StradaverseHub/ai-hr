@@ -353,7 +353,20 @@ parses and plans it each time (and the driver parses it twice, describing it fir
   both, and a Today carrier's identity statement sets them, so no statement is added and every route budget is kept.
   The setting changes only how prepared statements and PL/pgSQL statements later in that transaction or carrier are
   planned, never their rows.
-- **Switch back without a deploy:** `AIHR_PREPARED_READS=off` (unnamed statements, jit-only setting).
+- **Retained plan memory is bounded.** A named statement keeps its plans on every backend that ran it, until the
+  connection ends (six hours), whereas an unnamed statement frees them after the call. The first full gate of this
+  change (run 45850704112) was OOM-killed in its 2 GiB PostgreSQL container for that reason. Measured per backend and
+  per statement text (`test/planning-cost-prepared-reads.test.ts`, through a test-only login holding the application
+  role and `pg_read_all_stats`): about 7.0 MB for an account task text and for the largest Before payroll text, at
+  most 1.22 MB for a request preamble, 0.92 MB for the recruitment to-dos, 1.34 MB and 0.40 MB for the payroll
+  freshness reads. These statements have several texts each, so a process prepares only the first few texts of each
+  (`PREPARED_READ_TEXT_LIMITS`: 2, 2, 3, 4, 1, 1) and sends later ones unnamed, as before. One backend then retains at
+  most about 38 MB, 47.7 MB with a 25% margin (`PREPARED_READ_BACKEND_BOUND_BYTES`); the scale test fails if a text
+  grows beyond its recorded size. Multiply by the backends that serve web processes: direct connections are web
+  processes × `AIHR_DB_POOL_MAX`; through PgBouncer, at most `default_pool_size + reserve_pool_size` server connections
+  (2 × cores + 2 + reserve) times the number of web processes.
+- **Switch back:** `AIHR_PREPARED_READS=off` (exactly `off`) sends every one of them unnamed and the jit-only setting.
+  It is read per call from the process environment, which the services load at start, so it takes a restart.
 - Measured on the hosted runner (`test/planning-cost-prepared-reads.test.ts`, 71 companies / 1,000 employments; each
   statement replayed on its own connection; identical rows and order in every mode). Wall per call before → after:
   account task statement 177 → 69 ms (manager, employee; 90 ms of planning gone) and 63 → 34 ms (group

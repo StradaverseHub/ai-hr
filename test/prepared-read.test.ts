@@ -4,7 +4,8 @@
 import {afterEach,describe,expect,it} from 'vitest';
 import {sql} from 'drizzle-orm';
 import {PgDialect} from 'drizzle-orm/pg-core';
-import {PREPARED_READ_OPTIONS,executePrepared,genericPlanSettingsStatement,preparedReadCounts,preparedReadsEnabled} from '../db/prepared-read';
+import {PREPARED_READ_BACKEND_BOUND_BYTES,PREPARED_READ_MEASURED_TEXT_BYTES,PREPARED_READ_OPTIONS,PREPARED_READ_TEXT_LIMITS,__resetPreparedReadAdmissionForTests,
+ executePrepared,genericPlanSettingsStatement,preparedReadCounts,preparedReadsEnabled} from '../db/prepared-read';
 import {classifySharedStatement,passedSettings,sharedReadDriver,type SharedReadCarrierControl,type SharedReadCarrierState} from '../db/shared-read';
 
 type Sent={query:string;params:unknown[]|undefined;options:unknown};
@@ -22,30 +23,57 @@ const fakeSession=()=>({stats:{statements:0,flights:0,memoHits:0,seeded:0},
 /** One open carrier's state (db/shared-read.ts SharedReadCarrierState): past its identity statement. */
 const openCarrier=():SharedReadCarrierState=>({bootstrapping:false,plain:false,inFlight:0});
 
-afterEach(()=>{delete process.env.AIHR_PREPARED_READS;});
+afterEach(()=>{delete process.env.AIHR_PREPARED_READS;__resetPreparedReadAdmissionForTests();});
 
 describe('executePrepared',()=>{
  const statement=sql`select ${'a'}::text as x, ${7}::int as y`;
  it('sends the statement drizzle would send, as a named prepared statement',async()=>{
   const {sent,driver}=fakeDriver();
-  const before=preparedReadCounts().get('unit')?.prepared??0;
-  const rows=await executePrepared<{n:number}>({dialect:new PgDialect(),session:{client:driver}},statement,'unit');
+  const before=preparedReadCounts().get('recruitment-personal-todos')?.prepared??0;
+  const rows=await executePrepared<{n:number}>({dialect:new PgDialect(),session:{client:driver}},statement,'recruitment-personal-todos');
   const expected=new PgDialect().sqlToQuery(statement);
   expect(sent).toEqual([{query:expected.sql,params:expected.params,options:PREPARED_READ_OPTIONS}]);
   expect(PREPARED_READ_OPTIONS).toEqual({prepare:true});
   expect(rows[0].n).toBe(1);
-  expect(preparedReadCounts().get('unit')?.prepared).toBe(before+1);
+  expect(preparedReadCounts().get('recruitment-personal-todos')?.prepared).toBe(before+1);
  });
  it('sends it unnamed, exactly as before, with AIHR_PREPARED_READS=off',async()=>{
   process.env.AIHR_PREPARED_READS='off';
   expect(preparedReadsEnabled()).toBe(false);
   const {sent,driver}=fakeDriver();
-  await executePrepared({dialect:new PgDialect(),session:{client:driver}},statement,'unit-off');
+  const before=preparedReadCounts().get('request-preamble')??{prepared:0,unnamed:0,overflow:0};
+  await executePrepared({dialect:new PgDialect(),session:{client:driver}},statement,'request-preamble');
   expect(sent).toHaveLength(1);
   expect(sent[0].options).toBeUndefined();
-  expect(preparedReadCounts().get('unit-off')).toEqual({prepared:0,unnamed:1});
+  expect(preparedReadCounts().get('request-preamble')).toEqual({...before,unnamed:before.unnamed+1});
   expect(preparedReadsEnabled({AIHR_PREPARED_READS:'on'})).toBe(true);
   expect(preparedReadsEnabled({})).toBe(true);
+ });
+});
+
+describe('the text limit per prepared read',()=>{
+ it('prepares only the first texts of a label in a process, then sends the rest unnamed, as before',async()=>{
+  const {sent,driver}=fakeDriver();
+  const tx={dialect:new PgDialect(),session:{client:driver}};
+  const limit=PREPARED_READ_TEXT_LIMITS['account-tasks'];
+  for(let n=0;n<limit+2;n++)await executePrepared(tx,sql`select ${n}::int as n, ${sql.raw(String(n))} as shape`,'account-tasks');
+  // An admitted text stays prepared on every later call.
+  await executePrepared(tx,sql`select ${9}::int as n, ${sql.raw('0')} as shape`,'account-tasks');
+  expect(sent.map(row=>row.options===PREPARED_READ_OPTIONS)).toEqual([...Array(limit).fill(true),false,false,true]);
+  expect(sent.slice(limit,limit+2).every(row=>row.options===undefined)).toBe(true);
+  // Labels are limited separately.
+  await executePrepared(tx,sql`select 1`,'payroll-freshness-files');
+  await executePrepared(tx,sql`select 2`,'payroll-freshness-files');
+  expect(sent.slice(-2).map(row=>row.options===PREPARED_READ_OPTIONS)).toEqual([true,false]);
+  expect(preparedReadCounts().get('payroll-freshness-files')?.overflow).toBeGreaterThan(0);
+ });
+ it('bounds one backend\'s retained plans at the limits times the measured sizes, with a margin',()=>{
+  const labels=Object.keys(PREPARED_READ_TEXT_LIMITS) as (keyof typeof PREPARED_READ_TEXT_LIMITS)[];
+  expect(Object.keys(PREPARED_READ_MEASURED_TEXT_BYTES).sort()).toEqual([...labels].sort());
+  const raw=labels.reduce((sum,label)=>sum+PREPARED_READ_TEXT_LIMITS[label]*PREPARED_READ_MEASURED_TEXT_BYTES[label],0);
+  expect(PREPARED_READ_BACKEND_BOUND_BYTES).toBe(Math.ceil(raw*1.25));
+  // About 39 MB measured, 49 MB with the margin: the figure the release evidence multiplies by backends.
+  expect(PREPARED_READ_BACKEND_BOUND_BYTES).toBeLessThanOrEqual(50_000_000);
  });
 });
 

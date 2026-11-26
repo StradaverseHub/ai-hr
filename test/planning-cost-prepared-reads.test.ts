@@ -27,6 +27,10 @@ import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it,vi} from 'vitest';
 
 const state=vi.hoisted(()=>({session:undefined as unknown,pathname:'/',cookies:{} as Record<string,string>}));
+// A small application pool for this file: each of its backends keeps the prepared statements' plans (up to
+// PREPARED_READ_BACKEND_BOUND_BYTES) for the file's life, and the gate runs it beside another file in a 2 GiB
+// PostgreSQL container (gate 45850704112 was OOM-killed with the default pool of 10). Read when db/client loads.
+const pool=vi.hoisted(()=>{const previous=process.env.AIHR_DB_POOL_MAX;process.env.AIHR_DB_POOL_MAX='4';return {previous};});
 vi.mock('next/font/google',()=>{const font=()=>({variable:'fixture-font'});return {Plus_Jakarta_Sans:font,Geist_Mono:font,DM_Mono:font};});
 vi.mock('next/font/local',()=>({default:()=>({variable:'fixture-local-font'})}));
 vi.mock('next/headers',()=>({
@@ -55,7 +59,7 @@ import postgres from 'postgres';
 import {drizzle} from 'drizzle-orm/postgres-js';
 import type {SessionContext} from '../db/client';
 import {applicationDatabaseUrl} from '../db/pooling';
-import {preparedReadCounts} from '../db/prepared-read';
+import {PREPARED_READ_MEASURED_TEXT_BYTES,preparedReadCounts} from '../db/prepared-read';
 import * as schema from '../db/schema';
 import {MODULE_CATALOG} from '../packs/catalog';
 import {resignationRuntimeKey} from '../lib/resignation-runtime-proof';
@@ -137,6 +141,7 @@ afterAll(async()=>{
  await owner.db.execute(sql.raw(`drop role if exists "${measurer.name}"`)).catch(()=>undefined);
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'planning-cost-prepared-reads.json'),
   JSON.stringify({kind:'PLANNING_COST_PREPARED_READS',fictional:true,source:process.env.AIHR_CI_HEAD??null,measurements:evidence},null,1));
+ if(pool.previous===undefined)delete process.env.AIHR_DB_POOL_MAX;else process.env.AIHR_DB_POOL_MAX=pool.previous;
  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete process.env.AIHR_VIEWER_MENU_CACHE;delete process.env.AIHR_PREPARED_READS;await closeAll();});
 
 const normalize=(key:string,value:unknown)=>key==='claimPreviewRevision'&&typeof value==='string'?'<revision>':value;
@@ -284,6 +289,9 @@ describe('planning cost: named prepared statements for the large combined reads'
   for(const pair of found){
    const measured=await measure(pair);
    expect(measured.differing,`${persona} ${pair.target}`).toEqual([]);
+   // The retained plan memory of this text stays within the size db/prepared-read.ts records for its label, which
+   // with the text limits bounds one backend (PREPARED_READ_BACKEND_BOUND_BYTES).
+   expect(measured.retained.genericPlanBytes,`${persona} ${pair.target} retained plan bytes`).toBeLessThanOrEqual(PREPARED_READ_MEASURED_TEXT_BYTES[pair.target]);
    // What the application now sends is no slower than before (1 ms or 10% of noise): the account task statement with its
    // generic plan from the first call (genericPlanSettingsStatement), every other statement prepared in auto mode, after
    // its first five calls on a connection.
