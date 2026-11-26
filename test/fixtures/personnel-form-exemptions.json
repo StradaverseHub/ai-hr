@@ -1148,7 +1148,8 @@
       "tag": "input",
       "context": "Cp38LastMonthField",
       "name": "lastMonthEnabled",
-      "reason": "Board bc6b5490: chooses whether this CP38 record has a separate last-month amount; it reveals the bound payroll.cp38_deduction.lastmonthamount field, and core/cp38.ts (lib/cp38-form.ts) clears the amount when it is unticked. A form-state chooser, not an employee master fact."
+      "reason": "Board bc6b5490: chooses whether this CP38 record has a separate last-month amount; it reveals the bound payroll.cp38_deduction.lastmonthamount field, and core/cp38.ts (lib/cp38-form.ts) clears the amount when it is unticked. A form-state chooser, not an employee master fact.",
+      "occurrences": 1
     }
   ]
 }
