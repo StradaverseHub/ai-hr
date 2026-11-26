@@ -120,7 +120,7 @@ describe('employee search trigram candidates (7320)',()=>{
    const visible=new Set((await withTenant(ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment))).map(r=>r.id));
    for(const q of ['tan','bulk 01','bk-00','fictional']){
     const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,null::uuid[],true) as ids`));
-    // NULL: 7530 declines to narrow (more than 1,000 matches, all in companies the caller administers); the caller
+    // NULL: 7530 declines to narrow (a broad term for a caller with cheap row security); the caller
     // then reads as before 7320, which the directory and picker equivalence tests cover.
     if(row.ids===null)continue;
     const candidates=row.ids;

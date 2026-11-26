@@ -23,8 +23,8 @@
 -- where narrowing costs more than that read, both only when at most 100 employments in scope lie outside the
 -- companies the caller administers or partners (elsewhere row security is costly per row, and the read before 7320
 -- checked it on every row in scope): the caller names companies holding at most 1,000 employments (the tenant-wide
--- trigram search costs more than reading them), or the term is broad: more than 1,000 name or code matches in the
--- tenant (a bounded count before the search), or more than 1,000 matches all in companies the caller administers or
+-- trigram search costs more than reading them), or the term is broad: more than 2,000 name or code matches in the
+-- tenant (a bounded count before the search), or more than 2,000 matches all in companies the caller administers or
 -- partners (fetching thousands by key costs more than the read). From 7530 the application asks the
 -- function once per search and passes the ids as a list. Signature, volatility, owner, search_path, grants, the
 -- NULL answer for unnarrowed terms and the sorted result are unchanged. The single statement between the $search$
@@ -85,7 +85,7 @@ DECLARE
  -- Then, up to this many employments in the named companies, reading them costs less than the tenant-wide search.
  v_scope_limit constant integer := 1000;
  -- Or more matches than this, all in administered or partner companies: fetching them by key costs more than the read.
- v_match_limit constant integer := 1000;
+ v_match_limit constant integer := 2000;
  v_out_companies uuid[];
  v_scope_outside integer;
  v_scope integer;
