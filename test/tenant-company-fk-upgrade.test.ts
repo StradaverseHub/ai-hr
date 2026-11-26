@@ -283,6 +283,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10880,version:'7',when:1795495007480,tag:'7480_payroll_read_own_payslips',breakpoints:true},
  {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
  {idx:10900,version:'7',when:1795495007500,tag:'7500_payroll_read_history_summary',breakpoints:true},
+ // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
+ {idx:10970,version:'7',when:1795495007570,tag:'7570_tp3_import_job',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1461,6 +1463,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_batch_summary_verify(uuid)',app:false},
    {fn:'app.payroll_read_access_view_installed_as(text,text)',app:false},
    {fn:'app.payroll_read_access_swap_views(text,text,text)',app:false},
+   // 7570 (board 5084d02e): the Form TP3 Import Log read, bounded by app.is_admin_for over each job's companies.
+   {fn:'app.tp3_import_log(uuid[],uuid,timestamp with time zone,uuid,integer)',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

@@ -1,3 +1,21 @@
+# Board 5084d02e: Form TP3 Excel import job and Import Log, 26 November 2026
+
+Reserve `7570_tp3_import_job`, journal index `10970`, timestamp `1795495007570`, SQL SHA-256
+`3a1388043be5589123fd925c5bae120d933a7dd23e3f8d0747cd4b083692ef79`. Taken on 26 November 2026 after a fresh fetch of
+every remote branch (6,287 refs): main and alpha end at `7500` (index `10900`); `7530`
+(`claude/search-visible-set-cost`, also in `claude/board-int-20261126`) and `7540`, `7550`, `7560`
+(`claude/board-int-20261126`, renumbered from the released 7510/7520) are taken; no branch holds or reserves a number
+above 7560. Staging's ledger watermark was 7500 on 26 November 2026 (recorded by the 7560 entry). Next free slot after
+the board lanes. Recheck both installations' watermarks and any competing reservation at admission.
+
+Inserts the `tp3_import` bulk-job kind (creator-exclusive; input `{"mode":"string","checkJobId":"string?"}`), a partial
+index `bulk_job_tp3_import_log` on `bulk_job(tenant_id, created_at DESC, id DESC) WHERE kind='tp3_import'`, and the
+SECURITY DEFINER read `app.tp3_import_log(uuid[], uuid, timestamptz, uuid, integer)` (EXECUTE to `ai_hr_app` only)
+that lists Form TP3 imports whose companies the caller administers (`app.is_admin_for`, computed once per call):
+totals, row outcomes and the uploader's name, never an uploaded file, input or amount. No table, column, policy or
+grant on an existing object changes; `bulk_job` row security stays creator-only. Depends on none of 7530-7560. This
+entry carries no deployment authority.
+
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 
 Reserve `7500_payroll_read_history_summary`, journal index `10900`, timestamp `1795495007500`, SQL SHA-256 `5526740b3133f61d1431b9f44e7a1b4f2812bc7f425638f4bc5ab59ef8342f1f`. Next free

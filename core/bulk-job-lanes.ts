@@ -19,10 +19,10 @@ export const BULK_JOB_LANES:Readonly<Record<WorkerLane,readonly string[]>>=Objec
  payroll:Object.freeze(['payroll_process','payroll_history']),
  // Tax reprocessing, draft tax readiness and the tax basis group.
  tax:Object.freeze(['payroll_reprocess','payroll_draft_tax_readiness','payroll_tax_basis_group']),
- // File imports that load employee, register, leave, movement, attendance and fixed transaction data, with their
- // checks and reverts (they lock the same records as the import they belong to).
+ // File imports that load employee, register, leave, movement, attendance, fixed transaction and Form TP3 data, with
+ // their checks and reverts (they lock the same records as the import they belong to).
  import:Object.freeze(['employee_import','employee_import_revert','register_import','leave_ledger','movement_import','movement_check',
-  'movement_import_revert','clocking_import','fixed_transaction_import']),
+  'movement_import_revert','clocking_import','fixed_transaction_import','tp3_import']),
  export:Object.freeze(['payroll_transaction_export']),
  // Everything else: leave and TOIL sweeps, rosters, attendance recompute, lifecycle recovery, rewards, contracts, the
  // smaller imports and the Payroll Process list's outstanding-employee refresh.
