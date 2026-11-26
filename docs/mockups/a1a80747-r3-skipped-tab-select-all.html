@@ -1,0 +1,108 @@
+<meta charset="utf-8"><title>a1a80747 r3 — Skipped tab and Select all employees</title>
+<!-- Board a1a80747, plan revision 3. Fictional company and people only.
+     DRAWN FROM THE STAGING SCREEN THE REPORTER SENT (Reprocess selected employees, Fiamma 2026-07): the white card,
+     the dark tab pill with a count bubble, the red Select this page / Clear links, "N of M selected".
+     PROMISED HERE: three tabs with counts; Skipped holds held-for-income-tax, nothing-payable and not-owed people,
+     unticked, with their reason; Select all N employees ticks every page of the open tab (and the search);
+     the Payroll Process row names held employees on a second line.
+     NOT DRAWN: exact wording, colours, the result panel (unchanged). -->
+<style>
+ :root{--bg:#f6f6f7;--fg:#18181b;--card:#fff;--mf:#6b6b73;--border:#e6e6ea;--muted:#f3f3f5;--red:#c2410c;--redbg:#fff4ed;
+       --blue:#1d4ed8;--bluebg:#e8f0fe;--amber:#b45309;--amberbg:#fef3c7;--grey:#52525b}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1280px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .tag{display:inline-block;border:1px dashed #a1a1aa;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.06em;color:#52525b;margin-bottom:14px}
+ .lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#15803d;margin:4px 0 8px}
+ .card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:18px}
+ h2{font-size:15px;margin:0 0 10px}
+ .tabs{display:inline-flex;gap:4px;border:1px solid var(--border);border-radius:14px;padding:5px;margin:4px 0 12px}
+ .tab{padding:7px 14px;border-radius:10px;font-size:13.5px;color:#3f3f46;display:flex;align-items:center;gap:8px}
+ .tab.on{background:#18181b;color:#fff;font-weight:600}
+ .n{display:inline-block;min-width:20px;text-align:center;border-radius:999px;font-size:11px;font-weight:700;padding:1px 6px;background:#e4e4e7;color:#18181b}
+ .tab.on .n{background:#fff}
+ table{width:100%;border-collapse:collapse;font-size:12.5px;border:1px solid var(--border);border-radius:10px;overflow:hidden}
+ th{text-align:left;font-weight:500;color:#52525b;background:#fafafa;padding:8px 10px;font-size:12px}
+ td{padding:8px 10px;border-top:1px solid var(--border)}
+ .bar a,.lnk{color:var(--red);font-weight:500;margin-left:12px}
+ .bar b{margin-left:10px}
+ .big{background:#18181b;color:#fff;border-radius:6px;padding:1px 8px;font-weight:600;margin-left:12px}
+ .box{display:inline-block;width:14px;height:14px;border:1.5px solid #a1a1aa;border-radius:3px;vertical-align:-2px}
+ .box.on{background:var(--red);border-color:var(--red);position:relative}
+ .box.on:after{content:"";position:absolute;left:3.5px;top:0px;width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+ .code{font-family:ui-monospace,monospace;color:#52525b;margin-right:8px}
+ .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11px;font-weight:600}
+ .new{background:var(--bluebg);color:var(--blue)} .chg{background:var(--amberbg);color:var(--amber)}
+ .skp{background:var(--muted);color:var(--grey)} .held{background:#fee2e2;color:#b91c1c}
+ .why{color:#52525b;font-size:12px}
+ .grp{margin-top:14px} .grp h3{font-size:12.5px;margin:0 0 6px;color:#3f3f46}
+ .note{font-size:12px;color:var(--mf);margin:8px 0 0}
+ .callout{background:#18181b;color:#fff;border-radius:10px;padding:10px 14px;font-size:12.5px;margin-top:10px}
+ .row2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ .btn{display:inline-block;border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600}
+ .chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+ .sub{font-size:12px;color:var(--red)}
+</style>
+
+<div class="tag">SKETCH · WORDING, SPACING AND COLOURS WILL DIFFER · EXAMPLE COMPANY, NOT REAL DATA</div>
+
+<div class="lbl">After this plan · Reprocess selected employees · Contoh Teknologi Sdn Bhd · 2026-11 Regular · 1,262 employees</div>
+<div class="card">
+  <h2>Reprocess Required tab: only the people who still need processing</h2>
+  <div class="tabs">
+    <div class="tab on">Reprocess Required <span class="n">1,240</span></div>
+    <div class="tab">Skipped <span class="n">4</span></div>
+    <div class="tab">Processed / No Change <span class="n">18</span></div>
+  </div>
+  <table>
+    <tr><th class="bar" colspan="3"><span class="box on"></span>&nbsp; Employee <b>1,239 of 1,240 selected</b>
+      <a>Select this page</a><a>Select all 1,240 employees</a><a>Clear</a></th><th>Status</th><th>Why</th></tr>
+    <tr><td style="width:28px"><span class="box on"></span></td><td colspan="2"><span class="code">EMP-1001</span>Aisyah Rahman</td><td><span class="pill chg">Changed</span></td><td class="why">Fixed transaction updated after processing</td></tr>
+    <tr><td><span class="box on"></span></td><td colspan="2"><span class="code">EMP-1002</span>Benjamin Lee</td><td><span class="pill chg">Changed</span></td><td class="why">New individual transaction</td></tr>
+    <tr><td><span class="box on"></span></td><td colspan="2"><span class="code">EMP-1003</span>Chandra Devi</td><td><span class="pill new">New</span></td><td class="why">Eligible for this month and has no payslip on this run</td></tr>
+    <tr><td><span class="box"></span></td><td colspan="2"><span class="code">EMP-1004</span>Daniel Tan</td><td><span class="pill chg">Changed</span></td><td class="why">Salary changed · you unticked him after Select all</td></tr>
+    <tr><td colspan="5" class="why" style="text-align:center">… 50 pages of 25 rows. Ticks stay when you change page, rows per page, search or tab.</td></tr>
+  </table>
+  <div class="callout"><b>Select all 1,240 employees</b> ticks everyone on this tab on every page, not just the 25 you can see.
+    With a search typed in, it reads "Select all 37 matching employees". You can untick anyone afterwards, and "N of M selected" always shows the real number.
+    <b>Select this page</b> ticks only the rows shown. <b>Clear</b> unticks everyone.</div>
+</div>
+
+<div class="row2">
+<div class="card">
+  <h2>Skipped tab: who is not being processed, and why</h2>
+  <div class="tabs">
+    <div class="tab">Reprocess Required <span class="n">1,240</span></div>
+    <div class="tab on">Skipped <span class="n">4</span></div>
+    <div class="tab">Processed / No Change <span class="n">18</span></div>
+  </div>
+  <div class="grp"><h3>Held for income tax review (2) &nbsp; <span class="btn">Process held employees</span></h3>
+  <table>
+    <tr><td style="width:28px"><span class="box"></span></td><td><span class="code">EMP-1101</span>Farah Aziz</td><td><span class="pill held">Skipped</span></td><td class="why">Income tax history for 2026-10 needs review · <span class="lnk" style="margin:0">Open Income Tax Recalculation</span></td></tr>
+    <tr><td><span class="box"></span></td><td><span class="code">EMP-1102</span>Gopal Krishnan</td><td><span class="pill held">Skipped</span></td><td class="why">Income tax history for 2026-10 needs review</td></tr>
+  </table></div>
+  <div class="grp"><h3>Nothing payable (1)</h3>
+  <table>
+    <tr><td style="width:28px"><span class="box"></span></td><td><span class="code">EMP-1103</span>Hui Min Ong</td><td><span class="pill skp">Skipped</span></td><td class="why">No monthly basic salary and nothing was payable this month</td></tr>
+  </table></div>
+  <div class="grp"><h3>Not owed on this run (1)</h3>
+  <table>
+    <tr><td style="width:28px"><span class="box"></span></td><td><span class="code">EMP-1104</span>Irfan Hakim</td><td><span class="pill skp">Not owed</span></td><td class="why">Removed from this run on purpose</td></tr>
+  </table></div>
+  <p class="note">Nobody here is ticked for you. Tick someone by hand, or press Process held employees, only when you mean to.
+    Once their tax history is corrected and they are processed, they leave this tab.</p>
+</div>
+
+<div class="card">
+  <h2>Payroll Process list: the count matches the tab</h2>
+  <table>
+    <tr><th>Payroll Period</th><th>Company</th><th>Status</th></tr>
+    <tr><td><b>2026-11</b> Regular</td><td>Contoh Teknologi Sdn Bhd</td>
+      <td><span class="chip">● Reprocess Required</span><div class="sub"><u>1,240 employees affected</u></div><div class="sub"><u>2 held for income tax review</u></div></td></tr>
+    <tr><td><b>2026-11</b> Regular</td><td>Contoh Hartanah Sdn Bhd</td>
+      <td><span class="chip">● Reprocess Required</span><div class="sub"><u>1 held for income tax review</u></div></td></tr>
+  </table>
+  <p class="note">"Employees affected" is the Reprocess Required tab's number and opens that tab.
+    "Held for income tax review" opens the Skipped tab. A payroll with only held employees still reads
+    Reprocess Required, because it cannot be closed until they are dealt with.</p>
+</div>
+</div>
