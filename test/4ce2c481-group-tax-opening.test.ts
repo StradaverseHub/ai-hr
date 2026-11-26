@@ -8,7 +8,7 @@
  * The imported months deducted no PCB, so the cumulative method has a shortfall to recover, which is what makes a
  * missing history visible: an employee with no earlier history at all is the "B only" figure the defect produced.
  */
-import {and, asc, eq, sql} from 'drizzle-orm';
+import {and, asc, eq, inArray, sql} from 'drizzle-orm';
 import {randomUUID} from 'node:crypto';
 import {afterAll, afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {withTenant, type SessionContext} from '../db/client';
@@ -155,12 +155,10 @@ describe('a same-employment transfer: A imported January to September, B native 
     expect(preview.employees[0].groupOpening).toMatchObject({tp3: 'apply', missing: [],
       companies: [{companyId: b.companyId, companyName: 'Fictional Group Berhad', periods: months(1, 9).map(m => `2026-${m}`), sources: ['imported'], taxable: 45000, epf: 4950, pcb: 0}]});
 
-    // B's payroll administrator without A rights: the same PCB on a reprocess, A's payslips stay unreadable, and the
-    // definer answers only for B's own employments (A's admin question is refused outright).
+    // B's payroll administrator without A rights: the same PCB, and the definer answers only for B's own employments
+    // (A's admin question is refused outright). The transferred EMPLOYMENT is B's now, so its own payslips were already
+    // readable to B under payslip_rls before this item; the totals-only boundary for another employment is pinned below.
     const bOnly = {...ctx, grants: [{role: 'hr_admin', companyId: coB}]} as SessionContext;
-    const visibleA = await withTenant(bOnly, tx => tx.select({id: schema.payslip.id}).from(schema.payslip).innerJoin(schema.payrollBatch, eq(schema.payrollBatch.id, schema.payslip.batchId))
-      .where(eq(schema.payrollBatch.companyId, b.companyId)));
-    expect(visibleA).toEqual([]);
     const totals = await withTenant(bOnly, tx => tx.execute<{company_id: string; period: string; y: string}>(sql`select * from app.payroll_group_tax_opening(${coB}::uuid,'2026-11',array[${moved.employmentId}::uuid])`));
     expect(totals.map(r => [r.company_id, r.period, Number(r.y)])).toEqual(months(1, 9).map(m => [b.companyId, `2026-${m}`, 5000]));
     expect(Object.keys(totals[0]).some(key => /payslip|line|item/i.test(key))).toBe(false);
@@ -227,6 +225,13 @@ describe('new employments for the same person across three companies', () => {
     expect(await pcbOf(july, third)).toBe(await pcbOf(july, control.employmentId));
     expect(readGroupTaxOpeningStamp((await slipOf(july, third)).statutory)?.companies.map(c => [c.companyName, c.periods.length])).toEqual([['Fictional Group Berhad', 3], ['Fictional Logistics Sdn Bhd', 3]]);
     expect(second).not.toBe(third);
+    // B's payroll administrator without A or C rights cannot read the earlier employments' payslips, yet B's run is given
+    // their totals per company and month, and nothing that names a payslip, a line or an item.
+    const bOnly = {...ctx, grants: [{role: 'hr_admin', companyId: coB}]} as SessionContext;
+    expect(await withTenant(bOnly, tx => tx.select({id: schema.payslip.id}).from(schema.payslip).where(inArray(schema.payslip.employmentId, [first.employmentId, second])))).toEqual([]);
+    const totals = await withTenant(bOnly, tx => tx.execute<Record<string, unknown>>(sql`select * from app.payroll_group_tax_opening(${coB}::uuid,'2026-07',array[${third}::uuid])`));
+    expect(totals.map(r => [r.company_id, r.period])).toEqual([...months(1, 3).map(m => [b.companyId, `2026-${m}`]), ...months(4, 6).map(m => [coC, `2026-${m}`])]);
+    expect(Object.keys(totals[0]).some(key => /payslip|line|item/i.test(key))).toBe(false);
 
     // Two jobs at once: an employment at A that is still active contributes nothing to B.
     const twoJobs = await hire('0300', 'Fictional Siti', '850808085555', b.companyId, b.deptA);
