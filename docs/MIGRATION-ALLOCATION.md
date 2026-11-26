@@ -8,7 +8,9 @@ watermarks and any competing reservation at admission. This entry carries no dep
 
 # Board group tax lane (4ce2c481): totals-only group tax opening, 26 November 2026
 
-Reserve `7520_payroll_group_tax_opening`, journal index `10920`, timestamp `1795495007520`, after 7510 above. Adds the
+Reserve `7550_payroll_group_tax_opening`, journal index `10950`, timestamp `1795495007550` (renumbered from 7520 on 26
+November 2026 by the integrator: the staging coordinator's database revamp search fix takes 7530 and installs first, CP38
+takes 7540, change detection 7560). Independent of 7530, 7540 and 7560. Adds the
 security-definer `app.payroll_group_tax_opening` (per company and month totals only, gated by payroll administration of
 the run's company). Recheck watermarks and competing reservations at admission. This entry carries no deployment
 authority.

@@ -106,6 +106,6 @@ Historical correction authority is unchanged: Recalculate Income Tax Value still
 employer's own months and its opening resolution is as above. Its preview gains a read-only "Year to date from other
 group companies" section (per contributing company: months, source, taxable pay, PCB, EPF, exemption use and remaining
 limit, missing months), attached outside the preview hash. Totals cross companies only through the definer
-`app.payroll_group_tax_opening` (migration 7520), gated by payroll administration of the selected or run company; no
+`app.payroll_group_tax_opening` (migration 7550), gated by payroll administration of the selected or run company; no
 payslip line leaves it. Payrolls already processed are not changed by themselves; reprocessing the affected month
 applies the opening. EA/CP8A, CP39 and Form E stay per company.

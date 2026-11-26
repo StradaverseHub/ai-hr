@@ -25,7 +25,7 @@
  *     without its tax stamp) holds the employee with that month named. Never gross pay, never zero.
  *
  * WHO MAY READ WHAT. The run company's payroll administrator usually cannot read the other company's payslips. The only
- * bridge is the definer `app.payroll_group_tax_opening` (migration 7520), which returns totals per contributing company
+ * bridge is the definer `app.payroll_group_tax_opening` (migration 7550), which returns totals per contributing company
  * and month for the run company's own employments, gated by payroll administration of the run company. No payslip,
  * line or item leaves it. The calculation therefore never depends on who presses Process.
  *

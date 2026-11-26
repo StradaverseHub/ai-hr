@@ -284,7 +284,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
  {idx:10900,version:'7',when:1795495007500,tag:'7500_payroll_read_history_summary',breakpoints:true},
  // Board 4ce2c481 — the totals-only group tax opening definer.
- {idx:10920,version:'7',when:1795495007520,tag:'7520_payroll_group_tax_opening',breakpoints:true},
+ {idx:10950,version:'7',when:1795495007550,tag:'7550_payroll_group_tax_opening',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1463,7 +1463,7 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_batch_summary_verify(uuid)',app:false},
    {fn:'app.payroll_read_access_view_installed_as(text,text)',app:false},
    {fn:'app.payroll_read_access_swap_views(text,text,text)',app:false},
-   // 7520 (board 4ce2c481): the totals-only group tax opening, executed by the application's payroll calculation.
+   // 7550 (board 4ce2c481): the totals-only group tax opening, executed by the application's payroll calculation.
    {fn:'app.payroll_group_tax_opening(uuid,text,uuid[])',app:true},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.

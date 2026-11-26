@@ -8151,10 +8151,10 @@
       "breakpoints": true
     },
     {
-      "idx": 10920,
+      "idx": 10950,
       "version": "7",
-      "when": 1795495007520,
-      "tag": "7520_payroll_group_tax_opening",
+      "when": 1795495007550,
+      "tag": "7550_payroll_group_tax_opening",
       "breakpoints": true
     }
   ]
