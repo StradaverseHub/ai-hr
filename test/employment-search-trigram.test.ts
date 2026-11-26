@@ -196,7 +196,7 @@ describe('employee search trigram candidates (7320)',()=>{
    let ms=0,buffers=0,jit='';
    await client.begin(async tx=>{
     await tx.unsafe(identity.sql,identity.params as never[]);
-    jit=((await tx.unsafe(`select current_setting('jit') as jit`))[0] as {jit:string}).jit;
+    jit=((await tx.unsafe(`select current_setting('jit') as jit`))[0] as unknown as {jit:string}).jit;
     for(const s of statements){
      const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${s.sql}`,s.params as never[]);
      const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number};'Execution Time':number;'Planning Time':number}];
