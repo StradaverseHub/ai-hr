@@ -106,7 +106,10 @@ export async function recordTaxBasisReplacementTx(tx:Tx,ctx:SessionContext,prepa
  }
  return recalculatedEmployments;
 }
-export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef|null;basis:TaxBasisValue;replayedSourceHash?:string};
+/** 289634a6 — an Income Tax Correction saved on an older snapshot of this imported record and superseded by the
+ * current one: its period and when the superseding import revision was accepted (ISO instant). Disclosure only. */
+export type SupersededTaxCorrection={id:string;period:string;replacedAt:string|null};
+export type EffectiveTaxBasis={statutory:Record<string,unknown>;correction:TaxBasisCorrectionRef|null;basis:TaxBasisValue;replayedSourceHash?:string;supersededCorrections?:SupersededTaxCorrection[]};
 /** Exact current source only. Returned statutory objects are copies; no payslip row is ever modified. */
 export async function readEffectiveTaxBasesTx(tx:Tx,ctx:SessionContext,payslipIds:string[],options:EffectiveReadOptions={}):Promise<Map<string,EffectiveTaxBasis>>{
  return (await sourceReadContextTx(tx,ctx,payslipIds)).readEffective(options);
@@ -169,10 +172,18 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
  // A newly accepted imported snapshot owns fresh inputs. It may supersede only corrections on
  // an older snapshot of the very same immutable import record, never another cycle or employer.
  const currentImported=sources.filter(source=>object(source.source.statutory)&&object(source.source.statutory.importedTaxBasis)).map(source=>source.id);
- const replaced=currentImported.length?await tx.execute<{id:string}>(sql`select r.id from payroll_tax_basis_revision r join payroll_history_import_snapshot previous on previous.id=r.payslip_id join payroll_history_import_record record on record.id=previous.record_id join lateral(select v.snapshot_id from payroll_history_import_revision v where v.record_id=record.id order by v.ordinal desc limit 1) latest on true join payroll_history_import_snapshot current on current.id=latest.snapshot_id and current.record_id=record.id where r.tenant_id=${ctx.tenantId}::uuid and current.id=any(array[${sql.join(currentImported.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) and previous.id<>current.id and r.company_id=record.company_id and r.employment_id=record.employment_id and r.period=record.period`):[];
+ // 289634a6 — the same rows also say WHICH current source superseded each correction, its period and when that import
+ // revision was accepted, so a consumer can say "replaced by the newer import" instead of implying it was retained.
+ const replaced=currentImported.length?await tx.execute<{id:string;period:string;sourceId:string;replacedAt:string|Date}>(sql`select r.id,r.period,current.id as "sourceId",latest.created_at as "replacedAt" from payroll_tax_basis_revision r join payroll_history_import_snapshot previous on previous.id=r.payslip_id join payroll_history_import_record record on record.id=previous.record_id join lateral(select v.snapshot_id,v.created_at from payroll_history_import_revision v where v.record_id=record.id order by v.ordinal desc limit 1) latest on true join payroll_history_import_snapshot current on current.id=latest.snapshot_id and current.record_id=record.id where r.tenant_id=${ctx.tenantId}::uuid and current.id=any(array[${sql.join(currentImported.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) and previous.id<>current.id and r.company_id=record.company_id and r.employment_id=record.employment_id and r.period=record.period`):[];
  const detached=await tx.execute<{sourceId:string;id:string}>(sql`select * from app.payroll_history_native_tax_predecessors(array[${sql.join(sources.map(source=>sql`${source.id}::uuid`),sql`, `)}]::uuid[])`),importedIds=new Set(currentImported);
  // A new accepted imported source supersedes only its proven physical-native predecessor.
  // A restored native baseline requires a fresh exact-source review; no old receipt is copied onto it.
+ const supersededBySource=new Map<string,SupersededTaxCorrection[]>();
+ for(const row of replaced){
+  const list=supersededBySource.get(row.sourceId)??[],at=row.replacedAt instanceof Date?row.replacedAt.toISOString():typeof row.replacedAt==='string'&&Number.isFinite(Date.parse(row.replacedAt))?new Date(row.replacedAt).toISOString():null;
+  if(!list.some(entry=>entry.id===row.id))list.push({id:row.id,period:row.period,replacedAt:at});
+  supersededBySource.set(row.sourceId,list.sort((a,b)=>a.period.localeCompare(b.period)||a.id.localeCompare(b.id)));
+ }
  const superseded=new Set<string>([...replaced.map(row=>row.id),...detached.filter(row=>importedIds.has(row.sourceId)).map(row=>row.id)]);for(const row of corrections)if(object(row.basis)&&Array.isArray(row.basis.supersedes))for(const id of row.basis.supersedes)if(typeof id==='string')superseded.add(id);
  // A consumer may request one cycle of a corrected multi-cycle month. Other current sources in
  // that exact employer/month context must be validated, not mistaken for vanished source rows.
@@ -266,7 +277,8 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
    if(reviewed)continue;
    const basis=validatedTaxBasis(stamp.basis);
    if(!object(statutory.bases)||statutory.bases.pcb!==basis.pcb)unavailable();
-   out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})}});
+   const replacedCorrections=supersededBySource.get(source.id);
+   out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})},...(replacedCorrections?.length?{supersededCorrections:replacedCorrections}:{})});
   }catch(error){capture(source.employmentId,source.period,error);}
  }
  if(options.includeImported){

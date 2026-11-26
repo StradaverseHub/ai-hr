@@ -7512,6 +7512,7 @@
       "reprocessNothingPayableFull": "本工资期间未确定任何应付收入。未重新计算工资。现有工资单、工资批次成员、交易和历史记录均已保留。",
       "reprocessSucceededReason": "已为此员工保存新的工资计算结果。",
       "reprocessTaxBasisUpdated": "已使用更新后的资料重新计算薪资。先前的所得税更正记录已保留。",
+      "reprocessTaxCorrectionReplacedByImport": "{periods} 的所得税更正已被较新的薪资历史导入取代；已使用导入的金额。",
       "reprocessTaxEvidenceIssue": "请检查薪资税务凭证。{reason}",
       "reprocessChildConfigurationReason": "已配置的子女减免与符合条件的子女人数不一致。重新计算前，请检查 PCB 配置。",
       "reprocessConfigurationReason": "所需的工资配置不完整。重新计算前，请检查此员工的工资记录。",
@@ -8293,6 +8294,11 @@
           "itemsNote": "一次性项目已包含在上述合计中。仅记录项目不是现金收入；应税福利可能影响 PCB 和实发工资。",
           "nonPayableHeading": "不支付金额",
           "nonPayableNote": "不支付给员工，也不计入总薪资或实发工资。",
+          "nonPayableFromImport": "来自薪资历史导入",
+          "countsForPcb": "计入 PCB",
+          "notTaxed": "不征税",
+          "taxCorrectionReplacedOn": "{period} 的所得税更正已于 {date} 被薪资历史导入取代",
+          "taxCorrectionReplaced": "{period} 的所得税更正已被薪资历史导入取代",
           "itemRemark": "录入时写作“{remark}”",
           "sourceHeading": "这些来自哪里",
           "sourceNote": "此员工及本次薪资运行的原始交易输入。这些是来源金额，并非已付薪资的分配。以上保存的薪资总额为准；来源记录可能在处理后更改。",
@@ -46646,6 +46652,12 @@
     "after": "更改后",
     "removed": "已移除",
     "resetChanges": "重置编辑",
+    "rowOperations": {
+      "create": "新增",
+      "replace": "已更新",
+      "unchanged": "无变化 — 这些总额已保存",
+      "invalid": "未导入 — 请在记录列表中查看原因"
+    },
     "itemOperations": {
       "add": "新增薪资项目",
       "change": "更改所列总额",
