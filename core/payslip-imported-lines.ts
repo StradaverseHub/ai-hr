@@ -138,6 +138,27 @@ export function importedNonPayableLines(statutory: unknown): ImportedNonPayableL
 }
 
 /**
+ * 289634a6 — the earlier imported months whose saved Income Tax Correction a payroll calculation found SUPERSEDED by
+ * a newer payroll history import, as that calculation stamped them on its own payslip
+ * (`statutory.taxBasisSupersededCorrections`, core/payroll.ts). The calculation used the newer imported amounts; the
+ * correction itself stays in its own history. One entry per month, oldest first; `replacedAt` is when the superseding
+ * import revision was accepted (ISO instant), or null when it was not recorded. [] on every other payslip.
+ */
+export function payslipSupersededTaxCorrections(statutory: unknown): { period: string; replacedAt: string | null }[] {
+  const st = objectOf(statutory);
+  const raw: unknown = st ? st.taxBasisSupersededCorrections : undefined;
+  if (!Array.isArray(raw)) return [];
+  const out: { period: string; replacedAt: string | null }[] = [];
+  for (const value of raw) {
+    const entry = objectOf(value);
+    const period: unknown = entry ? entry.period : undefined, replacedAt: unknown = entry ? entry.replacedAt : undefined;
+    if (typeof period !== 'string' || !/^\d{4}-\d{2}$/.test(period) || out.some((seen) => seen.period === period)) continue;
+    out.push({ period, replacedAt: typeof replacedAt === 'string' && Number.isFinite(Date.parse(replacedAt)) ? replacedAt : null });
+  }
+  return out.sort((a, b) => a.period.localeCompare(b.period));
+}
+
+/**
  * The lines a payslip SCREEN or DOCUMENT itemises its figures from: the kernel's stamp plus, for imported
  * history, the file's own lines. Display only — never hand this to an EA, statutory or comparison reader.
  */

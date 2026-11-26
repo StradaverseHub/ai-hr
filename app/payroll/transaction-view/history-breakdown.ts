@@ -1,4 +1,4 @@
-import { importedNonPayableLines, payslipDeductionBreakdown } from '@/core/payslip-imported-lines';
+import { importedNonPayableLines, payslipDeductionBreakdown, payslipSupersededTaxCorrections } from '@/core/payslip-imported-lines';
 import type { ProcessedPayslipViewRow } from '@/core/payroll-view';
 import { payslipDisplayEarnings } from '@/core/pay-display-category';
 // 6b134681 — the ONE answer to "may these named rows replace the figure they sit under?", shared with the
@@ -229,6 +229,9 @@ export type HistoryBreakdown = {
    * `recordLines` and need the imported ones beside it. Never part of gross, net or any reconciling sum.
    */
   importedNonPayableLines: RecordLine[];
+  /** 289634a6 — earlier imported months whose Income Tax Correction this run found superseded by a newer payroll
+   *  history import (it used the imported amounts). Read from the payslip's own stamp; [] on every other payslip. */
+  taxCorrectionsReplaced: { period: string; replacedAt: string | null }[];
   /** 5a5309d5 — the TOTAL printed under `nonPayableLines`: their stored amounts summed, nothing else. */
   nonPayableTotal: number;
   /** 5a5309d5 — every other record line, in stored order: what "Itemised payroll items" now lists.
@@ -348,6 +351,7 @@ export function deriveHistoryBreakdown(row: ProcessedPayslipViewRow, sources: re
     recordLines,
     nonPayableLines,
     importedNonPayableLines: importedNonPayable,
+    taxCorrectionsReplaced: payslipSupersededTaxCorrections(row.statutory),
     nonPayableTotal: round2(nonPayableLines.reduce((t, l) => t + num(l.amount), 0)),
     itemisedRecordLines,
     componentLines,

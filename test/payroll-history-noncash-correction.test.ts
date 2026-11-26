@@ -22,7 +22,7 @@ import {runBulkJobTick} from '../core/bulk-job-worker';
 import {hireEmployee} from '../core/org';
 import {setCompensation} from '../core/comp';
 import {setStatutoryProfileMY} from '../localization/my/statutory';
-import {createBatch} from '../core/payroll';
+import {createBatch, decodeReprocessEmployeeOutcomes, getReprocessJob, reprocessSelectedEmployees} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload, confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation, confirmTaxBasisRecalculation} from '../core/payroll-tax-basis';
@@ -104,7 +104,8 @@ async function correctThenReimport() {
 beforeEach(async () => {
   await resetDb(); b = await seedBase();
   await setModule(b.tenantId, 'payroll', 'active');
-  await setModule(b.tenantId, 'multi_cycle_payroll', 'disabled');
+  // Active so a processed employee can be recalculated through Selective Reprocess (the outcome remark under test).
+  await setModule(b.tenantId, 'multi_cycle_payroll', 'active');
   ctx = await entitledCtx(b);
   await owner.db.update(schema.company).set({companyLabel: 'TAXCO'}).where(eq(schema.company.id, b.companyId));
   await seedPayrollCycleCatalog(ctx, b.companyId);
@@ -164,6 +165,25 @@ describe('imported Non-Payable amounts and a saved Income Tax Correction (289634
     expect(st.pcbNonCash.accumulated.bik).toBe(3000);
     expect((st.taxBasisCorrections ?? []).map(ref => ref.id)).not.toContain(correctionId);
     expect(st.taxBasisImportedSources.map(source => source.payslipId)).toEqual([v2]);
+
+    // The run says WHY the correction did not apply: superseded by the newer import, when that import was accepted.
+    const [accepted] = await owner.db.select({createdAt: schema.payrollHistoryImportRevision.createdAt}).from(schema.payrollHistoryImportRevision)
+      .where(eq(schema.payrollHistoryImportRevision.snapshotId, v2));
+    const replaced = (slip.statutory as {taxBasisSupersededCorrections?: {id: string; period: string; replacedAt: string | null}[]}).taxBasisSupersededCorrections;
+    expect(replaced).toEqual([{id: correctionId, period: '2026-01', replacedAt: expect.any(String)}]);
+    expect(Date.parse(replaced![0].replacedAt!)).toBe(accepted.createdAt.getTime());
+    // Badrul has no imported history: nothing is stamped on his payslip.
+    const [other] = await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, badrul)));
+    expect(other.statutory).not.toHaveProperty('taxBasisSupersededCorrections');
+
+    // Selective Reprocess carries the superseded month on Aina's outcome (the remark's source), validated by the decoder.
+    const rerun = await reprocessSelectedEmployees(ctx, {batchId, employmentIds: [aina], idempotencyKey: randomUUID()});
+    const saved = await getReprocessJob(ctx, rerun.jobId);
+    const outcomes = decodeReprocessEmployeeOutcomes(saved!.result, [aina]);
+    expect(outcomes).toHaveLength(1);
+    expect(outcomes![0]).toMatchObject({status: 'reprocessed', taxCorrectionsReplaced: [{period: '2026-01', replacedAt: replaced![0].replacedAt}]});
+    const [again] = await owner.db.select().from(schema.payslip).where(and(eq(schema.payslip.batchId, batchId), eq(schema.payslip.employmentId, aina)));
+    expect((again.statutory as {pcbNonCash: {accumulated: {bik: number}}}).pcbNonCash.accumulated.bik).toBe(3000);
   }, 180000);
 
   it('holds the employee with the named reason when the new import cannot be confirmed, instead of using the old correction', async () => {

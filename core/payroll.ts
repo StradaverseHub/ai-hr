@@ -19,7 +19,8 @@ import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proratio
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
 import {processingTaxHoldsTx,runTaxSkippedSql,taxHeldRowsTx,type TaxHeldEmployee} from './payroll-tax-holds';
-import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource} from './payroll-tax-basis-read';
+import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource,type SupersededTaxCorrection} from './payroll-tax-basis-read';
+import {payslipSupersededTaxCorrections} from './payslip-imported-lines';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
 import {visibleLabelIdsCondition} from './system-labels';
@@ -501,11 +502,21 @@ export type ReprocessEmployeeOutcome = {
   effectiveTaxScheme?: ReprocessTaxScheme;
   /** 792053e5 — the Pay Items whose one-off transactions were re-priced with an updated formula (amount moved). */
   repricedItems?: RepricedPayItem[];
+  /** 289634a6 — earlier imported months whose saved Income Tax Correction was superseded by a newer payroll history
+   *  import, so this calculation used the imported amounts. Read back from the recalculated payslip's own stamp
+   *  (`statutory.taxBasisSupersededCorrections`); absent on every other outcome and on outcomes saved before it. */
+  taxCorrectionsReplaced?: { period: string; replacedAt: string | null }[];
   /** 792053e5 — the Pay Item whose updated formula could not price this employee's transactions (PAY_ITEM_FORMULA_FAILED). */
   formulaFailure?: { componentId: string; code: string; name: string; dates: string[]; reason: string; detail: string | null;
     /** ad6ed930 — reason 'after_leaving_date': the employee's last day (ISO). Absent on outcomes written before it. */
     leftOn?: string };
 };
+
+/** 289634a6 — the superseded-correction periods a recalculated payslip stamped, one per month, for its outcome remark. */
+export function taxCorrectionsReplacedOf(statutory: unknown): ReprocessEmployeeOutcome['taxCorrectionsReplaced'] {
+  const out = payslipSupersededTaxCorrections(statutory);
+  return out.length ? out : undefined;
+}
 
 export type ReprocessJobResult = {
   /** Fences an abandoned worker from changing a reclaimed job; never a payroll business fact. */
@@ -5297,6 +5308,7 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     const reprocessTaxRead = subset ? reprocessHistoryTaxBasisRead(tx,ctx,async()=>taxOpeningPrefix) : undefined;
     const correctedPriorBases = await readEffectiveTaxBasesTx(tx, ctx, priorSlips.map(s => s.id),{includeImported:true,reprocess:reprocessTaxRead});
     const taxBasisCorrectionsByEmp = new Map<string, TaxBasisCorrectionRef[]>();
+    const supersededTaxCorrectionsByEmp = new Map<string, SupersededTaxCorrection[]>();
     const replayedTaxSourcesByEmp = new Map<string, {payslipId:string;sourceHash:string;rulesHash:string;settingsHash?:string}[]>();
     const rememberReplayedTaxSource = (employmentId:string,payslipId:string,basis:EffectiveTaxBasis) => {
       if(!basis.replayedSourceHash)return;
@@ -5312,6 +5324,13 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
       rememberReplayedTaxSource(slip.employmentId,slip.id,corrected);
       const refs = taxBasisCorrectionsByEmp.get(slip.employmentId) ?? [];
       if(corrected.correction)refs.push(corrected.correction); taxBasisCorrectionsByEmp.set(slip.employmentId, refs);
+      // 289634a6 — an imported month whose saved Income Tax Correction was superseded by a newer import: the run used the
+      // imported amounts, and its payslip says so (`taxBasisSupersededCorrections`) instead of implying the correction stood.
+      if(corrected.supersededCorrections?.length){
+        const replaced = supersededTaxCorrectionsByEmp.get(slip.employmentId) ?? [];
+        for(const entry of corrected.supersededCorrections) if(!replaced.some(seen=>seen.id===entry.id)) replaced.push(entry);
+        supersededTaxCorrectionsByEmp.set(slip.employmentId, replaced.sort((a,b)=>a.period.localeCompare(b.period)||a.id.localeCompare(b.id)));
+      }
     }
     priorSlips.sort((a, b) => a.period.localeCompare(b.period)||a.id.localeCompare(b.id));
     const accByEmp = new Map<string, Acc>();
@@ -7998,6 +8017,8 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
           : {},
         ...(replayedTaxSourcesByEmp.has(e.employmentId) ? {replayedTaxSources:replayedTaxSourcesByEmp.get(e.employmentId)} : {}),
         ...(taxBasisCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisCorrections: taxBasisCorrectionsByEmp.get(e.employmentId)} : {}),
+        // 289634a6 — absent unless an earlier imported month's correction was superseded by a newer import.
+        ...(supersededTaxCorrectionsByEmp.get(e.employmentId)?.length ? {taxBasisSupersededCorrections: supersededTaxCorrectionsByEmp.get(e.employmentId)} : {}),
         // Item 70b14723 — see `epfManualStamp` above. Key absent for every employee not on a typed amount,
         // so every other payslip is byte-identical.
         ...(epfManualStamp ? { epfManual: epfManualStamp } : {}),
@@ -10916,11 +10937,13 @@ export async function reprocessEmployeeTx(tx:Tx,ctx:SessionContext,run:Selective
   const [after] = await tx.select({id:nativePayrollPayslip.id,version:nativePayrollPayslip.version,statutory:nativePayrollPayslip.statutory}).from(nativePayrollPayslip)
     .where(and(eq(nativePayrollPayslip.batchId,run.batchId),eq(nativePayrollPayslip.employmentId,employmentId))).limit(1);
   const savedScheme = (after?.statutory as {pcbMeta?:{calculationScheme?:unknown}} | undefined)?.pcbMeta?.calculationScheme;
+  const taxCorrectionsReplaced = outcomeState.status==='reprocessed' ? taxCorrectionsReplacedOf(after?.statutory) : undefined;
   const outcome: ReprocessEmployeeOutcome = {
     employmentId,name:identity.name,employeeCode:identity.employeeCode,...outcomeState,classification,
     ...(outcomeState.status==='reprocessed' && typeof savedScheme==='string'
       && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
     ...(taxBasisRecalculated ? {taxBasisRecalculated} : {}),
+    ...(taxCorrectionsReplaced ? {taxCorrectionsReplaced} : {}),
     resultRetained:outcomeState.status === 'excluded' ? false : outcomeState.status !== 'reprocessed' && !!before,
     ...(repricedItems?.length ? {repricedItems} : {}),
     payslipId:after?.id ?? null,versionBefore:before?.version ?? null,
@@ -11078,6 +11101,7 @@ export async function reprocessEmployeeGroupTx(tx:Tx,ctx:SessionContext,run:Sele
       employmentId,name:identity.name,employeeCode:identity.employeeCode,status:'reprocessed',reasonCode:null,classification:'recalculated',
       ...(typeof savedScheme==='string' && (REPROCESS_TAX_SCHEMES as readonly string[]).includes(savedScheme) ? {effectiveTaxScheme:savedScheme as ReprocessTaxScheme}:{}),
       ...(recalculatedTax.has(employmentId) ? {taxBasisRecalculated:true} : {}),
+      ...(taxCorrectionsReplacedOf(now?.statutory) ? {taxCorrectionsReplaced:taxCorrectionsReplacedOf(now?.statutory)} : {}),
       resultRetained:false,
       ...(repricedItems?.length ? {repricedItems} : {}),
       payslipId:now?.id ?? null,versionBefore:was.version,
@@ -11406,6 +11430,10 @@ export function decodeReprocessEmployeeOutcomes(result: unknown, selection: read
       ? r.versionBefore!==null || r.versionAfter!==1
       : r.versionBefore===null || r.versionAfter!==r.versionBefore+1)) return null;
     if (r.taxBasisRecalculated !== undefined && (r.taxBasisRecalculated !== true || r.status !== 'reprocessed')) return null;
+    // 289634a6 — superseded-correction periods ride only on a recalculated outcome, each a YYYY-MM month.
+    if (r.taxCorrectionsReplaced !== undefined && (r.status !== 'reprocessed' || !Array.isArray(r.taxCorrectionsReplaced)
+      || r.taxCorrectionsReplaced.length === 0 || r.taxCorrectionsReplaced.some(e => !e || typeof e.period !== 'string' || !/^\d{4}-\d{2}$/.test(e.period)
+        || (e.replacedAt !== null && typeof e.replacedAt !== 'string')))) return null;
     // a1a80747 — a tax hold is a skip too; jobs written before it only ever carry NOTHING_PAYABLE, which still decodes.
     if (r.status === 'skipped' && !REPROCESS_SKIP_REASONS.has(r.reasonCode ?? '')) return null;
     if (r.status === 'validation_failed' && (!['PAYROLL_CONFIGURATION_INCOMPLETE','TAX_SCHEME_CONFIGURATION_INCOMPLETE','PAY_ITEM_FORMULA_FAILED'].includes(r.reasonCode ?? '')
