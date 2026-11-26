@@ -85,6 +85,10 @@ type BulkJobHandlerBase<P>={
  commitPrepareTx?(tx:Tx,ctx:SessionContext,job:BulkJobRow,prepared:BulkJobPrepared|BulkJobRefused):Promise<{attemptId?:string|null;plan?:unknown}|void>;
  /** Start of every chunk transaction, before steps are read: the kind's normal writer locks and session settings. */
  beginChunkTx?(tx:Tx,ctx:SessionContext,job:BulkJobRow):Promise<void>;
+ /** End of every chunk transaction that applied at least one step, after its steps and before the job row is advanced:
+  *  one set-based follow-up for the whole chunk that must commit with its steps (124a979e: the Fixed Transaction
+  *  import marks the runs its rows made stale here, once per chunk instead of once per row). A throw rolls the chunk back. */
+ endChunkTx?(tx:Tx,ctx:SessionContext,job:BulkJobRow):Promise<void>;
  /** Wall-clock work per chunk transaction before it commits (default 250 ms) and a step cap (default 64). */
  chunkBudgetMs?:number;maxStepsPerChunk?:number;
  /** 'per-step' only: after this many consecutive transient retries the step that keeps refusing is recorded as
@@ -473,6 +477,7 @@ async function chunkUnit(connection:postgres.ReservedSql,handler:WorkerHandler,c
    }
    count++;
   }
+  if(count>0)await handler.endChunkTx?.(tx,ctx,job);
   const ms=performance.now()-started;
   await workerSet(tx,job.id,{stepsDoneAdd:count,phase:handler.phaseOf?.(kind)??job.phase,countersAdd:counters,errorsAppend:failures,resetTransientRetries:true});
   return{count,done:false,ms,metricsAdd,metricsMax};

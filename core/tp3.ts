@@ -846,6 +846,27 @@ export async function resyncTp3Projections(
   });
 }
 
+/** 124a979e — did the TP3 projection's figures change (numbers compared as numbers, the ledger as sorted JSON)? */
+function tp3ProjectionMoved(before: Record<string, unknown>, after: Record<string, unknown>): boolean {
+  const norm = (v: unknown): string => {
+    if (v == null) return 'null';
+    if (typeof v === 'number' || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)))) return String(Number(v));
+    if (typeof v === 'object') return JSON.stringify(Object.fromEntries(Object.entries(v as object).sort(([a], [b]) => a.localeCompare(b))));
+    return String(v);
+  };
+  return Object.keys(after).some((k) => norm(before[k]) !== norm(after[k]));
+}
+/** 124a979e — mark the person's processed runs (not closed) in these assessment years, category Tax settings. One
+ * mark covering the earliest to the latest year. Lazy import through the pack facade: the payroll kernel reads this module. */
+async function markTp3YearsTx(tx: Tx, ctx: SessionContext, personId: string, years: readonly number[]) {
+  const valid = years.filter((y) => Number.isInteger(y) && y > 1900 && y < 3000);
+  if (!valid.length) return;
+  const { markRunsAffectedByEmploymentChangeTx } = await import('../packs/payroll/service');
+  await markRunsAffectedByEmploymentChangeTx(tx, ctx, {
+    personId, category: 'tax_profile', from: `${Math.min(...valid)}-01-01`, until: `${Math.max(...valid) + 1}-01-01`,
+  });
+}
+
 async function projectSeedOntoStatutory(
   tx: Tx,
   ctx: SessionContext,
@@ -924,6 +945,14 @@ async function projectSeedOntoStatutory(
     .update(employeeStatutoryMy)
     .set({ ...after, updatedAt: new Date() })
     .where(eq(employeeStatutoryMy.id, stat.id));
+  // 124a979e — the previous-employer opening balances seed PCB for the whole assessment year: when the projection
+  // moved, mark the person's processed runs in that year (and in the year it displaced, when the columns held an
+  // earlier one). A re-save that projects the same figures (and resyncTp3Projections over unchanged forms) marks nothing.
+  const projected = { tp3Year: stat.tp3Year, tp3NetRemuneration: stat.net, tp3EpfClaimed: stat.epf, tp3PcbPaid: stat.pcb,
+    tp3ZakatPaid: stat.zakat, tp3Lp: stat.lp, tp3ExemptionUsed: stat.exemptionUsed };
+  if (tp3ProjectionMoved(projected, after)) {
+    await markTp3YearsTx(tx, ctx, p.personId, [p.assessmentYear, ...(stat.tp3Year != null ? [stat.tp3Year] : [])]);
+  }
 
   // THE SAME EVENT TYPE THE HAND PATH EMITS (`setTp3ProfileMY`), on the same aggregate, so an auditor
   // reconstructing the opening balances that seeded a PCB figure reads ONE stream and does not have to
@@ -999,6 +1028,8 @@ async function clearProjectionForYear(
     .update(employeeStatutoryMy)
     .set({ ...after, updatedAt: new Date() })
     .where(eq(employeeStatutoryMy.id, stat.id));
+  // 124a979e — the form's opening balances stop seeding that year's PCB: mark the person's processed runs in it.
+  await markTp3YearsTx(tx, ctx, p.personId, [p.assessmentYear]);
   await appendEvent(tx, {
     tenantId: ctx.tenantId,
     aggregateType: 'employee-statutory',

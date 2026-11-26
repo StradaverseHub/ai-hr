@@ -25,6 +25,7 @@ import {
   listPayComponents,
   seedPayComponentCatalog,
   setEmploymentPayComponent,
+  updatePayComponent,
   upsertPayComponent,
   type PayComponentInput,
 } from '../core/pay-components';
@@ -173,16 +174,35 @@ describe('017d9c25 — the mark lands on the processed run, naming the employees
   });
 });
 
-describe('017d9c25 — the master-save action is the caller', () => {
+describe('017d9c25 / 124a979e — the save marks inside its own transaction', () => {
   const ACTIONS = fs.readFileSync(path.join(process.cwd(), 'app/admin/pay-components/actions.ts'), 'utf8');
+  const SERVICE = fs.readFileSync(path.join(process.cwd(), 'core/pay-components.ts'), 'utf8');
 
-  it('updateComponentAction gates the mark on isStatutoryRelevantChange', () => {
-    expect(ACTIONS).toContain('isStatutoryRelevantChange(changed)');
-    expect(ACTIONS).toContain('markRunsAffectedByPayComponent(s, { componentId: id, code: input.code })');
+  it('updatePayComponent gates the in-transaction mark on isStatutoryRelevantChange', () => {
+    const body = SERVICE.slice(SERVICE.indexOf('export function updatePayComponent('), SERVICE.indexOf('export async function assertNoPendingPayComponentsTx'));
+    expect(body.length).toBeGreaterThan(100);
+    expect(body).toContain('isStatutoryRelevantChange(written.changed)');
+    expect(body).toContain('markRunsAffectedByPayComponentTx(tx, ctx, { componentId: written.id, code: p.code })');
   });
 
-  it('imports the payroll kernel through the pack facade, not core/payroll directly (ADR-0080 ratchet)', () => {
-    expect(ACTIONS).toContain("from '@/packs/payroll/service'");
+  it('the action no longer marks in a second transaction, and never imports core/payroll directly (ADR-0080 ratchet)', () => {
+    expect(ACTIONS).not.toContain('markRunsAffectedByPayComponent(');
     expect(ACTIONS).not.toContain("from '@/core/payroll'");
+  });
+
+  it('a statutory-relevant save marks the processed run in the same commit; a rename marks nothing', async () => {
+    await seedPayComponentCatalog(a);
+    await upsertPayComponent(a, input('PARK', { pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' }));
+    const e = await hire('intx@acme.test', '900101015206');
+    await setEmploymentPayComponent(a, { employmentId: e.employmentId, componentId: await idByCode('PARK'), amount: 1000, effectiveFrom: '2026-01-01' });
+    const { batchId } = await createBatch(a, { companyId: base.companyId, payPeriod: '2026-04' });
+    await enableTypedComponents();
+    await generatePayslips(a, { batchId });
+    await updatePayComponent(a, input('PARK', { name: 'Parking renamed', pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' }));
+    expect((await batchRow(batchId)).needsRecalcAt).toBeNull();
+    await updatePayComponent(a, input('PARK', { includedInEpf: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TAXABLE' }));
+    const row = await batchRow(batchId);
+    expect(row.needsRecalcAt).not.toBeNull();
+    expect(row.recalcEmploymentIds).toEqual([e.employmentId]);
   });
 });

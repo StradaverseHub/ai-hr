@@ -1023,7 +1023,9 @@ export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 export async function markRunsAffectedByEmploymentChangeTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null; until?:string|null },
+  // 124a979e — one save can change several kinds of input at once (a full statutory save moving the EPF election and
+  // the Zakat election together): pass every category, and the one read and one lock set name all of them.
+  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory | readonly RecalcChangeCategory[]; from: string | null; until?:string|null },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
   const ids = asIdArray(p.employmentIds ?? []).filter(id=>!movementPayrollInvalidationDeferredTx(tx,id));
   if (p.personId) {
@@ -1050,28 +1052,48 @@ export async function markRunsAffectedByEmploymentChangeTx(
   const byBatch = new Map<string, Set<string>>();
   for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
   const marked = [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
-  await markBatchesNeedRecalcTx(tx, ctx, marked.map((m) => ({ ...m, category: p.category })));
+  const categories: readonly RecalcChangeCategory[] = typeof p.category === 'string' ? [p.category] : [...new Set(p.category)];
+  await markBatchesNeedRecalcTx(tx, ctx, marked.flatMap((m) => categories.map((category) => ({ ...m, category }))));
   return marked;
 }
 
 /**
- * A payroll input changed for these employments while a run of theirs is being processed by the background job
- * (fixed items and payroll policy, which do not otherwise mark a run). Marks only an employee that run has already
- * paid; the caller holds the employee's payroll inputs key, so no chunk can write a payslip for them meanwhile.
+ * 124a979e — markRunsAffectedByEmploymentChangeTx for MANY employments at once, each with its own window, in one
+ * payslip read and one markBatchesNeedRecalcTx (ADR 0181 write side). The Fixed Transaction import job calls it once
+ * per chunk with every row the chunk wrote, instead of marking once per row. Same rules as the single helper: only
+ * runs holding a payslip for the employment, processed or processing, pay_period >= month(from) and, with `until`
+ * (an EXCLUSIVE date), <= month(until - 1 day); only runs this session administers payroll for; a movement-deferred
+ * employment is skipped. `from: null` is every such run.
  */
-export async function markProcessingRunsForEmploymentsTx(
+export async function markRunsAffectedByEmploymentWindowsTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds: string[]; category?: RecalcChangeCategory },
-): Promise<void> {
-  const ids = asIdArray(p.employmentIds);
-  if (ids.length === 0) return;
-  const rows = await tx
-    .selectDistinct({ batchId: nativePayrollPayslip.batchId })
-    .from(nativePayrollPayslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
-    .where(and(inArray(nativePayrollPayslip.employmentId, ids), eq(payrollBatch.status, 'processing'), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
-  await markBatchesNeedRecalcTx(tx, ctx, [...rows].sort((a, b) => a.batchId.localeCompare(b.batchId)).map(({ batchId }) => ({ batchId, employmentIds: ids, category: p.category })));
+  p: { category: RecalcChangeCategory; windows: readonly { employmentId: string; from: string | null; until?: string | null }[] },
+): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  const month = (d: string | null | undefined) => (d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : null);
+  const day = (d: string | null | undefined) => (d && /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null);
+  const wanted = p.windows
+    .filter((w) => typeof w.employmentId === 'string' && w.employmentId.length > 0 && !movementPayrollInvalidationDeferredTx(tx, w.employmentId))
+    .map((w) => ({ e: w.employmentId, f: month(w.from), u: day(w.until ?? null) }));
+  if (wanted.length === 0) return [];
+  if (wanted.length === 1) {
+    const [w] = wanted;
+    return markRunsAffectedByEmploymentChangeTx(tx, ctx, { employmentIds: [w.e], category: p.category, from: w.f, until: w.u });
+  }
+  const rows = await tx.execute<{ batchId: string; employmentId: string }>(sql`
+    select distinct s.batch_id::text as "batchId", s.employment_id::text as "employmentId"
+    from jsonb_to_recordset(${JSON.stringify(wanted)}::jsonb) w(e uuid, f text, u date)
+    join ${nativePayrollPayslip} s on s.employment_id = w.e
+    join ${payrollBatch} b on b.id = s.batch_id
+    where b.status in ('processed','processing')
+      and (w.f is null or b.pay_period >= w.f)
+      and (w.u is null or b.pay_period <= to_char(w.u - 1, 'YYYY-MM'))
+      and app.can_admin_payroll_for(b.company_id)`);
+  const byBatch = new Map<string, Set<string>>();
+  for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
+  const marked = [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
+  await markBatchesNeedRecalcTx(tx, ctx, marked.map((m) => ({ ...m, category: p.category })));
+  return marked;
 }
 
 /**
