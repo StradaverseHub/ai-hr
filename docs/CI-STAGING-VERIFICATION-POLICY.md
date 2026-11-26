@@ -6,7 +6,7 @@ The owner reaffirmed failed-area-only recovery in the Board chat: after the comp
 
 Preserve original failing runs and raw errors. Every retained/replacement result must bind authenticated producing jobs/artifacts, exact candidate/controller/baseline, runtime and complete non-overlapping coverage. A failed run stays failed; replacement evidence must retain its own identity. A focused pass alone is not a release receipt.
 
-**Implementation:** `focused-recovery.mjs` and `focused-recovery-policy.mjs` implement the separately versioned `aihr-focused-recovery/v1` operator route. Existing full-run admission remains strict. Recovery v1 accepts an unchanged canonical candidate/controller only, after a completed first-attempt failed full run whose build, compiler, migrations, controller, browsers and all unaffected test jobs passed. It currently supports failed no-DB units; unsupported failures refuse. It discards the failed process as evidence of success and requires successful authenticated focused runs covering every file and original assertion in each failed unit, with exact runtime/classifier identities. No overlap, omitted file, dropped assertion, skipped test, foreign run or failed process is accepted.
+**Implementation:** `focused-recovery.mjs` and `focused-recovery-policy.mjs` implement the separately versioned `aihr-focused-recovery/v1` operator route. Existing full-run admission remains strict. Recovery v1 accepts an unchanged candidate on its original gate controller only (the two are bound separately since the 24 November review; see below), after a completed first-attempt failed full run whose build, compiler, migrations, controller, browsers and all unaffected test jobs passed. It currently supports failed no-DB units; unsupported failures refuse. It discards the failed process as evidence of success and requires successful authenticated focused runs covering every file and original assertion in each failed unit, with exact runtime/classifier identities. No overlap, omitted file, dropped assertion, skipped test, foreign run or failed process is accepted.
 
 The adapter independently reconstructs the original complete plan, authenticates complete GitHub job/artifact inventories and archive digests, and retains the original failing reports. Every focused result keeps its own producing run/job/artifact identities. The clean operator verification controller is recorded separately from the original build/test controller and must have successful controller-only regression validation containing recovery refusal tests. The distinct recovery certificate binds all retained/replacement provenance, complete counts and original failures. It does not rewrite the failed workflow or issue a fabricated original gate receipt.
 
@@ -89,6 +89,107 @@ node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs resume-ar
 - After a resume, owned cleanup is skipped until a cleanup route for expired grants exists. The previous `.next` build and the CI packet stay under `~/.aihr-ci-builds/<installId>`, the result reports `ownedResourceCleanupVerified:false`, and no `owned-cleanup.json` or `final-source-arrival.json` is written. The owner removes them explicitly; check disk space before the next release.
 
 The route grants no acceptance, alpha, board or production authority. Policy or controller repairs need a fresh whole run on the final controller commit, so dispatch the next release gate from the main that contains this route.
+
+### Owner-approved DB-unit recovery — `aihr-db-unit-recovery/v1`
+
+**Owner decision, 23 November 2026** (the owner's own words; since the 24 November review they are bound only to gate `45191515984` and candidate `9336682460ff8bad3c6b745d7cf8029c2b7e918f`, as `ownerDecision` with provenance `OWNER_WORDS_BOUND_IN_REVIEWED_SOURCE_FOR_ONE_GATE`):
+
+- "For the browser test that fails, lets run the test specifically for it, dont have to run a new full gate, once the test pass, we can release"
+- "No need to check, i allow and approve it, go ahead"
+- "Just use gate 4, re test the failed one and go with hand installed exception"
+
+The first case was gate `45191515984` (candidate `9336682460`, controller `13877b505`). Its only failed DB unit was `db-ea8c926fb5a437f7` (`test/operational-visual-browser.test.ts` hit its 1,200,000 ms timeout), and the dependent `verify` failed with it. The focused rerun was `45201472834`. A later full gate on the same source, `45200846990`, was cancelled on the owner's instruction.
+
+```sh
+cd /ABSOLUTE/CANDIDATE
+AIHR_RECOVERY_CONTROLLER_RUN_ID=CONTROLLER_ONLY_RUN AIHR_SSH_CONFIG=/PRIVATE/ssh_config \
+node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs verify-db-unit-recovery /ABSOLUTE/CANDIDATE RUN_ID \
+  '{"focusedRunIds":[FOCUSED_RUN],"candidateBranch":"CANDIDATE_BRANCH"}'
+```
+
+`deploy-db-unit-recovery` takes the same arguments, plus the staging lease. Only the release owner runs it.
+
+**Owner approval per gate (review, 24 November 2026).** The 23 November words approved one gate. For any other gate, the options must also carry `"ownerApproval":{"date":"YYYY-MM-DD","quotes":["the owner's own words for this gate"]}`. The certificate binds it verbatim with the gate's run ID and candidate, labelled `OPERATOR_RECORDED_OWNER_APPROVAL_NOT_AUTHENTICATED`: it records the operator's testimony and is not authenticated by the controller. The 23 November words cannot be bound to another gate. The options must be exactly `focusedRunIds`, `candidateBranch` and the optional `ownerApproval`; any other key (for example `reuse` or `evidenceDirectory`) refuses. Whether this route should instead rest on a standing owner decision is an open owner question.
+
+**Admission.** The route admits only the following:
+
+- The original run is a completed, failed first attempt. Every job succeeded, except failed DB units without PDF tooling, the dependent `verify` (which must stay failed) and a skipped `runner-diagnostics`.
+- Every file in each failed DB unit failed in the original process. A partly passing unit refuses.
+- Each focused run is a successful first-attempt `alpha-focused-checks.yml` run titled `Focused only · <candidate branch>`. It was dispatched with `--ref main|alpha`, so its `head_sha` is the original gate's controller, not the candidate. It started after the original finished. It produced one homogeneous DB packet (`focused.json` plus `db.vitest.json`, with the Postgres diagnostics validated as in the repair route). `db-unit-recovery-extract.py` extracts only that pair. The bounded screenshots, heap samples and logs from the visual tests stay in the digest-authenticated ZIP and are never parsed. That packet reruns exactly the files of one failed unit, on the same candidate SHA, controller, runtime and classifier.
+- The replacement assertions equal the original assertion inventory.
+- Every other unit's original report is retained unchanged and re-verified.
+- The original build artifact is used, and the original failed run is never relabelled.
+
+**History.** The route reads the complete branch history after the original finished. It accounts only for:
+
+- the declared focused runs;
+- an `Alpha CI · <branch>` gate on the same controller that was cancelled, whose digest-authenticated `gate-plan` proves the identical candidate SHA and none of whose completed jobs failed or timed out (only the dependent `verify` may fail). This gate is recorded, with its job-conclusion counts, as `LATER_SAME_SOURCE_GATE_CANCELLED_BY_OWNER_NOT_EVIDENCE` and is never used as evidence.
+
+The history reads the `alpha-staging.yml`, focused-checks and browser-tooling (`Tooling transport only`) workflows, plus every active run.
+
+Earlier gates that overlapped the original are recorded as `overlapping`. Any other run refuses: pending, failed, successful but unaccounted, or on a different source or controller.
+
+**Controller.** Since the 24 November review, the verification controller must be the original gate's exact controller commit (the policy and the grant both check it). The earlier rule let it differ by a path allowlist that included `operator-release.mjs`, `ci-install-grant.mjs` and the workflow with unconstrained content. It also needs a successful controller-only diagnostic (`AIHR_RECOVERY_CONTROLLER_RUN_ID`). The route therefore works only for gates whose controller already contains it.
+
+**Result.** The result is labelled `recoveryPolicy: aihr-db-unit-recovery/v1`, `exception: OWNER_APPROVED_DB_UNIT_RECOVERY_NOT_A_FULL_GATE_PASS`, `fullGatePass: false` and `resultKind: OWNER_APPROVED_DB_UNIT_RECOVERY_EXCEPTION`. `createInstallGrant` accepts it only through `validateDbUnitGrantEvidence`; a certificate relabelled to any other policy refuses. The no-DB route (`aihr-focused-recovery/v1`) formerly assumed that the controller equals the candidate and so refused focused runs dispatched with `--ref main`; since the 24 November review it binds them separately (`focusedRecoveryIdentity`) and also requires the focused run to be on the original gate's controller branch.
+
+The independent review of this route and of the build-capacity route is in [release recovery routes review](reviews/release-recovery-routes-review-2026-11-24.md).
+
+### Build-only recovery after a memory-floor build failure — `aihr-build-capacity-recovery/v1`
+
+Use this only when a whole `alpha-staging.yml` gate completed with exactly one failed prerequisite, `build`, and that build failed only on the reviewed sampled-memory floor (`Canonical next build sampled available memory missing or below reviewed floor`, available verdict `fail`). Every other job passed. `verify` failed only because a prerequisite failed. Instead of a new whole gate (about an hour of shared runners), dispatch one `build_only` run of `alpha-staging.yml` from the same controller ref, with the same candidate branch and expected SHA. Its run name is `Canonical build only · <candidate branch>`. That run replaces only the failed build. Do not use `gh run rerun`: rerun attempts are refused.
+
+```sh
+gh workflow run alpha-staging.yml --repo StradaverseHub/ai-hr --ref main \
+  -f candidate_ref=CANDIDATE_BRANCH -f expected_sha=CANDIDATE_SHA -f build_only=true
+```
+
+The dispatch ref must still point at the original gate's controller commit, so `--ref` is `main` or `alpha`, matching the original run's branch. If that branch has moved, the replacement runs on a different controller and the route refuses.
+
+From the clean checkout of the **original gate's controller commit** (the same commit that is the replacement run's `head_sha`), with the unchanged candidate in its own checkout:
+
+```sh
+node --import tsx /ABSOLUTE/CONTROLLER/.github/ci/operator-release.mjs verify-build-recovery \
+  /ABSOLUTE/CANDIDATE ORIGINAL_GATE_RUN_ID '{"buildRunId":BUILD_ONLY_RUN_ID,"candidateBranch":"CANDIDATE_BRANCH"}'
+```
+
+Use `deploy-build-recovery` with the same arguments only under staging deployment authority and the held lease. It then runs the normal transfer, installation, arrival and cleanup path with the replacement build packet.
+
+**Admission** (`build-recovery.mjs`, `build-recovery-policy.mjs`). Every check below must pass, or the route refuses.
+
+- **Identity.**
+  - The verifying controller equals the original gate's `head_sha` and the replacement build's `head_sha`, on the same `main`/`alpha` branch.
+  - The candidate checkout, the candidate branch ref, the archived plan, the failure diagnostic and the replacement packet all name the same candidate SHA. Any source change refuses.
+  - Alpha must still be the baseline or the candidate.
+  - Both runs are completed first attempts. The original concluded failure, the replacement succeeded, and the replacement was created after the original completed.
+- **Original jobs.** These are the full required job inventory plus a skipped `runner-diagnostics`. Only `build` and `verify` failed.
+  - In `build`, the only failed step is `Canonical System Testing production build and byte bundle`, and `Preserve failed canonical build diagnostics` succeeded.
+  - In `verify`, the only failed step is `Every prerequisite succeeded`. Everything after it was skipped, so `verify-shards` never ran.
+  - Any other failed, cancelled or rerun job refuses.
+- **Original evidence.** Every unit report and the archived plan go through the normal verifier's `validateProof`. The receipt that the dependent verifier never wrote is rebuilt with the same `verifyReports`. The shared resume assessor must show zero units to rerun. The original run must carry no build packet, receipt or application state.
+- **Memory-floor proof.** The proof comes from the digest-authenticated `next-application-build-failure` artifact. `build-failure-extract.py` reads it for every recovery route: `comparison.json` is required, each of `canonical-build.log` and `application-typegen.log` is optional and at most 16 MiB, and any other member refuses. This route requires all three. The policy then checks all of the following:
+  - The report identity (candidate, controller, run, attempt 1) and the exact floor assertion text.
+  - The reviewed 8192 heap profile, floor and RSS budget.
+  - An actual integer available-memory sample below the floor. A missing sample (`null`) is a telemetry failure, not a proven floor breach, and refuses (review, 24 November 2026).
+  - A recomputed `buildMemoryVerdict` gives available `fail` but RSS not `fail`.
+  - Both commands exited 0, without a signal or timeout.
+  - Cleanup and disk headroom are intact.
+  - The compiler log checks that the wrapper skipped after the floor assertion fired: `Compiled successfully`, `Finished TypeScript`, no `error TS`, no skipped type validation, GNU time `Exit status: 0`, and a log peak RSS equal to the report.
+
+  A compile error, an RSS breach, disk exhaustion, a failed cleanup or any other cause refuses.
+- **Replacement.** The run must have the exact build-only job shape (resolve, build and deployment-hold succeeded; everything else skipped). Its artifacts are only `production-build-v1` and the optional `next-application-state-v1`. The packet is bound to the candidate by `sourceBoundBuild`.
+- **Complete history.** This covers every `alpha-staging`, focused-checks and browser-tooling run for the candidate branch that is active or overlaps or follows the original. The replacement build must be the only such run. Any other run refuses, whether pending, superseding, failed or merely unaccounted.
+
+**Evidence and grant.** The original failed run, its failed build job and its failure diagnostic stay failed. They are retained under the evidence directory's `original/` folder. The `AUTHENTICATED_BUILD_CAPACITY_RECOVERY` certificate binds the original run, every retained unit's report hash and source, the memory-floor proof, the history and the replacement build run. The installation grant binds the replacement build run and packet, as the repair route does, with its witness fingerprint set to the certificate. Immediately before transfer, `deploy-build-recovery` reauthenticates everything and requires an identical certificate, build and artifacts.
+
+**Limits.**
+
+- Exact source only. A changed candidate needs a new whole gate or the separate repair route.
+- Only the memory floor qualifies. Any other build failure, and any other failed job, refuses.
+- The controller branch must not have moved. A replacement dispatched after `main` or `alpha` advanced has a different `head_sha` and is refused.
+- One replacement build per original gate. A failed replacement is not retried by this route, because it becomes unaccounted history.
+- The route grants no acceptance, alpha, board or production authority.
+- This is a controller change. It works only for gates whose controller already contains it. Before first use, it needs independent review, explicit owner approval, a merge to main, and a fresh whole gate on that main controller. Earlier gates cannot use it: the verifier must be their exact controller.
 
 ## Change control
 
