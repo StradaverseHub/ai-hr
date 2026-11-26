@@ -24,13 +24,13 @@ const wrap=(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" me
 const page=async(query={})=>wrap(await Page({searchParams:Promise.resolve(query)}));
 const sidebar=(admin:boolean,operator=false,preview=admin)=>wrap(<Sidebar isAdmin={admin} canApprove={false} canPreviewIdentityEmail={preview} canConfigureIdentityEmail={operator} enabledModules={[]} defaultCollapsed={false}/>);
 function openSystemSettings() {
- const section=document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]');
- if(section?.getAttribute('aria-expanded')==='false')fireEvent.click(section);
- const triggers=screen.getAllByRole('button',{name:messages.nav.systemConfiguration}).filter(button=>button.hasAttribute('aria-controls')&&button.getAttribute('aria-controls')!=='nav-section-systemConfiguration');
+ // Board 8fa0a31d — the System Configuration section heading is the only control with that name; it opens the
+ // section, a navigation landmark listing the pages directly.
+ const triggers=screen.getAllByRole('button',{name:messages.nav.systemConfiguration});
  expect(triggers).toHaveLength(1);const trigger=triggers[0];
+ expect(trigger).toHaveAttribute('aria-controls','nav-section-systemConfiguration');
  if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
- const panel=document.getElementById(trigger.getAttribute('aria-controls')!);expect(panel).not.toBeNull();
- return panel!;
+ return screen.getByRole('navigation',{name:messages.nav.systemConfiguration});
 }
 beforeEach(()=>{
  cleanup();vi.clearAllMocks();m.session.mockResolvedValue({s:{userId:'admin',roles:['hr_admin']}});m.allowed.mockResolvedValue(false);m.demo.mockReturnValue(true);m.accounts.mockResolvedValue({items:[],hasMore:false,nextCursor:undefined});m.retention.mockResolvedValue(null);m.guard.mockResolvedValue({session:{userId:'operator'},actor:{subject:'verified'}});

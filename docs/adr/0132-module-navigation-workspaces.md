@@ -51,6 +51,23 @@ administration rail. Its assigned-principal service and RLS retain decision auth
 Attendance participants likewise receive only the Approval Items destination from
 their existing actionable task read; this never sets the manager/team capabilities.
 
+## Amendment — 2026-11-26: two administration sections (board 8fa0a31d)
+
+Shared administration is now two independent sections pinned to the end of the
+rail: System Configuration (gear) and Security Center (shield). Each lists its
+pages directly; no dropdown inside a section repeats the section's name. Security
+Center lists Security & Permissions, Password Policy, Function Access, Users,
+Create a Login Manually and Invite a User, in that order
+(`SECURITY_MENU_ORDER` in `lib/security-center-navigation.ts`). Its overview
+page is no longer a menu row: it stays a route with its guard and Back links, is
+the section's breadcrumb landing and a "Go to" entry, and is offered only when the
+viewer may open it and sees at least one Security Center page. In the collapsed
+icon rail each section is one trigger that opens its pages beside the rail.
+Monolith headings stay icon-less. Placement (area `system` for all these routes),
+page guards, capabilities and audiences are unchanged; each viewer sees the same
+destinations as before less the duplicate overview row. Its coverage binding
+`shell.securityCenter` is retired with the row.
+
 ## Verification boundary
 
 Source work, authored regressions and a clean diff do not prove the rendered

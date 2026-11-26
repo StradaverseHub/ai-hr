@@ -30,70 +30,67 @@ function mount(messages:typeof en|typeof ta=en,defaultCollapsed=false,security=f
  </NextIntlClientProvider>);
 }
 describe('Atelier navigation remains reachable in actual compact CSS',()=>{
- // Approved Security Center revision2 replaces the split landing-link/chevron with one module
- // trigger. The overview remains an explicit destination INSIDE the authorized flyout.
+ // Board 8fa0a31d — System Configuration and Security Center are two sections, each with its own icon, listing their
+ // pages directly. The Security Center overview is no longer a row (it stays the section's breadcrumb landing).
+ const securityHrefs=(passwordPolicy:boolean)=>['/admin/users/access',...(passwordPolicy?['/admin/security-center/password-policy']:[]),'/admin/users/function-access','/admin/users','/admin/users/create','/admin/users/invite'];
  it.each([false,true].flatMap(dark=>[320,390,768,1280].flatMap(width=>[false,true].map(passwordPolicy=>({dark,width,passwordPolicy})))))(
-  'opens the full Security Center label without moving the page at $width px (dark=$dark, policy=$passwordPolicy)',async({dark,width,passwordPolicy})=>{
+  'opens the Security Center section with its pages without moving the page at $width px (dark=$dark, policy=$passwordPolicy)',async({dark,width,passwordPolicy})=>{
   await page.viewport(width,900);document.documentElement.classList.toggle('dark',dark);mount(en,false,true,passwordPolicy);
   if(width<640)fireEvent.click(screen.getByRole('button',{name:en.nav.workspaceSwitch}));
-  fireEvent.click(screen.getByRole('button',{name:en.nav.systemConfiguration,expanded:false}));
-  const module=document.querySelector<HTMLElement>('[data-atelier-module="securityCenter"]')!;
-  const toggle=within(module).getByRole('button',{name:en.nav.securityCenter});
-  toggle.scrollIntoView({block:'nearest'});
-  const label=within(toggle).getByText(en.nav.securityCenter),chevron=toggle.querySelector('.atelier-chevron')!;
-  const railNav=toggle.closest('nav')!;
-  expect(box(toggle).top).toBeGreaterThanOrEqual(box(railNav).top-.5);expect(box(toggle).bottom).toBeLessThanOrEqual(box(railNav).bottom+.5);
-  expect(within(module).queryByRole('link',{name:en.nav.securityCenter})).toBeNull();
-  expect(box(toggle).width).toBeGreaterThan(120);expect(box(label).width).toBeGreaterThan(80);
-  expect(box(toggle).left).toBeGreaterThanOrEqual(0);expect(box(toggle).right).toBeLessThanOrEqual(width+.5);
-  expect(box(label).left).toBeGreaterThanOrEqual(box(toggle).left);expect(box(label).right).toBeLessThanOrEqual(box(chevron).left+.5);
-  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  const system=screen.getByRole('button',{name:en.nav.systemConfiguration,expanded:false});
+  const heading=screen.getByRole('button',{name:en.nav.securityCenter,expanded:false});
+  // Exactly one control per name: no dropdown inside a section repeats the section's name.
+  expect(screen.getAllByRole('button',{name:en.nav.systemConfiguration})).toEqual([system]);
+  expect(screen.getAllByRole('button',{name:en.nav.securityCenter})).toEqual([heading]);
+  expect(system.querySelector('svg')).not.toBeNull();expect(heading.querySelector('svg')).not.toBeNull();
+  heading.scrollIntoView({block:'nearest'});
+  const label=within(heading).getByText(en.nav.securityCenter),railNav=heading.closest('[data-atelier-navigation] nav')!;
+  expect(box(heading).top).toBeGreaterThanOrEqual(box(railNav).top-.5);expect(box(heading).bottom).toBeLessThanOrEqual(box(railNav).bottom+.5);
+  expect(box(label).width).toBeGreaterThan(60);expect(box(heading).left).toBeGreaterThanOrEqual(0);expect(box(heading).right).toBeLessThanOrEqual(width+.5);
   const content=screen.getByTestId('working-page'),before=box(content);
-  fireEvent.click(label); // The label opens the module; no separate chevron hit target is needed.
-  expect(toggle.getAttribute('aria-expanded')).toBe('true');
-  const panel=screen.getByRole('navigation',{name:en.nav.securityCenter});
-  const hrefs=['/admin/security-center','/admin/users/access','/admin/users/function-access','/admin/users/create','/admin/users/invite','/admin/users',...(passwordPolicy?['/admin/security-center/password-policy']:[])];
-  const links=within(panel).getAllByRole('link');expect(links.map(link=>link.getAttribute('href'))).toEqual(hrefs);
-  expect(within(panel).getByRole('link',{name:en.nav.securityCenter})).toHaveAttribute('href','/admin/security-center');
-  expect(within(panel).queryByRole('link',{name:en.nav.passwordPolicy})!==null).toBe(passwordPolicy);
-  await waitFor(()=>expect(document.activeElement).toBe(links[0]));
+  fireEvent.click(label);
+  expect(heading.getAttribute('aria-expanded')).toBe('true');
+  const section=screen.getByRole('navigation',{name:en.nav.securityCenter});
+  expect(section.id).toBe('nav-section-securityCenter');
+  expect(within(section).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(securityHrefs(passwordPolicy));
+  expect(document.querySelector('a[href="/admin/security-center"]')).toBeNull();
   const after=box(content);expect([after.left,after.top,after.width,after.height]).toEqual([before.left,before.top,before.width,before.height]);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-  if(width<640){
-   const navigation=document.getElementById('atelier-mobile-navigation')!;
-   expect(box(navigation).left).toBeGreaterThanOrEqual(0);expect(box(navigation).right).toBeLessThanOrEqual(width+.5);
-   expect(box(navigation).height).toBeLessThanOrEqual(900*.65+.5);
-   expect(box(panel).left).toBeGreaterThanOrEqual(0);expect(box(panel).right).toBeLessThanOrEqual(width+.5);
-   expect(after.top).toBeGreaterThanOrEqual(box(navigation).bottom-.5);
-  }else{
-   expect(box(panel).width).toBeGreaterThan(200);expect(box(panel).left).toBeGreaterThan(before.left);
-  }
-  fireEvent.keyDown(document,{key:'Escape'});
-  await waitFor(()=>expect(document.activeElement).toBe(toggle));
-  expect(toggle.getAttribute('aria-expanded')).toBe('false');expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
+  const users=within(section).getByRole('link',{name:en.nav.users});users.scrollIntoView({block:'nearest'});
+  expect(box(users).left).toBeGreaterThanOrEqual(0);expect(box(users).right).toBeLessThanOrEqual(width+.5);
+  heading.focus();await userEvent.keyboard('{Enter}');
+  await waitFor(()=>expect(heading.getAttribute('aria-expanded')).toBe('false'));
+  expect(within(screen.getByRole('navigation',{name:en.nav.securityCenter})).queryAllByRole('link')).toHaveLength(0);
   await userEvent.keyboard('{Enter}');
-  await waitFor(()=>expect(toggle.getAttribute('aria-expanded')).toBe('true'));
-  const reopened=screen.getByRole('navigation',{name:en.nav.securityCenter});
-  await waitFor(()=>expect(document.activeElement).toBe(within(reopened).getAllByRole('link')[0]));
-  fireEvent.click(within(reopened).getByRole('link',{name:en.nav.securityCenter}));
-  expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
-  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  await waitFor(()=>expect(heading.getAttribute('aria-expanded')).toBe('true'));
+  fireEvent.click(within(screen.getByRole('navigation',{name:en.nav.securityCenter})).getByRole('link',{name:en.nav.users}));
   if(width<640)expect(screen.getByRole('button',{name:en.nav.workspaceSwitch}).getAttribute('aria-expanded')).toBe('false');
  });
- it('opens Security Center on desktop mouse hover, keeps the trigger-to-panel gap open and dismisses outside',async()=>{
-  await page.viewport(1280,900);mount(en,false,true);
-  fireEvent.click(screen.getByRole('button',{name:en.nav.systemConfiguration,expanded:false}));
+ it('shows each icon section as one trigger in the collapsed rail; it opens on click, not hover, and dismisses outside',async()=>{
+  await page.viewport(1280,900);mount(en,true,true);
+  for(const key of ['systemConfiguration','securityCenter'] as const){
+   const section=document.querySelector<HTMLElement>(`[data-nav-section="${key}"]`)!;
+   const triggers=within(section).getAllByRole('button');expect(triggers).toEqual([within(section).getByRole('button',{name:en.nav[key]})]);
+   expect(triggers[0].getAttribute('title')).toBe(en.nav[key]);
+   expect(box(triggers[0]).width).toBeLessThanOrEqual(64);
+   expect(within(section).queryAllByRole('link')).toHaveLength(0);
+  }
   const module=document.querySelector<HTMLElement>('[data-atelier-module="securityCenter"]')!;
-  fireEvent.pointerEnter(module,{pointerType:'touch'});
-  expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
+  const trigger=within(module).getByRole('button',{name:en.nav.securityCenter});
   fireEvent.pointerEnter(module,{pointerType:'mouse'});
+  expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
+  fireEvent.click(trigger);
   const panel=screen.getByRole('navigation',{name:en.nav.securityCenter});
-  fireEvent.pointerLeave(module,{pointerType:'mouse'});fireEvent.pointerEnter(panel,{pointerType:'mouse'});
-  expect(screen.getByRole('navigation',{name:en.nav.securityCenter})).toBe(panel);
-  const backdrop=panel.parentElement!.previousElementSibling;
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(securityHrefs(false));
+  await waitFor(()=>expect(document.activeElement).toBe(within(panel).getAllByRole('link')[0]));
+  fireEvent.keyDown(document,{key:'Escape'});
+  await waitFor(()=>expect(document.activeElement).toBe(trigger));
+  fireEvent.click(trigger);
+  const reopened=screen.getByRole('navigation',{name:en.nav.securityCenter});
+  const backdrop=reopened.parentElement!.previousElementSibling;
   expect(backdrop).not.toBeNull();fireEvent.click(backdrop!);
   expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
-  expect(within(module).getByRole('button',{name:en.nav.securityCenter}).getAttribute('aria-expanded')).toBe('false');
+  expect(trigger.getAttribute('aria-expanded')).toBe('false');
  });
  it.each([320,390])('opens bounded navigation above the working page at %ipx and restores keyboard focus',async width=>{
   await page.viewport(width,844);mount(ta);

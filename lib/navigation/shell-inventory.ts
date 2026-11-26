@@ -37,7 +37,7 @@ import '@/packs/register-all';
 import { PEOPLE_SETTINGS_SECTIONS, type PeopleSettingsGate } from '@/lib/navigation/people-settings';
 import { modulePackById } from '@/packs/registry';
 import { LETTER_NAV_ITEMS } from '@/lib/letter-navigation';
-import { SECURITY_CENTER, SECURITY_PAGES } from '@/lib/security-center-navigation';
+import { SECURITY_MENU_PAGES } from '@/lib/security-center-navigation';
 
 // `labelKey` indexes the `nav` message namespace; labels are resolved at render via useTranslations.
 // `tour` (optional) marks the element as an onboarding-tour anchor (ADR-0018).
@@ -65,8 +65,6 @@ export type CollapsibleGroupItem = {
   tour?: string;
   activeMatch?: 'children';
   defaultHref?: string;
-  /** Breadcrumb-only landing; must be one of the visible children. Does not change the menu trigger. */
-  breadcrumbHref?: string;
   collapsible: true;
   labelKey: string;
   icon: LucideIcon;
@@ -79,7 +77,16 @@ export const isCollapsible = (r: Row): r is CollapsibleGroupItem => 'collapsible
 // Provider setup is tenant-wide: its page reads the configuration only for a group-wide administrator.
 export const AI_PROVIDER_HREF = '/control-tower/agents/provider';
 export const isAiAdministrationHref = (href: string) => href === '/admin/ai' || href === '/control-tower' || href.startsWith('/control-tower/');
-export type Group = { labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[] };
+export type Group = {
+  labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[];
+  /** Rendered sections only (board 8fa0a31d): the section heading's own icon. In the collapsed icon rail such a
+   *  section is one trigger with this icon that opens its rows as a flyout. */
+  icon?: LucideIcon;
+  /** Rendered sections only: an admitted landing page for the section heading in the breadcrumb. Never a menu row. */
+  landingHref?: string;
+  /** Rendered sections only: pinned to the end of the rail. */
+  pinEnd?: boolean;
+};
 
 // Consolidated Attendance node (b3dc0f78 / 5cb199b3 / f60cd403 / 5249d43f). Since ADR-0080 rung 2
 // its rows live on the attendance pack (packs/attendance/index.ts, ATTENDANCE_NAV — provenance
@@ -484,8 +491,10 @@ export const GROUPS: Group[] = [
       { href: '/analytics', labelKey: 'analytics', icon: BarChart3 },
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
-      {href:SECURITY_CENTER,labelKey:'securityCenter',icon:ShieldCheck,exactHref:true},
-      ...SECURITY_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true})),
+      // Board 8fa0a31d: the Security Center overview (/admin/security-center) is no longer a row. It repeated the name
+      // of the Security Center section it sat in. It stays that section's breadcrumb landing (shell-resolver
+      // securityLanding) with its route, guard and Back links unchanged.
+      ...SECURITY_MENU_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true})),
     ],
   },
 ];
