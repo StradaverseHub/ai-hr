@@ -8,20 +8,25 @@
  *    narrowed terms (3+ ASCII characters, mixed case, LIKE wildcards) and unnarrowed ones (short, non-ASCII);
  *  - authority: the candidates never contain an employment the caller cannot see, and never miss a visible match;
  *  - plans: under the caller's own session claims, the candidate search uses the trigram indexes (a bitmap index
- *    scan on person_full_name_search_trgm / employment_code_search_trigram) rather than reading every person.
+ *    scan on person_full_name_search_trgm / employment_code_search_trigram) rather than reading every person;
+ *  - cost (7530): the People directory and picker searches, timed with EXPLAIN (ANALYZE, BUFFERS) under each caller's
+ *    own identity (group, multi-company and single-company administrators, and an employee), are no slower than the
+ *    same statements without the candidates (the reads before 7320), and the 7320 body is kept as a reference to
+ *    show the visible-set cost 7530 removes.
  * All names are invented. */
 import {randomUUID} from 'node:crypto';
+import {readFileSync} from 'node:fs';
 import {sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
-import {withTenant,type SessionContext} from '../db/client';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {allowedCompanies,listEmployeesDirectoryPage} from '../core/read';
 import {readEmployeeChoices} from '../core/employee-choice';
 import {isNarrowableEmploymentSearch} from '../core/employment-search';
 import {parseKeysetPageQuery} from '../lib/pagination';
-import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
-import {observeStatements} from './helpers/statement-observer';
+import {isIdentityStatement,observeStatements,type Captured} from './helpers/statement-observer';
 
 let b:Base,fixture:ScaleFixture;
 beforeAll(async()=>{
@@ -141,7 +146,8 @@ describe('employee search trigram candidates (7320)',()=>{
   for(const q of ['bulk 01234','bk-04321','rahman','fictional person 0123']){
    await owner.client.begin(async tx=>{
     await tx.unsafe(identity.sql,identity.params as never[]);
-    const [plan]=await tx.unsafe(`explain (format json) ${search}`,[pattern(q),null,true] as never[]);
+    const [{read}]=await tx.unsafe(`select app.employment_read_companies() as read`) as unknown as {read:string[]}[];
+    const [plan]=await tx.unsafe(`explain (format json) ${search}`,[pattern(q),null,true,read] as never[]);
     type Node={'Node Type':string;'Relation Name'?:string;'Index Name'?:string;Plans?:Node[]};
     const nodes:Node[]=[];const walk=(n:Node)=>{nodes.push(n);for(const c of n.Plans??[])walk(c);};
     walk(((plan as Record<string,unknown>)['QUERY PLAN'] as [{Plan:Node}])[0].Plan);
@@ -153,6 +159,85 @@ describe('employee search trigram candidates (7320)',()=>{
   }
   expect([...used].sort()).toEqual(['employment_code_search_trgm','person_full_name_search_trgm','person_primary_email_search_trgm']);
  },120_000);
+
+ it('7530: a search costs no more than the read without candidates (before 7320), for administrators and an employee',async()=>{
+  // The 7320 body, kept under another name only as the diagnosis reference (the visible set built in every call).
+  const src=readFileSync('db/migrations/7320_employment_search_trigram.sql','utf8');
+  const created=/CREATE FUNCTION app\.employment_search_candidates\([\s\S]*?\$function\$;/.exec(src)?.[0];
+  expect(created,'the 7320 function text').toBeTruthy();
+  await owner.client.unsafe(created!.replace('app.employment_search_candidates(','app.employment_search_candidates_7320_reference('));
+  await owner.client.unsafe('grant execute on function app.employment_search_candidates_7320_reference(text,uuid[],boolean) to ai_hr_app');
+  // An employee of the group company with no grant beyond their own record: the relationship part only.
+  const [p]=await owner.db.insert(schema.person).values({tenantId:b.tenantId,fullName:'Fictional Employee EMP1',primaryEmail:`${randomUUID()}@fixture.test`}).returning({id:schema.person.id});
+  await owner.db.insert(schema.employment).values({tenantId:b.tenantId,personId:p.id,companyId:b.companyId,employeeCode:'FX-EMP1',hiredOn:'2020-01-01'});
+  const [u]=await owner.db.insert(schema.appUser).values({tenantId:b.tenantId,workosUserId:`user_${randomUUID()}`,personId:p.id}).returning({id:schema.appUser.id});
+  await owner.db.insert(schema.roleAssignment).values({tenantId:b.tenantId,appUserId:u.id,companyId:null,role:'employee'});
+  const employee:SessionContext={...await entitledCtx(b,['employee']),userId:u.id,personId:p.id,roles:['employee'],grants:[{role:'employee',companyId:null}]};
+  const CLAUSE=/"employment"\."id" = any\(\(select app\.employment_search_candidates\((\$\d+)::text, (\$\d+::uuid\[\]|null::uuid\[\]), (\$\d+)::boolean\)\)::uuid\[\]\)/g;
+  const variants={
+   before7320:(text:string)=>text.replace(CLAUSE,'($1::text is not null or $2 is null or $3::boolean is not null or true)'),
+   body7320:(text:string)=>text.replaceAll('app.employment_search_candidates(','app.employment_search_candidates_7320_reference('),
+   body7530:(text:string)=>text};
+  type Variant=keyof typeof variants;
+  /** The search's statements (those that call the candidates) for this caller and screen. */
+  const searchStatements=async(work:()=>Promise<unknown>)=>{
+   const observed=await observeStatements(work);
+   const out=observed.statements.filter(s=>s.sql.includes('app.employment_search_candidates('));
+   expect(out.length,'the search statements').toBeGreaterThan(0);
+   for(const s of out)expect(variants.before7320(s.sql),'the candidates clause is recognised').not.toContain('employment_search_candidates');
+   return out;
+  };
+  const identityOf=async(ctx:SessionContext):Promise<Captured>=>{
+   const observed=await observeStatements(()=>withTenant(ctx,tx=>tx.execute(sql`select 1`)));
+   return observed.statements.find(s=>isIdentityStatement(s.sql))!;
+  };
+  /** Execution plus planning ms and shared buffers of the statements, one EXPLAIN (ANALYZE, BUFFERS) each, as the caller. */
+  const timed=async(identity:Captured,statements:Captured[],variant:Variant)=>{
+   let ms=0,buffers=0;
+   await client.begin(async tx=>{
+    await tx.unsafe(identity.sql,identity.params as never[]);
+    for(const s of statements){
+     const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${variants[variant](s.sql)}`,s.params as never[]);
+     const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number};'Execution Time':number;'Planning Time':number}];
+     ms+=plan['Execution Time']+plan['Planning Time'];buffers+=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
+    }
+   });
+   return {ms,buffers};
+  };
+  const median=(xs:number[])=>[...xs].sort((x,y)=>x-y)[Math.floor(xs.length/2)];
+  const ROUNDS=9;
+  const cases:{caller:string;ctx:SessionContext;screen:string;statements:Captured[]}[]=[];
+  for(const q of ['tan','rahman','bulk 0123','bk-0042','fictional']){
+   for(const [caller,ctx] of [['group',fixture.personas.group],['multi',fixture.personas.multi],['single',fixture.personas.single]] as const){
+    const companyIds=await allCompanies(ctx);
+    const page=parseKeysetPageQuery({size:'25'});
+    const directory=await searchStatements(()=>listEmployeesDirectoryPage(ctx,{companyIds,q,limit:page.limit,size:page.size,after:page.after,before:page.before,last:page.last,exactCount:false}));
+    cases.push({caller,ctx,screen:`directory ${q}`,statements:directory});
+    if(caller!=='multi')cases.push({caller,ctx,screen:`picker ${q}`,statements:await searchStatements(()=>readEmployeeChoices(ctx,{companyIds,query:q,offset:0,limit:50}))});
+    // The employee asks the group administrator's statements under their own identity: row security and the
+    // candidates both narrow to their own record.
+    if(caller==='group')cases.push({caller:'employee',ctx:employee,screen:`directory ${q}`,statements:directory});
+   }
+  }
+  const failures:string[]=[];
+  for(const c of cases){
+   const identity=await identityOf(c.ctx);
+   const runs:Record<Variant,{ms:number[];buffers:number[]}>={before7320:{ms:[],buffers:[]},body7320:{ms:[],buffers:[]},body7530:{ms:[],buffers:[]}};
+   const order:Variant[]=['before7320','body7320','body7530'];
+   for(let round=0;round<ROUNDS;round++)for(let i=0;i<order.length;i++){
+    const variant=order[(round+i)%order.length];
+    const r=await timed(identity,c.statements,variant);
+    runs[variant].ms.push(r.ms);runs[variant].buffers.push(r.buffers);
+   }
+   const row=Object.fromEntries(order.map(v=>[v,{medianMs:Math.round(median(runs[v].ms)*100)/100,buffers:median(runs[v].buffers)}])) as Record<Variant,{medianMs:number;buffers:number}>;
+   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,statements:c.statements.length,...row}));
+   // No slower than before 7320, with 1 ms (or 10 %) for runner noise between interleaved medians.
+   const allowance=Math.max(1,row.before7320.medianMs*0.1);
+   if(row.body7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.body7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);
+  }
+  expect(failures).toEqual([]);
+  await owner.client.unsafe('drop function app.employment_search_candidates_7320_reference(text,uuid[],boolean)');
+ },600_000);
 
  it('measures each index build (the migration\'s CREATE INDEX holds a SHARE lock: reads continue, writes wait)',async()=>{
   const [{people,employments}]=await owner.client<{people:number;employments:number}[]>`select (select count(*) from person)::int as people,(select count(*) from employment)::int as employments`;
