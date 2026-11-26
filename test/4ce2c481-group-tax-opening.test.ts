@@ -23,7 +23,7 @@ import {createBatch, generatePayslips} from '../core/payroll';
 import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload, confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {confirmTaxBasisRecalculation, getTaxBasisBatch, previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
-import {listPayComponents, seedPayComponentCatalog, setEmploymentPayComponent, upsertPayComponent} from '../core/pay-components';
+import {listPayComponents, setEmploymentPayComponent, upsertPayComponent} from '../core/pay-components';
 import {payrollProcessJobHandler, requestPayrollProcessing} from '../core/payroll-processing-job';
 import {groupTaxOpeningTx, groupTp3Outcome, readGroupTaxOpeningStamp, summarizeGroupTaxOpening, groupTaxPriorSlips} from '../core/payroll-group-tax-opening';
 import {explainPcb, pcbWorksheet} from '../core/pcb-explain';
@@ -209,19 +209,16 @@ describe('a same-employment transfer: A imported January to September, B native 
 describe('Recalculate Income Tax Value opens from the same group usage as processing', () => {
   it('A imported January to September, B native October and November: the recalculation of B gives the processed limits, as the single-employer control does', async () => {
     // A travel allowance capped at the annual PCB_TRA_BUSINESS limit, paid RM600 every month all year.
-    await seedPayComponentCatalog(ctx);
+    // No catalogue BASIC Pay Item: basic is paid from compensation (a BASIC row is inert in the engine), imports carry the
+    // system basic salary receipt, and native months reconstruct basic from the saved paid field.
     await upsertPayComponent(ctx, {label: 'Travel allowance', code: 'TRV', name: 'Travel allowance', kind: 'allowance', includedInEpf: true, includedInSocsoEis: true,
       includedInPcb: true, includedInHrdfBase: false, isNonPayable: false, prorates: false, pcbRemunerationType: 'normal', pcbExemptionCode: 'PCB_TRA_BUSINESS'});
-    // The catalogue's BASIC carries no PCB classification; give it the system basic salary's (normal remuneration, no exemption code).
-    await owner.db.update(schema.payComponent).set({includedInPcb: true, pcbRemunerationType: 'normal', pcbExemptionCode: null})
-      .where(and(eq(schema.payComponent.tenantId, b.tenantId), eq(schema.payComponent.code, 'BASIC')));
     await setModule(b.tenantId, 'typed_pay_components', 'active');
     ctx = await entitledCtx(b);
     const idOf = async (code: string) => (await listPayComponents(ctx, {includeArchived: true})).find(c => c.code === code)!.id;
     const moved = await hire('0007', 'Fictional Chang', '850505055555', b.companyId, b.deptA);
     const control = await hire('0008', 'Fictional Lim', '850606065555', coB, deptB);
     for (const e of [moved, control]) {
-      await setEmploymentPayComponent(ctx, {employmentId: e.employmentId, componentId: await idOf('BASIC'), amount: 5000, effectiveFrom: '2025-01-01'});
       await setEmploymentPayComponent(ctx, {employmentId: e.employmentId, componentId: await idOf('TRV'), amount: 600, effectiveFrom: '2026-10-01'});
     }
     await importHistory(historyRows('0007', 'COA', months(1, 9), [['TRV', '600']]));
