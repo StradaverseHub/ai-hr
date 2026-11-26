@@ -226,7 +226,7 @@ describe('Recalculate Income Tax Value opens from the same group usage as proces
     // Each original employer reviews its own imported months (RM0 opening, no TP3): RM5,400 of the RM6,000 limit used.
     for (const [companyId, e] of [[b.companyId, moved], [coB, control]] as const) {
       const p = await previewTaxBasisRecalculation(ctx, {companyId, year: 2026, upToMonth: 9, employmentIds: [e.employmentId]});
-      expect(p.employees[0].status).toBe('ready');
+      expect({status: p.employees[0].status, reason: p.employees[0].reason, missing: p.employees[0].missingEvidence}).toMatchObject({status: 'ready'});
       const batch = await confirmTaxBasisRecalculation(ctx, {previewId: p.previewId, previewHash: p.previewHash});
       expect((await getTaxBasisBatch(ctx, batch.id))?.completedCount).toBe(1);
     }
