@@ -1,0 +1,95 @@
+<meta charset="utf-8"><title>038c304b — CP38 Deduction under Payroll > Transaction Entry</title>
+<!-- Board 038c304b, plan revision 1. Fictional companies and people only.
+     PROMISED: the page under Transaction Entry with the Zakat page's employee panel; one server-paged list of every
+     employee's CP38 records (company / employee / status filters); Add / Edit / Delete in a pop-up with the employee
+     tab's own fields; the locked state for a record a closed payroll used; the same records on the employee tab.
+     NOT DRAWN: exact wording, colours, the audit trail. -->
+<style>
+ :root{--bg:#f6f6f7;--fg:#18181b;--mf:#6b6b73;--border:#e6e6ea;--muted:#f3f3f5;--red:#c2410c;--green:#15803d;--amber:#b45309}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1280px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .tag{display:inline-block;border:1px dashed #a1a1aa;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.04em;color:#52525b;margin-bottom:14px}
+ .crumb{font-size:12px;color:var(--mf);margin-bottom:6px}
+ h1{font-size:20px;margin:0 0 14px}
+ .wrap{display:grid;grid-template-columns:230px 1fr;gap:16px}
+ .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+ .panel h3{font-size:12px;margin:0 0 8px;color:#3f3f46}
+ .emp{padding:6px 8px;border-radius:8px;font-size:12.5px}
+ .emp.on{background:var(--muted);font-weight:600}
+ .code{font-family:ui-monospace,monospace;color:#52525b;margin-right:6px;font-size:12px}
+ .head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+ .btn{display:inline-block;border-radius:8px;padding:6px 12px;font-size:12.5px;font-weight:600;border:1px solid var(--border);background:#fff}
+ .btn.primary{background:#c2410c;color:#fff;border-color:#c2410c}
+ .filters{display:flex;gap:8px;margin-bottom:10px}
+ .sel{border:1px solid var(--border);border-radius:8px;padding:5px 10px;font-size:12px;color:#3f3f46;background:#fff}
+ table{width:100%;border-collapse:collapse;font-size:12.5px}
+ th{text-align:left;font-weight:500;color:#52525b;background:#fafafa;padding:8px 9px;font-size:12px;border-bottom:1px solid var(--border)}
+ td{padding:8px 9px;border-bottom:1px solid var(--border)}
+ .r{text-align:right}
+ .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:11px;font-weight:600}
+ .act{background:#dcfce7;color:var(--green)} .end{background:var(--muted);color:#52525b} .up{background:#e0f2fe;color:#0369a1}
+ .lnk{color:var(--red);font-weight:500;margin-right:10px}
+ .lock{color:var(--mf);font-size:12px}
+ .pager{display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:12px;color:var(--mf)}
+ .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px}
+ .dialog{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 10px 30px rgba(0,0,0,.08);padding:16px}
+ .dialog h2{font-size:15px;margin:0 0 10px}
+ .field{margin-bottom:9px} .field label{display:block;font-size:12px;color:#52525b;margin-bottom:3px}
+ .input{border:1px solid var(--border);border-radius:8px;padding:6px 10px;font-size:12.5px;background:#fff}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+ .note{font-size:12px;color:var(--mf);margin-top:8px}
+ .warn{background:#fffbeb;border:1px solid #fcd34d;border-radius:10px;padding:8px 10px;font-size:12px;color:#7c4a03;margin-top:8px}
+ .lbl{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green);margin:0 0 8px}
+</style>
+
+<div class="tag">SKETCH · WORDING, SPACING AND COLOURS WILL DIFFER · EXAMPLE COMPANIES, NOT REAL DATA</div>
+<div class="crumb">Payroll › Transaction Entry › CP38 Deduction</div>
+<h1>CP38 Deduction</h1>
+
+<div class="wrap">
+  <div class="card panel">
+    <h3>Employees (same panel as Zakat)</h3>
+    <div class="sel" style="margin-bottom:8px">Search employee ID or name</div>
+    <div class="emp on">All employees</div>
+    <div class="emp"><span class="code">EMP-1001</span>Aisyah Rahman</div>
+    <div class="emp"><span class="code">EMP-1002</span>Benjamin Lee</div>
+    <div class="emp"><span class="code">EMP-1003</span>Chandra Devi</div>
+    <div class="emp"><span class="code">EMP-1004</span>Daniel Tan</div>
+  </div>
+  <div class="card">
+    <div class="head"><strong>CP38 deductions · all employees</strong><span class="btn primary">+ Add CP38 deduction</span></div>
+    <div class="filters"><span class="sel">Company: All companies ▾</span><span class="sel">Status: All ▾</span></div>
+    <table>
+      <tr><th>Employee</th><th>Company</th><th>CP38 reference</th><th class="r">Monthly (RM)</th><th>From</th><th>To</th><th>Status</th><th></th></tr>
+      <tr><td><span class="code">EMP-1001</span>Aisyah Rahman</td><td>Contoh Teknologi</td><td>CP38/2026/0145</td><td class="r">350.00</td><td>Sep 2026</td><td>Feb 2027</td><td><span class="pill act">Active</span></td><td><span class="lnk">Edit</span><span class="lnk">Delete</span></td></tr>
+      <tr><td><span class="code">EMP-1002</span>Benjamin Lee</td><td>Contoh Teknologi</td><td>CP38/2026/0098</td><td class="r">200.00</td><td>Mar 2026</td><td>Aug 2026</td><td><span class="pill end">Ended</span></td><td><span class="lock">Locked — used by a closed payroll</span></td></tr>
+      <tr><td><span class="code">EMP-1003</span>Chandra Devi</td><td>Contoh Hartanah</td><td>CP38/2026/0201</td><td class="r">125.50</td><td>Jan 2027</td><td>—</td><td><span class="pill up">Upcoming</span></td><td><span class="lnk">Edit</span><span class="lnk">Delete</span></td></tr>
+      <tr><td><span class="code">EMP-1004</span>Daniel Tan</td><td>Contoh Hartanah</td><td>CP38/2026/0187</td><td class="r">410.00</td><td>Nov 2026</td><td>Apr 2027</td><td><span class="pill act">Active</span></td><td><span class="lnk">Edit</span><span class="lnk">Delete</span></td></tr>
+    </table>
+    <div class="pager"><span>1–25 of 132</span><span>‹ Previous · Next ›</span></div>
+  </div>
+</div>
+
+<div class="row2">
+  <div class="dialog">
+    <h2>Edit CP38 deduction · EMP-1004 Daniel Tan</h2>
+    <div class="field"><label>CP38 reference</label><div class="input">CP38/2026/0187</div></div>
+    <div class="grid2">
+      <div class="field"><label>Monthly amount (RM)</label><div class="input">450.00</div></div>
+      <div class="field"><label>Remarks</label><div class="input">LHDN letter 12 Nov</div></div>
+      <div class="field"><label>From month</label><div class="input">Nov 2026</div></div>
+      <div class="field"><label>To month (optional)</label><div class="input">Apr 2027</div></div>
+    </div>
+    <div class="warn">November 2026 payroll for Contoh Hartanah is already processed (not closed). Saving flags Daniel Tan as Reprocess Required on it.</div>
+    <div style="text-align:right;margin-top:10px"><span class="btn">Cancel</span> <span class="btn primary">Save</span></div>
+  </div>
+  <div class="card">
+    <div class="lbl">The employee's own Payroll tab shows the same records</div>
+    <div class="crumb">People › Personnel Management › EMP-1004 Daniel Tan › Payroll › CP38 Deduction</div>
+    <table>
+      <tr><th>Reference</th><th class="r">Amount</th><th>From</th><th>To</th><th>Status</th><th></th></tr>
+      <tr><td>CP38/2026/0187</td><td class="r">450.00</td><td>Nov 2026</td><td>Apr 2027</td><td><span class="pill act">Active</span></td><td><span class="lnk">View</span><span class="lnk">Edit</span><span class="lnk">Terminate</span><span class="lnk">Delete</span></td></tr>
+    </table>
+    <p class="note">Unchanged except the new Delete. A change made on either screen is on the other straight away: there is only one record.</p>
+  </div>
+</div>

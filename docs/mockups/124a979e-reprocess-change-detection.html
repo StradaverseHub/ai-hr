@@ -1,0 +1,69 @@
+<meta charset="utf-8"><title>124a979e — every payroll change flags Reprocess Required</title>
+<!-- Board 124a979e, plan revision 1. Fictional company and people only.
+     PROMISED: which changes flag an employee on a processed (not closed) payroll, today and after this plan; closed
+     payrolls never flagged; the employee once on the Reprocess Required tab and in the list count.
+     NOT DRAWN: a per-row "what changed" reason on the tab (not promised); exact wording and colours. -->
+<style>
+ :root{--bg:#f6f6f7;--fg:#18181b;--mf:#6b6b73;--border:#e6e6ea;--muted:#f3f3f5;--red:#b91c1c;--green:#15803d;--amber:#92400e}
+ *{box-sizing:border-box}
+ body{margin:0;padding:24px;background:var(--bg);color:var(--fg);width:1280px;font:13px/1.5 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Arial,sans-serif}
+ .tag{display:inline-block;border:1px dashed #a1a1aa;border-radius:8px;padding:4px 10px;font-size:11px;font-weight:700;letter-spacing:.04em;color:#52525b;margin-bottom:14px}
+ .grid{display:grid;grid-template-columns:1.15fr 1fr;gap:16px}
+ .card{background:#fff;border:1px solid var(--border);border-radius:14px;padding:16px 18px}
+ h2{font-size:15px;margin:0 0 10px}
+ table{width:100%;border-collapse:collapse;font-size:13px}
+ th{text-align:left;font-weight:500;color:#52525b;background:#fafafa;padding:8px 10px;font-size:12px;border-bottom:1px solid var(--border)}
+ td{padding:8px 10px;border-bottom:1px solid var(--border)}
+ .no{color:var(--red);font-weight:600} .yes{color:var(--green);font-weight:600} .same{color:var(--mf)}
+ .chip{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600;background:#fef3c7;color:var(--amber);border:1px solid #fcd34d}
+ .sub{font-size:12px;color:#c2410c}
+ .tabs{display:inline-flex;gap:4px;border:1px solid var(--border);border-radius:12px;padding:4px;margin:8px 0 10px}
+ .tab{padding:6px 12px;border-radius:9px;font-size:13px;color:#3f3f46}
+ .tab.on{background:#18181b;color:#fff;font-weight:600}
+ .n{display:inline-block;min-width:18px;text-align:center;border-radius:999px;font-size:12px;font-weight:700;padding:0 6px;background:#e4e4e7;color:#18181b;margin-left:6px}
+ .tab.on .n{background:#fff}
+ .code{font-family:ui-monospace,monospace;color:#52525b;margin-right:6px;font-size:12px}
+ .pill{display:inline-block;padding:1px 9px;border-radius:999px;font-size:12px;font-weight:600;background:#fef3c7;color:var(--amber)}
+ .note{font-size:12.5px;color:var(--mf);margin:10px 0 0}
+ .lbl{font-size:12px;font-weight:700;color:#3f3f46;margin:14px 0 6px}
+</style>
+
+<div class="tag">SKETCH · WORDING, SPACING AND COLOURS WILL DIFFER · EXAMPLE COMPANY, NOT REAL DATA</div>
+
+<div class="grid">
+  <div class="card">
+    <h2>A change saved after the November payroll is processed (not closed)</h2>
+    <table>
+      <tr><th>What changed</th><th>Today</th><th>After this plan</th></tr>
+      <tr><td>CP38 deduction added, edited, ended or deleted</td><td class="no">Not flagged · edit refused</td><td class="yes">Flagged</td></tr>
+      <tr><td>Fixed allowance or fixed deduction added, changed, ended, imported</td><td class="no">Not flagged</td><td class="yes">Flagged</td></tr>
+      <tr><td>Zakat election</td><td class="no">Not flagged</td><td class="yes">Flagged</td></tr>
+      <tr><td>Tax scheme, category, children, TP1 reliefs, TP3</td><td class="no">Not flagged</td><td class="yes">Flagged</td></tr>
+      <tr><td>Payroll policy assignment</td><td class="no">Not flagged</td><td class="yes">Flagged</td></tr>
+      <tr><td>Basic salary and other salary changes</td><td class="yes">Flagged</td><td class="same">Flagged, unchanged</td></tr>
+      <tr><td>One-off (individual) transactions</td><td class="yes">Flagged</td><td class="same">Flagged, unchanged</td></tr>
+      <tr><td>Transfer, termination, hire date, attendance, leave, overtime</td><td class="yes">Flagged</td><td class="same">Flagged, unchanged</td></tr>
+      <tr><td>EPF, SOCSO, EIS settings; pay item settings</td><td class="yes">Flagged</td><td class="same">Flagged, unchanged</td></tr>
+    </table>
+    <p class="note">Only the payrolls the change reaches: the employee's own payroll in the company that paid them, for months from when the change takes effect.
+      A closed payroll is never flagged, and a change that would alter a closed month is refused with the month named.</p>
+  </div>
+
+  <div class="card">
+    <h2>What you then see (Contoh Teknologi · 2026-11 Regular)</h2>
+    <div class="lbl">Payroll Process list</div>
+    <table>
+      <tr><th>Period</th><th>Company</th><th>Status</th></tr>
+      <tr><td><b>2026-11</b> Regular</td><td>Contoh Teknologi Sdn Bhd</td><td><span class="chip">● Reprocess Required</span><div class="sub"><u>2 employees affected</u></div></td></tr>
+    </table>
+    <div class="lbl">Reprocess screen</div>
+    <div class="tabs"><span class="tab on">Reprocess Required<span class="n">2</span></span><span class="tab">Skipped<span class="n">0</span></span><span class="tab">Processed / No Change<span class="n">58</span></span></div>
+    <table>
+      <tr><th>Employee</th><th>Status</th><th>Why</th></tr>
+      <tr><td><span class="code">EMP-1004</span>Daniel Tan</td><td><span class="pill">Changed</span></td><td>Data used by this payslip changed after the run was processed.</td></tr>
+      <tr><td><span class="code">EMP-1007</span>Grace Lim</td><td><span class="pill">Changed</span></td><td>Data used by this payslip changed after the run was processed.</td></tr>
+    </table>
+    <p class="note">Daniel Tan's CP38 changed; Grace Lim's fixed allowance and Zakat both changed and she is listed once.
+      Nothing is reprocessed until you press Reprocess, which uses the latest saved figures.</p>
+  </div>
+</div>
