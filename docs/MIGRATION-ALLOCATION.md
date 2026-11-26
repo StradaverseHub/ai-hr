@@ -1,3 +1,16 @@
+# Board change-detection lane (124a979e, plan item 9): pending recalculation marks, 26 November 2026
+
+Reserve `7530_payroll_recalc_pending`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
+`2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f`. Allocated by the integrator after `7510` and `7520`
+above, which other lanes own; it does not depend on either. Staging's ledger watermark was 7500 (26 Nov 2026). Recheck
+both installations' watermarks and any competing reservation at admission.
+
+Creates `public.payroll_recalc_pending` (append and consume: employment, pay months reached, change categories, who and
+when), RLS forced: inserted by a principal for an employment it can see, as itself, never requiring payroll
+administration; read and deleted only where `app.can_admin_payroll_for` the employee's current company. SELECT, INSERT and
+DELETE to `ai_hr_app`, no UPDATE. FKs to tenant and employment (cascade); no company FK. No existing table, row, policy
+or function changes; the new table starts empty. This entry carries no deployment authority.
+
 # Board CP38 lane (038c304b + bc6b5490): CP38 correction history and last-month amount, 26 November 2026
 
 Reserve `7510_employee_cp38_history_last_month`, journal index `10910`, timestamp `1795495007510`. Next free slot after

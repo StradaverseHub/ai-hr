@@ -8149,6 +8149,13 @@
       "when": 1795495007500,
       "tag": "7500_payroll_read_history_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 10930,
+      "version": "7",
+      "when": 1795495007530,
+      "tag": "7530_payroll_recalc_pending",
+      "breakpoints": true
     }
   ]
 }

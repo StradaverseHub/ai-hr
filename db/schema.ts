@@ -6931,6 +6931,24 @@ export const payrollRunOutstanding = pgTable('payroll_run_outstanding', {
   requestedAt: timestamp('requested_at', { withTimezone: true }),
 });
 
+/**
+ * 124a979e (migration 7530) — a payroll input saved by somebody who cannot administer payroll for the employee's
+ * company: the employment, the pay months it reaches (inclusive, NULL = unbounded) and the change categories. Written in
+ * the save's own transaction by core/payroll.ts (markRunsAffectedByEmploymentChangeTx and its windows variant), consumed
+ * by the Payroll Process list's refresh job under a payroll administrator of the employee's current company
+ * (core/payroll-run-outstanding.ts), which marks the runs and deletes the rows together. Append and consume only.
+ */
+export const payrollRecalcPending = pgTable('payroll_recalc_pending', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  tenantId: tenantId(),
+  employmentId: uuid('employment_id').notNull().references(() => employment.id, { onDelete: 'cascade' }),
+  fromPeriod: text('from_period'),
+  untilPeriod: text('until_period'),
+  categories: text('categories').array().notNull(),
+  requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+  requestedBy: uuid('requested_by'),
+});
+
 // ─────────────── ADR-0076: the payroll anomaly layer (the ADR-0074 control-tower keystone) ───────────────
 //
 // READ-ONLY RELATIVE TO MONEY. The evaluator reads payslips and writes verdicts; it never mutates a
