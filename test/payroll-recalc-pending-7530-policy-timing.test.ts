@@ -30,12 +30,15 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 import {isIdentityStatement,observeStatements,type Captured} from './helpers/statement-observer';
 
 /** Ceilings per statement kind (ms on the CI runner, EXPLAIN ANALYZE overhead included; shared buffers of the whole
- * statement). First measured by this test's own POLICY_TIMING_7530 lines; set wide enough for runner variance while a
- * per-employee probe of the whole table (1,000 rows x the employment policy) would still exceed the buffers. */
+ * statement). Measured on the CI runner (alpha-focused-checks run 45770342651): record 3.6 ms / 271 buffers; single-row
+ * insert 12 ms / 1,667 (the insert rule's EXISTS reads employment under the saver's own row security); consume, group
+ * administrator, 500 of 1,000 rows, 22 ms / 4,234. That run's consume drove from the pending rows, so the
+ * company-scoped administrator's rule ran for all 1,000 rows (192 ms / 23,341); it now drives from the administered
+ * companies' employments. Time ceilings leave room for runner variance. */
 const PLAN_LIMITS={
- record:{executionMs:300,planningMs:400,buffers:6000},
- insert:{executionMs:100,planningMs:300,buffers:1500},
- consume:{executionMs:600,planningMs:400,buffers:20000},
+ record:{executionMs:300,planningMs:400,buffers:3000},
+ insert:{executionMs:100,planningMs:300,buffers:2500},
+ consume:{executionMs:400,planningMs:400,buffers:12000},
 } as const;
 type Kind=keyof typeof PLAN_LIMITS;
 

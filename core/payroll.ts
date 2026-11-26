@@ -1163,9 +1163,16 @@ export const RECALC_PENDING_CONSUME_LIMIT = 500;
 export async function consumeRecalcPendingTx(tx: Tx, ctx: SessionContext, limit = RECALC_PENDING_CONSUME_LIMIT): Promise<{ consumed: number; marked: { batchId: string; employmentIds: string[] }[] }> {
   const bound = Math.max(1, Math.min(RECALC_PENDING_CONSUME_LIMIT, Math.trunc(limit)));
   const gone = await tx.execute<{ employmentId: string; fromPeriod: string | null; untilPeriod: string | null; categories: string[] }>(sql`
-    with picked as (
-      select id from ${payrollRecalcPending} where tenant_id = app.current_tenant_id()
-      order by requested_at, id limit ${bound})
+    with companies as materialized (
+      select c.id from ${company} c where c.tenant_id = app.current_tenant_id() and app.can_admin_payroll_for(c.id)),
+    staff as materialized (
+      select e.id from ${employment} e where e.tenant_id = app.current_tenant_id() and e.company_id = any((select array_agg(id) from companies))),
+    picked as (
+      -- Driven from the administered companies' employments (indexed), so a company-scoped administrator's consume
+      -- evaluates the row rule only for their own employees' rows, not for every pending row of the tenant.
+      select p.id from ${payrollRecalcPending} p where p.tenant_id = app.current_tenant_id()
+        and p.employment_id = any((select array_agg(id) from staff))
+      order by p.requested_at, p.id limit ${bound})
     delete from ${payrollRecalcPending} p using picked where p.id = picked.id
     returning p.employment_id::text as "employmentId", p.from_period as "fromPeriod", p.until_period as "untilPeriod", p.categories`);
   if (gone.length === 0) return { consumed: 0, marked: [] };
