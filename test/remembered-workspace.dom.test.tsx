@@ -17,7 +17,7 @@ function mount(props: Parameters<typeof InternalAuthForm>[0] = {}) {
   return render(<NextIntlClientProvider locale="en" messages={enBase}><InternalAuthForm returnTo="/me" {...props}/></NextIntlClientProvider>);
 }
 const workspace = () => screen.getByLabelText(en.loginEditorial.workspaceLabel);
-beforeEach(() => { window.localStorage.clear(); availability.mockResolvedValue(Response.json({ microsoft: false })); });
+beforeEach(() => { window.localStorage.clear(); availability.mockImplementation(async () => Response.json({ microsoft: false })); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); fetcher.mockReset(); availability.mockReset(); window.localStorage.clear(); });
 
 describe('remembered login workspace', () => {
@@ -79,10 +79,10 @@ describe('remembered login workspace', () => {
   });
 
   it('remembers the workspace when Microsoft sign-in starts', async () => {
-    availability.mockResolvedValue(Response.json({ microsoft: true }));
+    availability.mockImplementation(async () => Response.json({ microsoft: true }));
     mount({ organization: 'chinhin' }); const user = userEvent.setup();
     await waitFor(() => expect(workspace()).toBeEnabled());
-    await user.keyboard('{Enter}');
+    await user.click(screen.getByRole('button', { name: en.loginEditorial.continueLabel }));
     const microsoft = (await screen.findByRole('button', { name: en.internalAuth.microsoft })).closest('form')!;
     microsoft.addEventListener('submit', event => event.preventDefault());
     await user.click(screen.getByRole('button', { name: en.internalAuth.microsoft }));
