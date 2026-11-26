@@ -24,7 +24,7 @@ import {seedPayrollCycleCatalog} from '../core/payroll-cycle';
 import {previewPayrollHistoryUpload, confirmPayrollHistoryUpload} from '../core/payroll-history-revisions';
 import {previewTaxBasisRecalculation} from '../core/payroll-tax-basis';
 import {payrollProcessJobHandler, requestPayrollProcessing} from '../core/payroll-processing-job';
-import {groupTp3Outcome, readGroupTaxOpeningStamp, summarizeGroupTaxOpening, groupTaxPriorSlips} from '../core/payroll-group-tax-opening';
+import {groupTaxOpeningTx, groupTp3Outcome, readGroupTaxOpeningStamp, summarizeGroupTaxOpening, groupTaxPriorSlips} from '../core/payroll-group-tax-opening';
 import {explainPcb, pcbWorksheet} from '../core/pcb-explain';
 import {PAYROLL_HISTORY_HEADERS} from '../lib/payroll-history-import-schema';
 import {toCsv} from '../lib/csv';
@@ -76,7 +76,7 @@ const slipOf = async (batchId: string, employmentId: string) => {
   return row;
 };
 const pcbOf = async (batchId: string, employmentId: string) => Number((((await slipOf(batchId, employmentId))?.statutory ?? {}) as {pcb?: number}).pcb);
-const metaOf = async (batchId: string, employmentId: string) => (((await slipOf(batchId, employmentId))?.statutory ?? {}) as {pcbMeta?: {ytdNet?: number; epfClaimed?: number; pcbPaid?: number}}).pcbMeta;
+const metaOf = async (batchId: string, employmentId: string) => (((await slipOf(batchId, employmentId))?.statutory ?? {}) as {pcbMeta?: Record<string, unknown>}).pcbMeta;
 
 beforeEach(async () => {
   await resetDb(); b = await seedBase();
@@ -129,7 +129,9 @@ describe('a same-employment transfer: A imported January to September, B native 
     // The single-employer equivalent, month by month: same PCB and the same accumulators the formula was given.
     expect(await pcbOf(october, moved.employmentId)).toBe(await pcbOf(october, control.employmentId));
     expect(await pcbOf(november, moved.employmentId)).toBe(await pcbOf(november, control.employmentId));
-    expect(await metaOf(november, moved.employmentId)).toMatchObject(await metaOf(november, control.employmentId) as object);
+    const formulaInputs = (m: Record<string, unknown> | undefined) => Object.fromEntries(['month', 'n', 'ytdNet', 'ytdGross', 'epfClaimed', 'pcbPaid', 'P1']
+      .map(key => [key, m?.[key]]));
+    expect(formulaInputs(await metaOf(november, moved.employmentId))).toEqual(formulaInputs(await metaOf(november, control.employmentId)));
     // The history matters: without it (the defect) the figure is the B-only one, and that is lower.
     expect(await pcbOf(november, moved.employmentId)).toBeGreaterThan(await pcbOf(november, fresh.employmentId));
 
@@ -165,6 +167,18 @@ describe('a same-employment transfer: A imported January to September, B native 
     await expect(withTenant(bOnly, tx => tx.execute(sql`select * from app.payroll_group_tax_opening(${b.companyId}::uuid,'2026-11',array[${moved.employmentId}::uuid])`))).rejects.toThrow(/Payroll administration/);
     const december = await run(coB, '2026-12', bOnly);
     expect(await pcbOf(december, moved.employmentId)).toBe(await pcbOf(december, control.employmentId));
+
+    // SCALE rule 2: the opening read is a bounded number of statements whatever the chunk size (here 1,500 employments).
+    let statements = 0;
+    const counted = await withTenant(ctx, async tx => {
+      const spy = new Proxy(tx, {get: (target, key, receiver) => {
+        const value = Reflect.get(target, key, receiver);
+        return typeof value === 'function' && (key === 'execute' || key === 'select') ? (...args: unknown[]) => { statements++; return (value as (...a: unknown[]) => unknown).apply(target, args); } : value;
+      }});
+      return groupTaxOpeningTx(spy, {runCompanyId: coB, payPeriod: '2026-11', employmentIds: [moved.employmentId, ...Array.from({length: 1499}, () => randomUUID())]});
+    });
+    expect(counted.get(moved.employmentId)?.months).toHaveLength(9);
+    expect(statements).toBeLessThanOrEqual(3);
 
     // Another tenant sees nothing.
     const other = await seedBase();

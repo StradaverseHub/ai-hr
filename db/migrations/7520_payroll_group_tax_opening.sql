@@ -70,7 +70,8 @@ BEGIN
   WHERE r.tenant_id=v_tenant AND r.payslip_id IN (SELECT ef.id FROM effective ef) ORDER BY r.payslip_id,r.ordinal DESC
  ), classified AS (
   SELECT ef.*,rv.basis AS revised,
-   (jsonb_typeof(ef.statutory->'importedTaxBasis')='object' OR (ef.in_history_run AND NOT app.payroll_history_native_baseline(ef.id))) AS imported
+   -- Strictly boolean: a NULL here would read a native payslip as an import with no receipts.
+   (coalesce(jsonb_typeof(ef.statutory->'importedTaxBasis'),'')='object' OR (ef.in_history_run AND NOT app.payroll_history_native_baseline(ef.id))) AS imported
   FROM effective ef LEFT JOIN revision rv ON rv.payslip_id=ef.id
  ), receipted AS (
   -- The reviewed or accepted import's Pay Item receipts, compared with today's settings exactly as the canonical reader
