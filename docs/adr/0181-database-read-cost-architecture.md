@@ -336,6 +336,11 @@ payroll truth stays in its source tables.
   is the one bounded `INSERT ... SELECT` every recalculation mark now makes to record a pending mark for an employee
   whose company the saver cannot administer payroll for (migration 7560, approved plan item 9); for a payroll
   administrator it inserts nothing. Same number of transactions; no other measured action moved.
+- Raised budgets, board build integration of 038c304b / bc6b5490 with 124a979e (26 November 2026): the CP38 writers
+  mark through the same helper, so each gains the same one statement (test/cp38-read-budget-038c304b.test.ts,
+  alpha-focused-checks run 45778899374: Add 13 -> 14, Edit 15 -> 16). Budgets `saveCp38DialogAction` 15 -> 16,
+  `deleteCp38DialogAction` 14 -> 15, `deleteCp38Action` 12 -> 13. Same number of transactions; the CP38 page reads
+  did not move.
 
 ## Order of work
 

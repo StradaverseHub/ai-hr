@@ -64,10 +64,12 @@ const BUDGETS:Record<Key,{transactions:number;statements:number}>={
  // Measured on the CI runner (alpha-focused-checks run 45768875945), the same for every persona and scope: the list
  // is 5 transactions and 17 statements; with an employee chosen, 6 and 22 (the picker's selection and their history).
  page:{transactions:6,statements:22},
- // Add measured 2 and 13; Edit 2 and 15.
- saveCp38DialogAction:{transactions:2,statements:15},
- deleteCp38DialogAction:{transactions:2,statements:14},
- deleteCp38Action:{transactions:1,statements:12},
+ // Add measured 2 and 13; Edit 2 and 15. Integration with 124a979e (26 Nov 2026, run 45778899374): every
+ // recalculation mark adds one bounded pending-mark INSERT ... SELECT (migration 7560), so Add 14, Edit 16 and each
+ // delete one more; recorded in ADR 0181.
+ saveCp38DialogAction:{transactions:2,statements:16},
+ deleteCp38DialogAction:{transactions:2,statements:15},
+ deleteCp38Action:{transactions:1,statements:13},
 };
 type Persona='group'|'multi'|'single';
 type Scope='all'|'one';
