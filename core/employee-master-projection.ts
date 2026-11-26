@@ -27,7 +27,7 @@ const nextDay=(value:unknown):string|null=>{const v=date(value);if(!v)return nul
  * the day before it, and the record has ended once that day has passed. Reading it as the last month itself put CP38
  * "Effective to" a month late. Pure, for the test.
  */
-export function cp38MasterRow(row:{validFrom:unknown;validTo:unknown},asAt:string):{status:'future'|'ended'|'active';validTo:string|null;reportEffectiveTo:string|null}{
+export function cp38MasterRow(row:{validFrom?:unknown;validTo?:unknown},asAt:string):{status:'future'|'ended'|'active';validTo:string|null;reportEffectiveTo:string|null}{
  const v=typeof row.validTo==='string'?row.validTo.slice(0,10):row.validTo instanceof Date?row.validTo.toISOString().slice(0,10):null;
  const last=v?new Date(Date.parse(v+'T00:00:00Z')-86_400_000).toISOString().slice(0,10):null;
  const status=String(row.validFrom)>asAt?'future':v&&v<=asAt?'ended':'active';
