@@ -18,7 +18,7 @@ import {payrollProrationRatio} from '../lib/payroll-proration';
 import {payrollProrationFactor as prorationFactor} from '../lib/payroll-proration';
 import {z} from 'zod';
 import {ReviewedPayrollReopenSourceReceipt} from '../lib/assistant-actions/reviewed-payroll-reopen-contract';
-import {processingTaxHoldsTx,taxHeldRowsTx,type TaxHeldEmployee} from './payroll-tax-holds';
+import {processingTaxHoldsTx,runTaxSkippedSql,taxHeldRowsTx,type TaxHeldEmployee} from './payroll-tax-holds';
 import {taxBasisSourceRowsTx,hashTaxBasisSource,readEffectiveTaxBasesTx,readTaxBasisFailuresTx,prepareTaxBasisReplacementTx,recordTaxBasisReplacementTx,type TaxBasisCorrectionRef,type EffectiveTaxBasis,type ReprocessTaxBasisRead,type TaxBasisSource} from './payroll-tax-basis-read';
 import {frozenPayslipInformation,informationPayslipDocument,overlayInformationDocument} from './information-correction-history';
 import {readReviewedPayrollRunScopeLabelsTx} from './payroll-run-selection';
@@ -11849,8 +11849,9 @@ const staleEmploymentIdsSql=(batchId:string)=>sql`select distinct elem #>> '{}' 
  * `unchanged` otherwise; omitted, the page spans both, exactly as before. The stale mark, both search-filtered
  * tab counts, the page and its total come from this ONE statement, and the tab filters BEFORE the money join.
  * `runTotal` stays independent of search and of the tab. Kind 'remove' never splits and never reads the mark. */
-export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';page:PageQuery;search?:string;tab?:PayrollSelectionTab|'default'}) {
- const page=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
+export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:string;kind:'remove'|'reprocess';search?:string;tab?:PayrollSelectionTab|'default'}&({page:PageQuery;ceiling?:undefined}|{page?:undefined;ceiling:number})) {
+ // a1a80747 r3 — a whole-tab read (Select all) takes a ceiling instead of a page; screen pages are unchanged.
+ const page:PageQuery=p.ceiling!==undefined?wholeTab(p.ceiling):parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
  const reprocess=p.kind==='reprocess';
  const tabSql=!reprocess||p.tab===undefined?sql`'all'`:p.tab==='default'?sql`case when "requiredRunTotal">0 then 'required' else 'unchanged' end`
   :p.tab==='required'?sql`'required'`:sql`'unchanged'`;
@@ -11903,11 +11904,14 @@ export type ReprocessStaleRow={employmentId:string;employeeCode:string|null;name
  * reconciles with the Payroll Process count, which is the raw stored set). Identity only: no money, department
  * or later-month hydration. A run that is not processed, or whose mark is cleared, returns nothing.
  * REPEATABLE READ / READ ONLY snapshot under the payroll gate's shared history barrier: no Access lock, no row lock.
+ * a1a80747 r3 — an employee skipped for income tax on this run (core/payroll-tax-holds.ts `runTaxSkippedSql`) is on the
+ * Skipped tab and is left out here: they are never ticked on arrival, and pressing Reprocess would only skip them again.
  */
 export function reprocessStaleSelection(ctx:SessionContext,batchId:string):Promise<{rows:ReprocessStaleRow[];withoutPayslip:number}>{
  return withTenant(ctx,async tx=>{
   const entries=await tx.execute<{staleTotal:number;onRun:number;employmentId:string|null;employeeCode:string|null;name:string|null}>(sql`
-   with stale_ids as materialized (${staleEmploymentIdsSql(batchId)}),
+   with stale_ids as materialized (select id from (${staleEmploymentIdsSql(batchId)}) s
+    where id not in (select t.eid from ${runTaxSkippedSql(sql`${batchId}::uuid`)} t)),
    on_run as materialized (
     select ${payslip.id} as id,${payslip.employmentId} as "employmentId",${employment.employeeCode} as "employeeCode",${person.fullName} as name
     from ${payslip} join ${employment} on ${employment.id}=${payslip.employmentId}
@@ -11922,6 +11926,49 @@ export function reprocessStaleSelection(ctx:SessionContext,batchId:string):Promi
  },{readOnlySnapshot:true});
 }
 
+/** a1a80747 r3 — the most people one "Select all" ticks. Above it the screen says so and ticks nobody. */
+export const REPROCESS_SELECT_ALL_CEILING=20_000;
+/** a1a80747 r3 — the bounds of a whole-tab read: every row from the first, up to `ceiling`. Not a page list. */
+const wholeTab=(ceiling:number):PageQuery=>({page:0,size:'all',limit:ceiling,offset:0});
+
+/**
+ * a1a80747 r3 — "SELECT ALL N EMPLOYEES": everyone on the open tab, across every page, who can be ticked, with the
+ * search applied. Identity only (the review names them; the submit posts their ids).
+ *   - required: the Reprocess Required tab's rows (owed, not skipped for income tax) less New rows that are not ready
+ *     (their readiness gaps block the add, exactly as their tick boxes are disabled on the page);
+ *   - unchanged: every payslip on the run the mark does not name (Processed / No Change).
+ * There is no Select all on the Skipped tab: skipped people are ticked one by one or with Process held employees.
+ * The same two owners as the pages (one set-based statement each, plus the New rows' readiness), under a ceiling of
+ * REPROCESS_SELECT_ALL_CEILING: `tooMany` when the tab holds more, and then no ids at all, never a silent part.
+ * Read only; who may see the screen is decided by the page (requireAdmin plus the reprocess gates), as for its pages.
+ */
+export async function reprocessSelectAll(ctx:SessionContext,p:{batchId:string;tab:'required'|'unchanged';search?:string})
+ :Promise<{rows:ReprocessStaleRow[];total:number;tooMany:boolean}>{
+ if(p.tab==='required'){
+  const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,search:p.search,tab:'required',ceiling:REPROCESS_SELECT_ALL_CEILING});
+  if(r.requiredTotal>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total:r.requiredTotal,tooMany:true};
+  const rows=r.rows.filter(x=>x.kind==='recalculated'||x.blockers.length===0)
+   .map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name}));
+  return {rows,total:r.requiredTotal,tooMany:false};
+ }
+ const r=await payrollEmployeeSelectionPage(ctx,{batchId:p.batchId,kind:'reprocess',search:p.search,tab:'unchanged',ceiling:REPROCESS_SELECT_ALL_CEILING});
+ if(r.tabCounts.unchanged>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total:r.tabCounts.unchanged,tooMany:true};
+ return {rows:r.rows.map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name})),total:r.tabCounts.unchanged,tooMany:false};
+}
+
+/**
+ * a1a80747 r3 — "PROCESS HELD EMPLOYEES": every employee skipped for income tax whom the run still owes and who can be
+ * added or recalculated (a New row's readiness gaps leave it out), across the whole Skipped tab, identity only. A
+ * whole-tab read under REPROCESS_SELECT_ALL_CEILING; `onlyIds` narrows it (without the multi-cycle module only the
+ * processing holds may be added, 016276b7).
+ */
+export async function reprocessHeldSelection(ctx:SessionContext,p:{batchId:string;onlyIds?:readonly string[]}):Promise<ReprocessStaleRow[]>{
+ const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,tab:'skipped',ceiling:REPROCESS_SELECT_ALL_CEILING});
+ const only=p.onlyIds?new Set(p.onlyIds):null;
+ return r.rows.filter(x=>x.taxSkipped&&x.owed&&(x.kind==='recalculated'||x.blockers.length===0)&&(!only||only.has(x.employmentId)))
+  .map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name}));
+}
+
 /** a1a80747 — one row of the Reprocess Required list: an employee whose payslip on this run is out of date
  * (`recalculated`, "Changed") or an employee eligible for this month with no payslip on it yet (`added`, "New"). */
 export type ReprocessRequiredEntry={employmentId:string;name:string;employeeCode:string|null;kind:'added'|'recalculated';hiredOn:string;
@@ -11933,8 +11980,14 @@ export type ReprocessRequiredEntry={employmentId:string;name:string;employeeCode
  /** a1a80747 r2 — why an `added` row is NOT owed on this run (null when owed): outside the run's chosen list, removed from
   * it on purpose since its latest reset, or an additional run that does not pay them. A nothing-payable skip is decided
   * beside this (`reprocessRequiredWithSkipPage`) and keeps its own group; `other` covers anything else. */
- notOwedReason:ReprocessNotOwedReason|null};
+ notOwedReason:ReprocessNotOwedReason|null;
+ /** a1a80747 r3 — skipped for income tax on this run (core/payroll-tax-holds.ts `runTaxSkippedSql`: held by processing,
+  * or skipped by a Reprocess's tax readiness check, and nothing has happened to them since). Such a row is on the
+  * Skipped tab even when the run owes them, never pre-ticked. */
+ taxSkipped:boolean};
 export type ReprocessNotOwedReason='outsideScope'|'removed'|'notPaidByRun'|'other';
+/** a1a80747 r3 — the Reprocess screen's tabs that this list feeds: who still needs processing, and who is skipped. */
+export type ReprocessListTab='required'|'skipped';
 
 /**
  * a1a80747 — THE ONE REPROCESS REQUIRED LIST, as one set-based, paged statement.
@@ -11957,14 +12010,22 @@ export type ReprocessNotOwedReason='outsideScope'|'removed'|'notPaidByRun'|'othe
  * (`payslipLessReadinessTx`, set-based over the page); the nothing-payable decision is added in core/payroll-view.ts
  * (`reprocessRequiredWithSkipPage`). A run that is not processed lists nobody. Read only, no event.
  */
-export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string})
- :Promise<{rows:ReprocessRequiredEntry[];state:PageState;runTotal:number;addedRunTotal:number;owedRunTotal:number;owedTotal:number}>{
- const page=parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
+export type ReprocessRequiredPageResult={rows:ReprocessRequiredEntry[];state:PageState;runTotal:number;addedRunTotal:number;
+ owedRunTotal:number;owedTotal:number;
+ /** a1a80747 r3 — the two tabs: Reprocess Required = owed and not skipped for income tax; Skipped = everyone else on the
+  * list (skipped for income tax, nothing payable, not owed). `*RunTotal` ignores the search, `*Total` applies it. */
+ requiredRunTotal:number;requiredTotal:number;skippedRunTotal:number;skippedTotal:number};
+export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;search?:string;tab?:ReprocessListTab}&({page:PageQuery;ceiling?:undefined}|{page?:undefined;ceiling:number}))
+ :Promise<ReprocessRequiredPageResult>{
+ // r3 — a screen page is parsed as always; a WHOLE-TAB read (Select all, Process held employees) is not a page list: it
+ // takes no page, reads every row under its own ceiling, and is refused above that ceiling by its caller.
+ const page:PageQuery=p.ceiling!==undefined?wholeTab(p.ceiling):parsePageQuery({page:String(p.page.page),size:String(p.page.size)});
  return withTenant(ctx,async tx=>{
   const [batch]=await tx.select({id:payrollBatch.id,runType:payrollBatch.runType,payrollCycleId:payrollBatch.payrollCycleId,
    companyId:payrollBatch.companyId,payPeriod:payrollBatch.payPeriod,scope:payrollBatch.scope,status:payrollBatch.status})
    .from(payrollBatch).where(eq(payrollBatch.id,p.batchId)).limit(1);
-  if(!batch||batch.status!=='processed')return {rows:[],state:pageState(page,0,0),runTotal:0,addedRunTotal:0,owedRunTotal:0,owedTotal:0};
+  if(!batch||batch.status!=='processed')return {rows:[],state:pageState(page,0,0),runTotal:0,addedRunTotal:0,owedRunTotal:0,owedTotal:0,
+   requiredRunTotal:0,requiredTotal:0,skippedRunTotal:0,skippedTotal:0};
   // The owner's answer for the whole run (not the page): the same question the list's stored count asks.
   const outstanding=await runOutstandingTx(tx,ctx,p.batchId);
   const pendingIds=JSON.stringify(outstanding.pending.map(r=>r.employmentId));
@@ -11972,9 +12033,14 @@ export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:
   const matched=needle===''?sql`true`:sql`position(${needle} in lower(u.name))>0
    or position(${needle} in lower(coalesce(u."employeeCode",'')))>0
    or (${folded}<>'' and position(${folded} in regexp_replace(lower(coalesce(u."employeeCode",'')),'[[:space:]._-]','','g'))>0)`;
-  const entries=await tx.execute<{runTotal:number;addedRunTotal:number;total:number;owedRunTotal:number;owedTotal:number;employmentId:string|null;name:string|null;employeeCode:string|null;kind:'added'|'recalculated'|null;hiredOn:string|null;owed:boolean|null}>(sql`
+  // r3 — no tab: the whole list (owed first), as before; a tab: only that tab's rows are paged, and `state` counts them.
+  const inTab=p.tab==='required'?sql`bucket='required'`:p.tab==='skipped'?sql`bucket='skipped'`:sql`true`;
+  const entries=await tx.execute<{runTotal:number;addedRunTotal:number;total:number;owedRunTotal:number;owedTotal:number;
+   requiredRunTotal:number;requiredTotal:number;skippedRunTotal:number;skippedTotal:number;tabTotal:number;
+   employmentId:string|null;name:string|null;employeeCode:string|null;kind:'added'|'recalculated'|null;hiredOn:string|null;owed:boolean|null;taxSkipped:boolean|null}>(sql`
    with stale_ids as materialized (${staleEmploymentIdsSql(p.batchId)}),
    pending_ids as materialized (select jsonb_array_elements_text(${pendingIds}::jsonb) as id),
+   tax_ids as materialized (select t.eid as id from ${runTaxSkippedSql(sql`${p.batchId}::uuid`)} t),
    changed as (
     select ${payslip.employmentId} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode",
      ${employment.hiredOn}::text as "hiredOn",'recalculated'::text as kind
@@ -11990,18 +12056,25 @@ export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:
    unioned as materialized (
     select distinct on ("employmentId") * from (select * from changed union all select * from added) both_kinds
     order by "employmentId",(kind='recalculated') desc),
-   matched as materialized (select u.*,(${matched}) as matches,
-    (u.kind='recalculated' or u."employmentId"::text in (select id from pending_ids)) as owed from unioned u),
+   flagged as materialized (select u.*,(${matched}) as matches,
+    (u.kind='recalculated' or u."employmentId"::text in (select id from pending_ids)) as owed,
+    (u."employmentId"::text in (select id from tax_ids)) as "taxSkipped" from unioned u),
+   matched as materialized (select f.*,case when f.owed and not f."taxSkipped" then 'required' else 'skipped' end as bucket from flagged f),
    totals as (select count(*)::int as "runTotal",count(*) filter(where kind='added')::int as "addedRunTotal",
     count(*) filter(where matches)::int as total,count(*) filter(where owed)::int as "owedRunTotal",
-    count(*) filter(where owed and matches)::int as "owedTotal" from matched),
-   selected_page as (select * from matched where matches order by owed desc,name,"employmentId"
+    count(*) filter(where owed and matches)::int as "owedTotal",
+    count(*) filter(where bucket='required')::int as "requiredRunTotal",count(*) filter(where bucket='required' and matches)::int as "requiredTotal",
+    count(*) filter(where bucket='skipped')::int as "skippedRunTotal",count(*) filter(where bucket='skipped' and matches)::int as "skippedTotal",
+    count(*) filter(where matches and ${inTab})::int as "tabTotal" from matched),
+   selected_page as (select * from matched where matches and ${inTab} order by owed desc,"taxSkipped" desc,name,"employmentId"
     limit ${page.limit} offset ${Math.min(page.offset,Number.MAX_SAFE_INTEGER)})
    select totals."runTotal",totals."addedRunTotal",totals.total,totals."owedRunTotal",totals."owedTotal",
-    v."employmentId",v.name,v."employeeCode",v.kind,v."hiredOn",v.owed
-   from totals left join selected_page v on true order by v.owed desc,v.name,v."employmentId"`);
+    totals."requiredRunTotal",totals."requiredTotal",totals."skippedRunTotal",totals."skippedTotal",totals."tabTotal",
+    v."employmentId",v.name,v."employeeCode",v.kind,v."hiredOn",v.owed,v."taxSkipped"
+   from totals left join selected_page v on true order by v.owed desc,v."taxSkipped" desc,v.name,v."employmentId"`);
   const listed=entries.flatMap(row=>row.employmentId===null||row.name===null||row.kind===null||row.hiredOn===null?[]:[{
-   employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,kind:row.kind,hiredOn:row.hiredOn,owed:row.owed===true}]);
+   employmentId:row.employmentId,name:row.name,employeeCode:row.employeeCode,kind:row.kind,hiredOn:row.hiredOn,owed:row.owed===true,
+   taxSkipped:row.taxSkipped===true}]);
   const readiness=new Map((await payslipLessReadinessTx(tx,ctx,batch,listed.filter(row=>row.kind==='added'))).map(row=>[row.employmentId,row]));
   // Why a New row is not owed, for the page's rows only: the run type, its chosen list, then removals since its latest reset.
   const notOwed=listed.filter(row=>row.kind==='added'&&!row.owed&&batch.runType==='regular'&&!readiness.get(row.employmentId)?.outsideScope);
@@ -12020,8 +12093,9 @@ export function reprocessRequiredPage(ctx:SessionContext,p:{batchId:string;page:
    return {...row,outsideScope:r?.outsideScope??false,blockers:r?.blockers??[],warnings:r?.warnings??[],
     notOwedReason:reasonOf(row,r?.outsideScope??false)};});
   const head=entries[0];
-  return {rows,state:pageState(page,head.total,rows.length),runTotal:head.runTotal,addedRunTotal:head.addedRunTotal,
-   owedRunTotal:head.owedRunTotal,owedTotal:head.owedTotal};
+  return {rows,state:pageState(page,head.tabTotal,rows.length),runTotal:head.runTotal,addedRunTotal:head.addedRunTotal,
+   owedRunTotal:head.owedRunTotal,owedTotal:head.owedTotal,requiredRunTotal:head.requiredRunTotal,requiredTotal:head.requiredTotal,
+   skippedRunTotal:head.skippedRunTotal,skippedTotal:head.skippedTotal};
  });
 }
 

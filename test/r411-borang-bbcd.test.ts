@@ -256,7 +256,7 @@ describe('the drawn BBCD, laid out like the sample', () => {
     expect(sheet.filter((d) => /^[\d,]+\.\d\d$/.test(d.text)).map((d) => d.text)).toEqual([money(form.totalContribution)]);
   });
 
-  // Board 66175cd2 — "no logo" now means: none WITHOUT the owner-supplied official file. With it, the logo is
+  // Board 66175cd2 — "no logo" now means: none WITHOUT the official KWSP file (assets/kwsp/kwsp-logo.png). With it, the logo is
   // drawn top left (test/kwsp-forms-66175cd2.test.ts); without it, nothing is invented in its place.
   it('prints no logo without the official file, and fills none of the blanks: ticks, cheque number, signature, Cop Agen Kutipan', async () => {
     const buf = Buffer.from(await renderBorangBbcdPdf(borangBbcdFrom(formOf(3))));

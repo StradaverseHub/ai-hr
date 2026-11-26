@@ -6360,7 +6360,8 @@
       "colProcessedDate": "Processed date",
       "rowView": "View",
       "rowContinue": "Continue",
-      "rowMoreActions": "More actions"
+      "rowMoreActions": "More actions",
+      "reprocessHeld": "{n, plural, one {# held for income tax review} other {# held for income tax review}}"
     },
     "batch": {
       "retiredFormulaReview": "Retired Attendance Formula inputs need review.",
@@ -6929,7 +6930,15 @@
       "taxHeldReasonGeneric": "Income tax history for {period} needs review.",
       "taxHeldOpenRecalculation": "Open Income Tax Recalculation",
       "taxHeldMore": "and {n} more",
-      "closeBlockedTaxHeld": "This run cannot be closed: {n} employee(s) are held for income tax review and are not in this payroll yet: {names}. Correct their income tax history, then add them with Process held employees (or remove them from this run), then close again."
+      "closeBlockedTaxHeld": "This run cannot be closed: {n} employee(s) are held for income tax review and are not in this payroll yet: {names}. Correct their income tax history, then add them with Process held employees (or remove them from this run), then close again.",
+      "reprocessTabSkipped": "Skipped",
+      "reprocessSelectAllEvery": "Select all {n, plural, one {# employee} other {# employees}}",
+      "reprocessSelectAllMatching": "Select all {n, plural, one {# matching employee} other {# matching employees}}",
+      "reprocessSelectAllTooMany": "This tab has {n} employees, more than Select all can tick at once ({max}). Search to narrow the list first, or tick them page by page.",
+      "reprocessGroupHeldTitle": "Held for income tax review — {n} employee(s)",
+      "reprocessGroupHeldNote": "Not ticked and not counted in Reprocess Required: pressing Reprocess would skip them again until their income tax history is corrected. Correct it in Recalculate Income Tax Value, then tick them or press Process held employees.",
+      "reprocessReasonTaxSkipped": "Skipped — income tax recalculation required.",
+      "reprocessNoSkipped": "Nobody on this run is skipped."
     },
     "reports": {
       "pageTitle": "Payroll",

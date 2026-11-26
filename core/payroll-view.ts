@@ -32,7 +32,7 @@ import { businessUnit, payslipInformationSetting, payrollHistoryEffectiveBatch, 
  * EMPTY companyIds set fails CLOSED (returns no rows) rather than falling back to "all".
  */
 import { randomUUID } from 'node:crypto';
-import {taxHeldRowsTx, type TaxHeldEmployeeRow} from './payroll-tax-holds';
+import {runTaxSkippedSql, taxHeldRowsTx, type TaxHeldEmployeeRow} from './payroll-tax-holds';
 import {readPayrollOvertimePatternCashTx, OvertimePayrollError, type OvertimePayrollErrorCode} from './payroll-overtime-pattern';
 import {OvertimeOwnerError} from '../packs/attendance/service';
 import { and, asc, desc, eq, gt, gte, inArray, isNull, like, lt, lte, ne, or, sql, type SQL, type SQLWrapper } from 'drizzle-orm';
@@ -61,6 +61,7 @@ import {
   listPayslipLessEligible,
   payslipLessEligiblePage,
   reprocessRequiredPage,
+  type ReprocessListTab,
   type ReprocessRequiredEntry,
   payrollCloseCompanyIdsTx,
   resolveBatchScopeFilter,
@@ -3236,7 +3237,7 @@ export type ReprocessRequiredWithSkipRow = ReprocessRequiredEntry & {skip: Nothi
  * de-duplicated, SQL-paged), with the same nothing-payable narrowing `payslipLessEligibleWithSkipPage` applies, read
  * only for the page's `added` rows that could be skipped. A `recalculated` row is never skipped here: its payslip exists
  * and the engine decides at reprocess, as before. */
-export async function reprocessRequiredWithSkipPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string}){
+export async function reprocessRequiredWithSkipPage(ctx:SessionContext,p:{batchId:string;page:PageQuery;search?:string;tab?:ReprocessListTab}){
  const result=await reprocessRequiredPage(ctx,p);
  const could=(r:ReprocessRequiredEntry)=>r.kind==='added'&&r.blockers.length===0&&!r.outsideScope&&r.warnings.includes('nothingPayable');
  const ids=result.rows.filter(could).map(r=>r.employmentId);
@@ -3330,11 +3331,15 @@ export function payrollDashboardBatchMetadata(
  *             worked out in the background by core/payroll-run-outstanding.ts) who still have no payslip on it (also
  *             live, so somebody added by a reprocess drops out at once). Until the run's first refresh (`known` false)
  *             it is the mark alone, exactly as before this item: every distinct id the mark names.
+ *             a1a80747 r3 — LESS anyone skipped for income tax on the run (core/payroll-tax-holds.ts `runTaxSkippedSql`):
+ *             it is the run's Reprocess Required tab, and those people are counted in `held` instead.
+ *   held      of the employees above, those skipped for income tax (held by processing, or skipped by a Reprocess's own
+ *             tax check, with nothing since): the run's "held for income tax review" line, which opens its Skipped tab.
  *   marked    whether the recalculation mark is set (Close refuses it whatever the count says).
  *   due       the stored answer is missing or older than `freshMs`, and no refresh was asked for within `freshMs`: the
  *             list asks for one (app/payroll/outstanding-refresh.tsx).
  */
-export type PayrollRunOutstandingCount = { count: number; marked: boolean; known: boolean; due: boolean };
+export type PayrollRunOutstandingCount = { count: number; held: number; marked: boolean; known: boolean; due: boolean };
 
 /**
  * a1a80747 — the Payroll Process list's outstanding counts for the given runs, ONE statement for all of them
@@ -3351,7 +3356,7 @@ export function payrollRunOutstandingCounts(
   if (ids.length === 0) return Promise.resolve(new Map());
   const fresh = Math.max(0, Math.floor(freshMs));
   return withTenant(ctx, async (tx) => {
-    const rows = await tx.execute<{ id: string; count: number; marked: boolean; known: boolean; due: boolean }>(sql`
+    const rows = await tx.execute<{ id: string; count: number; held: number; marked: boolean; known: boolean; due: boolean }>(sql`
      with runs as materialized (
       select b.id,b.needs_recalc_at,b.recalc_employment_ids from ${payrollBatch} b
       where b.id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid) and b.status='processed'),
@@ -3369,16 +3374,23 @@ export function payrollRunOutstandingCounts(
        and p.employment_id=case when m.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then m.eid::uuid end)
       union
       select s.batch_id,s.eid from stored_ids s where not exists (select 1 from ${payslip} p where p.batch_id=s.batch_id
-       and p.employment_id=case when s.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then s.eid::uuid end))
+       and p.employment_id=case when s.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then s.eid::uuid end)),
+     taxed as materialized (select t.batch_id,t.eid from ${runTaxSkippedSql(sql`select id from runs`)} t),
+     -- a1a80747 r3 — what the run owes, as the list counts it: the owed set once known, the mark's own set before.
+     base as (
+      select w.batch_id,w.eid from owed w join ${payrollRunOutstanding} o on o.batch_id=w.batch_id where o.employment_ids is not null
+      union
+      select m.batch_id,m.eid from mark_ids m left join ${payrollRunOutstanding} o on o.batch_id=m.batch_id where o.employment_ids is null),
+     split as (select b.batch_id,b.eid,exists (select 1 from taxed t where t.batch_id=b.batch_id and t.eid=b.eid) as held from base b)
      select r.id::text as id,
       (o.employment_ids is not null) as known,
       (r.needs_recalc_at is not null) as marked,
-      case when o.employment_ids is not null then (select count(*) from owed w where w.batch_id=r.id)
-       else (select count(distinct m.eid) from mark_ids m where m.batch_id=r.id) end::int as count,
+      (select count(*) from split x where x.batch_id=r.id and not x.held)::int as count,
+      (select count(*) from split x where x.batch_id=r.id and x.held)::int as held,
       ((o.refreshed_at is null or o.refreshed_at < now() - ${fresh}::int * interval '1 millisecond')
        and (o.requested_at is null or o.requested_at < now() - ${fresh}::int * interval '1 millisecond')) as due
      from runs r left join ${payrollRunOutstanding} o on o.batch_id=r.id`);
-    return new Map(rows.map((r) => [r.id, { count: Number(r.count), marked: r.marked, known: r.known, due: r.due }]));
+    return new Map(rows.map((r) => [r.id, { count: Number(r.count), held: Number(r.held), marked: r.marked, known: r.known, due: r.due }]));
   });
 }
 

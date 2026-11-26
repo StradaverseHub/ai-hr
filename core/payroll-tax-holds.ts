@@ -15,7 +15,7 @@
  * The durable record is the run's `payroll-batch.processed` event (`taxHeld`). The live list is that record intersected
  * with the employees who are still eligible and still have no payslip on the run (the same source that holds Close shut).
  */
-import {and, asc, eq, inArray, like, lt, max} from 'drizzle-orm';
+import {and, asc, eq, inArray, like, lt, max, sql, type SQL} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../db/client';
 import {domainEvent, employment, payrollBatch, payrollEmployeeResultHistory, payrollStatusHistory, payslip, person} from '../db/schema';
 import {outstandingPaymentPredicate} from './payroll-employment-eligibility';
@@ -147,4 +147,50 @@ export function heldCountsByBatch(rows: readonly TaxHeldEmployeeRow[]): Map<stri
   const out = new Map<string, number>();
   for (const r of rows) out.set(r.batchId, (out.get(r.batchId) ?? 0) + 1);
   return out;
+}
+
+/**
+ * a1a80747 r3 — WHO IS SKIPPED FOR INCOME TAX ON EACH OF THE GIVEN RUNS, as ONE SQL relation (batch_id uuid, eid text),
+ * for the Reprocess screen's Skipped tab and the Payroll Process list's "held for income tax review" line.
+ *
+ * Two kinds of record say an employee is skipped for income tax on a run, and the LATEST one per employee wins:
+ *   - the run's latest `payroll-batch.processed` event lists them in `taxHeld` (016276b7: processing held them);
+ *   - a `payroll-batch.employee-reprocess-outcome` event written after it says `skipped` with TAX_RECALC_REQUIRED or
+ *     TAX_RECALC_IN_PROGRESS (a1a80747: a Reprocess's own tax readiness check skipped them).
+ * Any later outcome for the same employee (reprocessed, failed, excluded, nothing payable) ends the skip; a reset and
+ * re-process writes a new processed event, which starts the record again. The relation says nothing about whether the
+ * employee is still owed on the run: callers intersect it with their own owed set (the Close rule).
+ *
+ * Set-based over the runs (domain_event_aggregate_idx), no per-run work. Row security decides what is read: the processed
+ * event has no subject employment (admin-only, ADR-0015), so a reader who may not read it sees no processing holds and
+ * the employee simply stays counted as outstanding. It degrades to "not skipped", never to "nothing owed".
+ */
+export const TAX_SKIP_REASON_CODES = ['TAX_RECALC_REQUIRED', 'TAX_RECALC_IN_PROGRESS'] as const;
+export function runTaxSkippedSql(runIds: SQL): SQL {
+  return sql`(
+   with tsk_processed as (
+    select distinct on (e.aggregate_id) e.aggregate_id as batch_id,e.occurred_at,e.id,e.payload
+    from ${domainEvent} e
+    where e.aggregate_type='payroll-batch' and e.event_type='payroll-batch.processed' and e.aggregate_id in (${runIds})
+    order by e.aggregate_id,e.occurred_at desc,e.id desc),
+   tsk_signals as (
+    select p.batch_id,h->>'employmentId' as eid,p.occurred_at as at,0 as rank,true as held
+    from tsk_processed p
+    cross join lateral jsonb_array_elements(case when jsonb_typeof(p.payload->'taxHeld')='array' then p.payload->'taxHeld' else '[]'::jsonb end) h
+    where jsonb_typeof(h)='object' and length(coalesce(h->>'employmentId',''))>0
+    union all
+    select e.aggregate_id,e.subject_employment_id::text,e.occurred_at,1,
+     (e.payload->>'status'='skipped' and e.payload->>'reasonCode' in ('TAX_RECALC_REQUIRED','TAX_RECALC_IN_PROGRESS'))
+    from ${domainEvent} e join tsk_processed p on p.batch_id=e.aggregate_id
+    where e.aggregate_type='payroll-batch' and e.event_type='payroll-batch.employee-reprocess-outcome'
+     and e.subject_employment_id is not null and e.occurred_at>=p.occurred_at),
+   tsk_latest as (
+    select distinct on (batch_id,eid) batch_id,eid,held from tsk_signals order by batch_id,eid,at desc,rank desc)
+   select batch_id,eid from tsk_latest where held)`;
+}
+
+/** a1a80747 r3 — the employments skipped for income tax on ONE run (see `runTaxSkippedSql`), not yet narrowed to owed. */
+export async function runTaxSkippedIdsTx(tx: Tx, batchId: string): Promise<Set<string>> {
+  const rows = await tx.execute<{eid: string}>(sql`select t.eid from ${runTaxSkippedSql(sql`${batchId}::uuid`)} t`);
+  return new Set(rows.map((r) => r.eid));
 }
