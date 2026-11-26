@@ -69,7 +69,8 @@ describe('annual exemption limits on the recalculation results',()=>{
   const added=['exemptionLimitsTitle','exemptionType','annualLimit','previousEmployerUsed','thisCompanyEligible','remainingLimit','taxableExcess','openingSources','previousEmployerDeclaredWarning','monthByMonth','usedBeforeMonth','remainingBefore','exemptionLimitsNotRecorded','holdReasons','boundsTitle','boundsHelp','exemptUpTo','taxableAtLeast','exactValue','pcbComparisonInsufficient','pcbComparisonNeverStops'];
   const shape=(locale:Locale)=>added.flatMap(key=>keys((catalogs[locale].payrollTaxBasis as Record<string,unknown>)[key],key));
   for(const locale of Object.keys(catalogs) as Locale[]){expect(shape(locale)).toEqual(shape('en'));expect(shape(locale).every(line=>!line.endsWith('=MISSING'))).toBe(true);}
-  expect(Object.keys(en.payrollTaxBasis.holdReasons).sort()).toEqual(['access_insufficient','saved_evidence_conflict']);
+  // 4ce2c481 adds the group-history hold (another group company's earlier months cannot be used yet).
+  expect(Object.keys(en.payrollTaxBasis.holdReasons).sort()).toEqual(['access_insufficient','group_history_unavailable','saved_evidence_conflict']);
   expect(Object.keys(en.payrollTaxBasis.openingSources).sort()).toEqual(['accepted_tp3','no_accepted_tp3','saved_payslip']);
  });
 });
