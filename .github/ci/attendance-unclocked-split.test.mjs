@@ -8,7 +8,7 @@ import {readUnclockedSplitSources,verifyUnclockedSplit} from './attendance-unclo
 const root=fileURLToPath(new URL('../../',import.meta.url));
 test('all32original registrations retain exact table values, callbacks, financial controls and per-case resets',()=>{
  const p=verifyUnclockedSplit(readUnclockedSplitSources(root));assert.equal(p.remainingCases+p.financialCases,p.originalCases);assert.equal(p.originalCases,32);assert.equal(p.releaseAuthorized,false);
- assert.equal(p.boardSubmissionFixtureBound,true);
+ assert.equal(p.boardSubmissionFixtureBound,true);assert.equal(p.caseTimeoutMs,60000);
 });
 test('actual case-registration expression gives disjoint cash/TOIL rows with the exact original18-row union',()=>{
  const s=readUnclockedSplitSources(root);
@@ -34,6 +34,9 @@ for(const [label,key,from,to] of [
  ['changed case filter','financialFixture','row.mode===mode','true'],
  ['changed other owner-scope assertion','remaining',"it('requires real financial scope", "it.skip('requires real financial scope"],
  ['modified source oracle','baseline','updateLeaveType','editedLeaveType'],
+ ['changed measured case timeout','financialFixture','const ATTESTED_CASE_TIMEOUT_MS=60_000;','const ATTESTED_CASE_TIMEOUT_MS=600_000;'],
+ ['omitted case timeout argument','financialFixture',' },ATTESTED_CASE_TIMEOUT_MS);',' });'],
+ ['undeclared case timeout','financialFixture','const ATTESTED_CASE_TIMEOUT_MS=60_000;\n',''],
 ])test('refuse '+label,()=>{const s=readUnclockedSplitSources(root);assert(s[key].includes(from),'Negative-control boundary is nonempty');s[key]=s[key].replace(from,to);assert.throws(()=>verifyUnclockedSplit(s));});
 test('refuse an omitted Board 3 import, the historical unconfigured reset or changed routing fixture source',()=>{
  for(const [key,from,to,reason] of [
