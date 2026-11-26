@@ -19,6 +19,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import type {SQL} from 'drizzle-orm';
 import type {SessionContext} from './client';
+import {isPreparedReadOptions} from './prepared-read';
 
 export class SharedReadIncompatibleError extends Error{
  constructor(readonly reason:string){super('This read must use its own transaction ('+reason+').');this.name='SharedReadIncompatibleError';}
@@ -62,6 +63,9 @@ export type SharedReadPreambleRead={
  decode(value:unknown):SharedReadSeed[];
  /** Every owner statement planned in this carrier may be planned with JIT off (it changes planning, never results). */
  jitOff:boolean;
+ /** Every prepared statement of this carrier may use its generic plan from the first call (db/prepared-read.ts
+  * GENERIC_PLAN_SETTINGS: plan_cache_mode, which changes planning, never results). */
+ genericPlans?:boolean;
 };
 export type SharedReadPreamble={build(ctx:SessionContext,tx:unknown):SharedReadPreambleRead|null};
 const ownerPreamble=new AsyncLocalStorage<true>();
@@ -149,7 +153,7 @@ export function requestReadCarrierLimit():number{
 }
 
 /** What a carrier lets its opener do before any owner joins: answer statements ahead, and record a held setting. */
-export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):number;hold(setting:'jit',value:'on'|'off'):void};
+export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):number;hold(setting:'jit'|'plan_cache_mode',value:string):void};
 
 /** One open carrier transaction. `finish` lets it commit; `done` settles after COMMIT or ROLLBACK. */
 export type SharedReadCarrier<Tx>={tx:Promise<Tx>;finish:()=>void;done:Promise<void>};
@@ -362,7 +366,21 @@ export function sharedSnapshotValue<T>(tx:object,key:string,compute:()=>Promise<
 /** Statement classes. Only a plain read is memoized; a compatible non-read passes through; anything that needs
  * another transaction contract is refused before it is sent. */
 const CONTROL=/^\s*(insert|update|delete|merge|copy|lock|create|drop|alter|truncate|grant|revoke|comment|notify|listen|unlisten|vacuum|analyze|refresh|call|do|prepare|execute|deallocate|discard|savepoint|release|rollback|commit|begin|start|end|abort|reset|set|show|cluster|reindex|checkpoint|load|import|security|explain)\b/i;
-const PASS_CONTROL=/^\s*(set\s+local\s+jit\s*(=|to)\s*(on|off)|set\s+transaction\s+read\s+only)\s*;?\s*$/i;
+/** The transaction-local settings a carrier passes through and then holds: SET TRANSACTION READ ONLY, SET LOCAL jit, and
+ * SET LOCAL plan_cache_mode = force_generic_plan (db/prepared-read.ts GENERIC_PLAN_SETTINGS), alone or as one
+ * simple-protocol statement of several. Each changes how a statement is planned, never its rows. null: anything else. */
+export function passedSettings(query:string):[string,string][]|null{
+ if(/^\s*set\s+transaction\s+read\s+only\s*;?\s*$/i.test(query))return [['transaction','read only']];
+ const parts=query.split(';').map(part=>part.trim()).filter(Boolean),out:[string,string][]=[];
+ if(!parts.length)return null;
+ for(const part of parts){
+  const match=/^set\s+local\s+(jit|plan_cache_mode)\s*(?:=|to)\s*([a-z_]+)$/i.exec(part);
+  const name=match?.[1].toLowerCase(),value=match?.[2].toLowerCase();
+  if(!name||!value||(name==='jit'?value!=='on'&&value!=='off':value!=='force_generic_plan'))return null;
+  out.push([name,value]);
+ }
+ return out;
+}
 const REFUSE=[
  ['barrier',/\bpg_(try_)?advisory/i],
  ['setting',/\bset_config\s*\(/i],
@@ -385,7 +403,7 @@ const VOLATILE=/\b(clock_timestamp|statement_timestamp|timeofday|random|gen_rand
 
 export type SharedStatementClass={kind:'memo'|'pass'}|{kind:'refuse';reason:string};
 export function classifySharedStatement(query:string):SharedStatementClass{
- if(PASS_CONTROL.test(query))return {kind:'pass'};
+ if(passedSettings(query))return {kind:'pass'};
  if(CONTROL.test(query))return {kind:'refuse',reason:'control'};
  if(!/^\s*\(?\s*(select|with|values|table)\b/i.test(query))return {kind:'refuse',reason:'unknown'};
  if(WRITING_FUNCTIONS.test(query)||learnedWriters.has(query))return {kind:'refuse',reason:'write'};
@@ -472,17 +490,18 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
   // A transaction-local setting the carrier already holds changes nothing when sent again: answer it here. The carrier
   // is begun READ ONLY, so SET TRANSACTION READ ONLY is always already in force.
   if(statement.kind==='pass'&&options===undefined){
-   const setting=/^\s*set\s+local\s+jit\s*(?:=|to)\s*(on|off)\s*;?\s*$/i.exec(query)?.[1]?.toLowerCase()??(/^\s*set\s+transaction\s+read\s+only\s*;?\s*$/i.test(query)?'read only':null);
-   if(setting){
-    const key=setting==='read only'?'transaction':'jit';
-    if(held.get(key)===setting){session.stats.memoHits++;return Promise.resolve(Object.assign([],{count:null,command:'SET'}));}
+   const settings=passedSettings(query);
+   if(settings){
+    if(settings.every(([key,value])=>held.get(key)===value)){session.stats.memoHits++;return Promise.resolve(Object.assign([],{count:null,command:'SET'}));}
     // Held from the moment it is sent: the driver runs this carrier's statements in order, and a failure aborts the
     // whole carrier, rerunning every owner on its own.
-    held.set(key,setting);
+    for(const [key,value] of settings)held.set(key,value);
     return send(query,params,options,mode);
    }
   }
-  if(statement.kind==='pass'||options!==undefined)return send(query,params,options,mode);
+  // A prepared read (db/prepared-read.ts) is a plain read sent as a named statement: the same rows, so the same memo
+  // entry as the unnamed statement (and a request preamble's answer for it). Any other option passes through.
+  if(statement.kind==='pass'||(options!==undefined&&!isPreparedReadOptions(options)))return send(query,params,options,mode);
   const key=mode+'\u0000'+query+'\u0000'+paramKey(params);
   let first=memo.get(key);
   if(first)session.stats.memoHits++;

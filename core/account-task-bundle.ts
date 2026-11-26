@@ -25,6 +25,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {executePrepared,genericPlanSettingsStatement} from '../db/prepared-read';
 import {aiCentreActivity} from '../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {assertModuleGate} from './module-gate';
@@ -133,9 +134,11 @@ export async function readAccountTaskBundle(ctx:SessionContext,modules:AccountTa
  let row:Record<string,unknown>|undefined;
  try{
   row=await withTenant(ctx,async tx=>{
-   // The Claims and Attendance owners scope this setting to their read for the same reason: JIT compile time.
-   await tx.execute(sql`set local jit=off`);
-   const [result]=await tx.execute<Record<string,unknown>>(accountTaskStatement(accountTaskStatementSections(tx,ctx,modules,read),ctx));
+   // The Claims and Attendance owners scope this setting to their read for the same reason: JIT compile time. With it,
+   // the statement's generic plan from its first call (db/prepared-read.ts genericPlanSettingsStatement).
+   await tx.execute(sql.raw(genericPlanSettingsStatement()));
+   // A named prepared statement (db/prepared-read.ts): it planned in 106-269 ms on every call on staging.
+   const [result]=await executePrepared<Record<string,unknown>>(tx,accountTaskStatement(accountTaskStatementSections(tx,ctx,modules,read),ctx),'account-tasks');
    return result;
   },{readOnlySnapshot:true});
  }catch{
