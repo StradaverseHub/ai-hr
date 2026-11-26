@@ -2,7 +2,7 @@
  * Board 124a979e, approved plan item 9 — "If the person making the change has no payroll rights for that company, the
  * payroll cannot be flagged at that moment. It is flagged the next time a payroll user opens the Payroll Process list."
  *
- * The saver records a pending row (payroll_recalc_pending, migration 7530) in the save's own transaction; the Payroll
+ * The saver records a pending row (payroll_recalc_pending, migration 7560) in the save's own transaction; the Payroll
  * Process list's refresh job, run under a payroll administrator, applies it with the normal mark helper as its first
  * step and deletes it. Pinned here with a real writer: an employee submitting their own TP3 (self-service, no payroll
  * administration), on a processed November run of theirs:

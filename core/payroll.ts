@@ -1076,7 +1076,7 @@ function lastPeriodBefore(until: string | null): string | null {
  * The mark writes payroll_batch, which only a payroll administrator of the run's company may write, and the payslip read
  * above finds nothing for anyone else: an HR-side or self-service save of a payroll input would otherwise flag nothing.
  * So the save records the employment, the months it reaches and the categories in payroll_recalc_pending (migration
- * 7530), in its own transaction, for each employment whose CURRENT company it cannot administer payroll for; the next
+ * 7560), in its own transaction, for each employment whose CURRENT company it cannot administer payroll for; the next
  * Payroll Process list refresh, run under a payroll administrator of that company, marks the runs and deletes the rows
  * (consumeRecalcPendingTx). One INSERT ... SELECT for the whole save, whatever the number of employments: for a payroll
  * administrator it inserts nothing. It never widens app.can_admin_payroll_for and reads no payroll row. The SELECT keeps
@@ -1166,12 +1166,12 @@ export async function consumeRecalcPendingTx(tx: Tx, ctx: SessionContext, limit 
     with companies as materialized (
       select c.id from ${company} c where c.tenant_id = app.current_tenant_id() and app.can_admin_payroll_for(c.id)),
     staff as materialized (
-      select e.id from ${employment} e where e.tenant_id = app.current_tenant_id() and e.company_id = any((select array_agg(id) from companies))),
+      select e.id from ${employment} e where e.tenant_id = app.current_tenant_id() and e.company_id = any(array(select id from companies))),
     picked as (
       -- Driven from the administered companies' employments (indexed), so a company-scoped administrator's consume
       -- evaluates the row rule only for their own employees' rows, not for every pending row of the tenant.
       select p.id from ${payrollRecalcPending} p where p.tenant_id = app.current_tenant_id()
-        and p.employment_id = any((select array_agg(id) from staff))
+        and p.employment_id = any(array(select id from staff))
       order by p.requested_at, p.id limit ${bound})
     delete from ${payrollRecalcPending} p using picked where p.id = picked.id
     returning p.employment_id::text as "employmentId", p.from_period as "fromPeriod", p.until_period as "untilPeriod", p.categories`);

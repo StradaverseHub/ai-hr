@@ -1,9 +1,9 @@
-/** ADR 0181 access-rule timing evidence for migration 7530 (db/migrations/7530_payroll_recalc_pending.sql, board 124a979e
+/** ADR 0181 access-rule timing evidence for migration 7560 (db/migrations/7560_payroll_recalc_pending.sql, board 124a979e
  * plan item 9): the three row-security policies of the new table payroll_recalc_pending, timed with explain (analyze,
  * buffers) on the fictional 71-company / 1,000-employment group fixture (buildScaleFixture,
  * test/helpers/ai-centre-scale-fixture.ts).
  *
- * OLD RULE TEXT: none. 7530 creates a new table with new policies and changes no existing table, policy or function, so
+ * OLD RULE TEXT: none. 7560 creates a new table with new policies and changes no existing table, policy or function, so
  * the new text is timed alone and held to absolute bounds.
  *
  * The rules: insert by the saver, as itself, for an employment it can see (`EXISTS (employment e WHERE e.id =
@@ -18,7 +18,7 @@
  *    administrator (500 of 1,000 stored rows) and a company-scoped administrator (their company's rows only).
  * For every plan it asserts the rows are the authorised ones (non-vacuous), no node over payroll_recalc_pending or
  * employment loops more often than there are stored rows (the rule's EXISTS runs at most once per stored row), and
- * execution, planning and shared buffers stay within PLAN_LIMITS. Every plan is printed as one `POLICY_TIMING_7530
+ * execution, planning and shared buffers stay within PLAN_LIMITS. Every plan is printed as one `POLICY_TIMING_7560
  * {json}` line. All names are invented. */
 import {and,eq,inArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
@@ -94,7 +94,7 @@ function expectBounded(kind:Kind,label:string,explained:Explained,stored:number)
  const policyNodes=all.filter(n=>n['Relation Name']==='payroll_recalc_pending'||n['Relation Name']==='employment');
  const maxLoops=Math.max(0,...policyNodes.map(n=>n['Actual Loops']??0));
  const buffers=(explained.plan['Shared Hit Blocks']??0)+(explained.plan['Shared Read Blocks']??0);
- console.log('POLICY_TIMING_7530 '+JSON.stringify({kind,label,executionMs:Math.round(explained.executionMs*100)/100,planningMs:Math.round(explained.planningMs*100)/100,buffers,maxPolicyNodeLoops:maxLoops,stored,
+ console.log('POLICY_TIMING_7560 '+JSON.stringify({kind,label,executionMs:Math.round(explained.executionMs*100)/100,planningMs:Math.round(explained.planningMs*100)/100,buffers,maxPolicyNodeLoops:maxLoops,stored,
   nodes:all.map(n=>({node:n['Node Type'],relation:n['Relation Name']??n['Index Name']??null,subplan:n['Subplan Name']??null,rows:n['Actual Rows']??0,loops:n['Actual Loops']??0,filter:n.Filter?n.Filter.slice(0,200):null}))}));
  expect(policyNodes.length,`${label}: the plan reads payroll_recalc_pending or employment`).toBeGreaterThan(0);
  expect(maxLoops,`${label}: a node over payroll_recalc_pending / employment loops at most once per stored row`).toBeLessThanOrEqual(Math.max(stored,1));
@@ -103,7 +103,7 @@ function expectBounded(kind:Kind,label:string,explained:Explained,stored:number)
  expect(buffers,`${label}: shared buffers`).toBeLessThanOrEqual(PLAN_LIMITS[kind].buffers);
 }
 
-describe('7530 payroll_recalc_pending rules at group scale (71 companies, 1,000 employments)',()=>{
+describe('7560 payroll_recalc_pending rules at group scale (71 companies, 1,000 employments)',()=>{
  it('the save records with one bounded INSERT ... SELECT, and a single-row insert passes the insert rule cheaply',async()=>{
   expect(staff.length).toBeGreaterThanOrEqual(1000);
   await owner.client.unsafe('delete from public.payroll_recalc_pending');

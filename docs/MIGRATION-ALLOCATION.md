@@ -1,9 +1,10 @@
 # Board change-detection lane (124a979e, plan item 9): pending recalculation marks, 26 November 2026
 
-Reserve `7530_payroll_recalc_pending`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
-`2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f`. Allocated by the integrator after `7510` and `7520`
-above, which other lanes own; it does not depend on either. Staging's ledger watermark was 7500 (26 Nov 2026). Recheck
-both installations' watermarks and any competing reservation at admission.
+Reserve `7560_payroll_recalc_pending`, journal index `10960`, timestamp `1795495007560`, SQL SHA-256
+`2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f`. Allocated by the integrator; renumbered from an earlier slot that the staging
+coordinator's database revamp search fix took (it installs first). It follows the
+other lanes' 7540 (CP38) and 7550 (group tax) and depends on neither. Staging's ledger watermark was 7500 (26 Nov 2026).
+Recheck both installations' watermarks and any competing reservation at admission.
 
 Creates `public.payroll_recalc_pending` (append and consume: employment, pay months reached, change categories, who and
 when), RLS forced: inserted by a principal for an employment it can see, as itself, never requiring payroll

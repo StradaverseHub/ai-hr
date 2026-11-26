@@ -5,5 +5,5 @@
  "7480_payroll_read_own_payslips.sql": "test/payroll-read-policy-timing.test.ts",
  "7490_payroll_read_history_filter.sql": "test/payroll-read-policy-timing.test.ts",
  "7500_payroll_read_history_summary.sql": "test/payroll-read-policy-timing.test.ts",
- "7530_payroll_recalc_pending.sql": "test/payroll-recalc-pending-7530-policy-timing.test.ts"
+ "7560_payroll_recalc_pending.sql": "test/payroll-recalc-pending-7560-policy-timing.test.ts"
 }

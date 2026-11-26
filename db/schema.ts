@@ -6932,7 +6932,7 @@ export const payrollRunOutstanding = pgTable('payroll_run_outstanding', {
 });
 
 /**
- * 124a979e (migration 7530) — a payroll input saved by somebody who cannot administer payroll for the employee's
+ * 124a979e (migration 7560) — a payroll input saved by somebody who cannot administer payroll for the employee's
  * company: the employment, the pay months it reaches (inclusive, NULL = unbounded) and the change categories. Written in
  * the save's own transaction by core/payroll.ts (markRunsAffectedByEmploymentChangeTx and its windows variant), consumed
  * by the Payroll Process list's refresh job under a payroll administrator of the employee's current company

@@ -334,7 +334,7 @@ payroll truth stays in its source tables.
 - Raised budget, board 124a979e (26 November 2026): `removeFixedTransactionDialogAction` 21 -> 22 statements
   (test/payroll-board-20261125-action-read-budget.test.ts, alpha-focused-checks run 45770342651). The extra statement
   is the one bounded `INSERT ... SELECT` every recalculation mark now makes to record a pending mark for an employee
-  whose company the saver cannot administer payroll for (migration 7530, approved plan item 9); for a payroll
+  whose company the saver cannot administer payroll for (migration 7560, approved plan item 9); for a payroll
   administrator it inserts nothing. Same number of transactions; no other measured action moved.
 
 ## Order of work
