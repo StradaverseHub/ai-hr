@@ -39,6 +39,7 @@ import {
   needsReprocess,
   periodsForYear,
   reprocessAffectedCount,
+  reprocessHeldCount,
   resolveDashboardPeriod,
   selectedPeriods,
   summarise,
@@ -197,7 +198,8 @@ export default async function PayrollPage({
     yearBatches.filter((b) => b.status === 'processed').map((b) => b.id),
     RUN_OUTSTANDING_FRESH_MS,
   );
-  const yearRows = yearBatches.map((b) => ({ ...b, outstandingCount: outstanding.get(b.id)?.count ?? null }));
+  const yearRows = yearBatches.map((b) => ({ ...b, outstandingCount: outstanding.get(b.id)?.count ?? null,
+    heldCount: outstanding.get(b.id)?.held ?? null }));
 
   // TWO passes, and the split is what makes the timeline honest. The counts on the month cells are
   // taken AFTER company / cycle / status but BEFORE the month selection: after, so ticking a company
@@ -277,7 +279,10 @@ export default async function PayrollPage({
     // review), counted once each: the same number its Reprocess Required tab shows, which is where both links go.
     const stale = needsReprocess(b);
     const affected = reprocessAffectedCount(b);
+    // a1a80747 r3 — employees skipped for income tax are on the run's Skipped tab: their own line, their own link.
+    const held = reprocessHeldCount(b);
     const requiredHref = `/payroll/${b.id}/reprocess?tab=required&from=${fromQuery}`;
+    const skippedHref = `/payroll/${b.id}/reprocess?tab=skipped&from=${fromQuery}`;
     return (
       <tr key={b.id} className="hover:bg-muted/40">
         <td className="whitespace-nowrap px-3 py-2.5 first:pl-4 last:pr-4">
@@ -385,6 +390,17 @@ export default async function PayrollPage({
                 <span className="text-xs text-muted-foreground">
                   {t('reprocessAffected', { n: affected })}
                 </span>
+              )}
+            </div>
+          )}
+          {stale && held > 0 && (
+            <div className="mt-0.5">
+              {multiCycleOn ? (
+                <Link href={skippedHref} title={tb('reprocessTabSkipped')} className="text-xs font-medium text-primary hover:underline">
+                  {t('reprocessHeld', { n: held })}
+                </Link>
+              ) : (
+                <span className="text-xs text-muted-foreground">{t('reprocessHeld', { n: held })}</span>
               )}
             </div>
           )}

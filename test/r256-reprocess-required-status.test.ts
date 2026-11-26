@@ -95,6 +95,7 @@ import {
   payrollListState,
   periodsForYear,
   reprocessAffectedCount,
+  reprocessHeldCount,
   reprocessEmploymentIds,
 } from '../app/payroll/dashboard-logic';
 import PayrollListPage from '../app/payroll/page';
@@ -330,6 +331,38 @@ describe('a1a80747 r2 — new / pending / held employees make a processed run Re
     const all = { periods: periodsForYear(2026), companyIds: [], cycles: [], statuses: [] };
     expect(applyFilters(rows, { ...all, statuses: [REPROCESS_REQUIRED] }).map((r) => r.payPeriod)).toEqual(['2026-07']);
     expect(applyFilters(rows, { ...all, statuses: ['processed'] }).map((r) => r.payPeriod)).toEqual(['2026-06', '2026-07']);
+  });
+});
+
+// ───────────── a1a80747 r3 — employees skipped for income tax get their own line ─────────────
+
+describe('a1a80747 r3 — held for income tax review is its own line, and still keeps the run Reprocess Required', () => {
+  it('a run whose only outstanding people are held reads reprocess_required, affects nobody, and names the held', () => {
+    const row = { status: 'processed', needsRecalcAt: null, recalcEmploymentIds: null, outstandingCount: 0, heldCount: 2 };
+    expect(needsReprocess(row)).toBe(true);
+    expect(payrollListState(row)).toBe(REPROCESS_REQUIRED);
+    expect(reprocessAffectedCount(row)).toBe(0);
+    expect(reprocessHeldCount(row)).toBe(2);
+  });
+
+  it('affected and held are separate numbers; a clean run has neither', () => {
+    const row = { status: 'processed', needsRecalcAt: null, outstandingCount: 3, heldCount: 1 };
+    expect(reprocessAffectedCount(row)).toBe(3);
+    expect(reprocessHeldCount(row)).toBe(1);
+    const clean = { status: 'processed', needsRecalcAt: null, outstandingCount: 0, heldCount: 0 };
+    expect(needsReprocess(clean)).toBe(false);
+    expect(reprocessHeldCount(clean)).toBe(0);
+    expect(reprocessHeldCount({ status: 'processed', needsRecalcAt: null, outstandingCount: 1 })).toBe(0);
+  });
+
+  it('closed and draft runs never carry a held line, and the status filter reaches a held-only run', () => {
+    for (const status of ['closed', 'draft']) expect(reprocessHeldCount({ status, needsRecalcAt: null, outstandingCount: 0, heldCount: 5 })).toBe(0);
+    const rows = [
+      { payPeriod: '2026-06', companyId: 'c1', runType: 'regular', status: 'processed', needsRecalcAt: null, outstandingCount: 0, heldCount: 0 },
+      { payPeriod: '2026-07', companyId: 'c1', runType: 'regular', status: 'processed', needsRecalcAt: null, outstandingCount: 0, heldCount: 1 },
+    ];
+    const all = { periods: periodsForYear(2026), companyIds: [], cycles: [], statuses: [] };
+    expect(applyFilters(rows, { ...all, statuses: [REPROCESS_REQUIRED] }).map((r) => r.payPeriod)).toEqual(['2026-07']);
   });
 });
 

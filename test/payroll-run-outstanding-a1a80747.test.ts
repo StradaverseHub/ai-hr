@@ -149,9 +149,9 @@ describe('a1a80747 · A — one owner, one number', () => {
     const late = await hire('Fictional Late Joiner', 'OS002', 4200, { on: `${period}-10` });
 
     // Before the first refresh the list has only the mark to go on, as before this item.
-    expect(await listCount(batchId)).toEqual({ count: 0, marked: false, known: false, due: true });
+    expect(await listCount(batchId)).toEqual({ count: 0, held: 0, marked: false, known: false, due: true });
     expect(await refresh(batchId)).toBe('stored');
-    expect(await listCount(batchId)).toEqual({ count: 1, marked: false, known: true, due: false });
+    expect(await listCount(batchId)).toEqual({ count: 1, held: 0, marked: false, known: true, due: false });
     expect(await storedRow(batchId)).toMatchObject({ employmentIds: [late], tenantId: b.tenantId });
     expect(await oneAnswer(batchId)).toEqual([late]);
 
@@ -290,7 +290,7 @@ describe('a1a80747 · D — the refresh job', () => {
     expect((await jobState(first.jobId!))?.state).toBe('completed');
     expect(await readPayrollRunOutstandingRefresh(ctx, first.jobId!)).toBe('done');
     expect(await storedRow(batchId)).toMatchObject({ employmentIds: [late] });
-    expect(await listCount(batchId)).toEqual({ count: 1, marked: false, known: true, due: false });
+    expect(await listCount(batchId)).toEqual({ count: 1, held: 0, marked: false, known: true, due: false });
     // Fresh: not asked again.
     expect((await requestPayrollRunOutstandingRefresh(ctx, [batchId])).jobId).toBeNull();
     // Older than the freshness window: asked again.
@@ -375,7 +375,7 @@ describe('a1a80747 · E — the list read at group shape', () => {
       begin.mockRestore();
     }
     expect(all.size).toBe(70);
-    for (const run of runs) expect(all.get(run.id), run.id).toEqual({ count: expected.get(run.id), marked: true, known: true, due: false });
+    for (const run of runs) expect(all.get(run.id), run.id).toEqual({ count: expected.get(run.id), held: 0, marked: true, known: true, due: false });
     expect([...expected.values()].some((n) => n > 0)).toBe(true);
 
     // One company's administrator, asked (as the list asks) for the runs of the companies in their scope.

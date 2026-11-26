@@ -6360,7 +6360,8 @@
       "colProcessedDate": "Ngày xử lý",
       "rowView": "Xem",
       "rowContinue": "Tiếp tục",
-      "rowMoreActions": "Thao tác khác"
+      "rowMoreActions": "Thao tác khác",
+      "reprocessHeld": "{n, plural, other {# tạm giữ để rà soát thuế thu nhập}}"
     },
     "reports": {
       "pageTitle": "Bảng lương",
@@ -7656,7 +7657,15 @@
       "taxHeldReasonGeneric": "Lịch sử thuế thu nhập của {period} cần được xem xét.",
       "taxHeldOpenRecalculation": "Mở Tính lại thuế thu nhập",
       "taxHeldMore": "và {n} người khác",
-      "closeBlockedTaxHeld": "Không thể đóng lần chạy này: {n} nhân viên bị tạm giữ để xem xét thuế thu nhập và chưa có trong kỳ lương này: {names}. Hãy sửa lịch sử thuế thu nhập, thêm họ bằng Xử lý nhân viên tạm giữ (hoặc xóa họ khỏi lần chạy này), rồi đóng lại."
+      "closeBlockedTaxHeld": "Không thể đóng lần chạy này: {n} nhân viên bị tạm giữ để xem xét thuế thu nhập và chưa có trong kỳ lương này: {names}. Hãy sửa lịch sử thuế thu nhập, thêm họ bằng Xử lý nhân viên tạm giữ (hoặc xóa họ khỏi lần chạy này), rồi đóng lại.",
+      "reprocessTabSkipped": "Đã bỏ qua",
+      "reprocessSelectAllEvery": "Chọn tất cả {n, plural, other {# nhân viên}}",
+      "reprocessSelectAllMatching": "Chọn tất cả {n, plural, other {# nhân viên phù hợp}}",
+      "reprocessSelectAllTooMany": "Thẻ này có {n} nhân viên, nhiều hơn số Chọn tất cả có thể đánh dấu một lần ({max}). Hãy tìm kiếm để thu hẹp danh sách trước, hoặc đánh dấu từng trang.",
+      "reprocessGroupHeldTitle": "Tạm giữ để rà soát thuế thu nhập — {n} nhân viên",
+      "reprocessGroupHeldNote": "Không được đánh dấu và không tính vào Cần tính lại: nhấn Tính lại sẽ lại bỏ qua họ cho đến khi lịch sử thuế thu nhập được sửa. Hãy sửa trong Tính lại giá trị thuế thu nhập, sau đó đánh dấu họ hoặc nhấn Xử lý nhân viên tạm giữ.",
+      "reprocessReasonTaxSkipped": "Đã bỏ qua — cần tính lại thuế thu nhập.",
+      "reprocessNoSkipped": "Không có ai bị bỏ qua trong đợt chạy này."
     },
     "transactions": {
       "title": "Nhập liệu giao dịch",

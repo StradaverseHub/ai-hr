@@ -42,12 +42,28 @@ export type ReprocessStaleRow = { employmentId: string; employeeCode: string | n
 /** 6aee208b — the review names at most this many people, then "and N more"; every ticked id is still posted. */
 const REVIEW_NAME_CAP = 20;
 
-/** 6aee208b / a1a80747 — the two lists, with their (search-filtered) counts and their addresses: Reprocess Required
- * (out-of-date payslips and eligible people with no payslip yet, one list) and Processed / No Change. */
+/** 6aee208b / a1a80747 — the lists, with their (search-filtered) counts and their addresses: Reprocess Required
+ * (out-of-date payslips and eligible people with no payslip yet who still need processing), r3 Skipped (skipped for
+ * income tax, nothing payable, not owed on this run) and Processed / No Change. */
+export type ReprocessTab = 'required' | 'skipped' | 'unchanged';
 export type ReprocessTabs = {
-  current: 'required' | 'unchanged';
-  counts: { required: number; unchanged: number };
-  hrefs: { required: string; unchanged: string };
+  current: ReprocessTab;
+  /** `skipped` is absent for a caller that shows only the two original tabs. */
+  counts: { required: number; unchanged: number; skipped?: number };
+  hrefs: { required: string; unchanged: string; skipped?: string };
+};
+
+/**
+ * a1a80747 r3 — "Select all N employees" on the open tab. `href` reloads this screen with a one-time token; the server
+ * then hands back `applied` (everyone on the tab who can be ticked, every page, search applied, `token` = that token)
+ * and the form adds them to the selection ONCE per token, then drops the token from the address so a page change
+ * cannot re-tick somebody the operator has since unticked. `tooMany` (more than the server reads at once) ticks nobody.
+ */
+export type ReprocessSelectAll = {
+  total: number;
+  searching: boolean;
+  href: string;
+  applied?: { token: string; rows: ReprocessStaleRow[]; tooMany: boolean; max: number } | null;
 };
 
 /**
@@ -85,6 +101,9 @@ export type ReprocessAddCandidate = {
    */
   owed?: boolean;
   notOwedReason?: ReprocessNotOwedReason | null;
+  /** a1a80747 r3 — skipped for income tax on this run (held by processing, or by a Reprocess's tax check): the Skipped
+   * tab's Held for income tax review group, never ticked on arrival. */
+  taxSkipped?: boolean;
 };
 
 /**
@@ -93,7 +112,7 @@ export type ReprocessAddCandidate = {
  * server lists each employee once, in its own order (`reprocessRequiredWithSkipPage`).
  */
 export type ReprocessRequiredRow =
-  | ({ kind: 'recalculated' } & ReprocessStaleRow)
+  | ({ kind: 'recalculated'; taxSkipped?: boolean } & ReprocessStaleRow)
   | ({ kind: 'added' } & ReprocessAddCandidate);
 
 /** The gap codes the server sends → the payroll.batch key that names them. Exhaustive by construction:
@@ -143,7 +162,19 @@ export function ReprocessForm({
   currency,
   from,
   paging,
+  focusRows,
+  selectAll,
+  taxReviewHref,
+  heldHref,
 }: {
+  /** a1a80747 r3 — the people `focusIds` names, as identities, so a held employee on another page is still ticked and named. */
+  focusRows?: ReprocessStaleRow[];
+  /** a1a80747 r3 — Select all on the open tab (Reprocess Required or Processed / No Change only). */
+  selectAll?: ReprocessSelectAll | null;
+  /** a1a80747 r3 — where an employee skipped for income tax is corrected (Recalculate Income Tax Value), when the reader may. */
+  taxReviewHref?: string | null;
+  /** a1a80747 r3 — "Process held employees" on the Skipped tab: this screen ticking exactly the held employees. */
+  heldHref?: string | null;
   paging?:{existing:PageState;runTotal:number;existingTotal:number;search:string;tabs?:ReprocessTabs};
   batchId: string;
   /** The run's payslips on Processed / No Change (or, with no tabs, every payslip), with their money. */
@@ -182,14 +213,20 @@ export function ReprocessForm({
   const additions = requiredRows.filter((r): r is Extract<ReprocessRequiredRow,{kind:'added'}> => r.kind === 'added');
   // a1a80747 r2 — three places for a New row: Nothing payable (the run's skip decision, unless the run says it is owed),
   // Not owed on this run (the run says it owes them nothing), or the one Reprocess Required list.
-  const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true;
-  const inNotOwed = (c: ReprocessAddCandidate) => c.owed === false && !c.skip;
+  // a1a80747 r3 — and a fourth, for New and Changed alike: Held for income tax review (skipped for income tax on this run).
+  const heldAdd = (c: ReprocessAddCandidate) => c.taxSkipped === true && c.owed !== false;
+  const inHeld = (r: ReprocessRequiredRow) => r.kind === 'recalculated' ? r.taxSkipped === true : heldAdd(r);
+  const inSkipped = (c: ReprocessAddCandidate) => !!c.skip && c.owed !== true && !heldAdd(c);
+  const inNotOwed = (c: ReprocessAddCandidate) => c.owed === false && !c.skip && !heldAdd(c);
+  const heldRows = requiredRows.filter(inHeld);
   const skippedAdditions = additions.filter(inSkipped);
   const notOwedAdditions = additions.filter(inNotOwed);
   /** Ticked on arrival: ready New rows the run owes (or, when the server does not say, ready rows inside its chosen list). */
-  const addable = additions.filter((c) => !inSkipped(c) && !inNotOwed(c) && !c.skip && c.blockers.length === 0);
+  const addable = additions.filter((c) => !inSkipped(c) && !inNotOwed(c) && !c.skip && c.blockers.length === 0 && !heldAdd(c));
+  /** a1a80747 r3 — held New rows that could be added (Process held employees ticks these). */
+  const heldAddable = additions.filter((c) => heldAdd(c) && c.blockers.length === 0);
   /** The one list: every Changed row and every New row the run owes, in the server's order (owed rows come first). */
-  const requiredList = requiredRows.filter((r) => r.kind === 'recalculated' || (!inSkipped(r) && !inNotOwed(r)));
+  const requiredList = requiredRows.filter((r) => !inHeld(r) && (r.kind === 'recalculated' || (!inSkipped(r) && !inNotOwed(r))));
   type Selected=ReprocessCandidate|ReprocessAddCandidate|ReprocessStaleRow;
   const staleRows = stale?.rows ?? [];
   /**
@@ -204,7 +241,9 @@ export function ReprocessForm({
    * review among the ready New people, and nobody else. The ticks stay editable.
    */
   const [selected,setSelected]=useState<Map<string,Selected>>(()=>new Map(focusIds
-   ? addable.filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected])
+   ? [...(focusRows ?? []).filter(r=>focusIds.includes(r.employmentId)).map(r=>[r.employmentId,r] as [string,Selected]),
+      ...[...addable,...heldAddable].filter(c=>focusIds.includes(c.employmentId)).map(c=>[c.employmentId,c] as [string,Selected]),
+      ...heldRows.filter(r=>r.kind==='recalculated'&&focusIds.includes(r.employmentId)).map(r=>[r.employmentId,r] as [string,Selected])]
    : [
    ...staleRows.map(e=>[e.employmentId,e] as [string,Selected]),
    ...addable.filter(c=>c.owed===true||(c.owed===undefined&&!c.outsideScope)).map(c=>[c.employmentId,c] as [string,Selected]),
@@ -255,11 +294,46 @@ export function ReprocessForm({
   );
   const visibleSkipped = visibleAdditions.filter(inSkipped);
   const visibleNotOwed = visibleAdditions.filter(inNotOwed);
+  const visibleHeld = useMemo(
+    () => (paging || needle === '' ? heldRows : heldRows.filter((e) => matchesEmployeeSearch(e, needle))),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `heldRows` is derived from `required`
+    [required, needle, paging],
+  );
   // a1a80747 — which lists this view shows. With tabs: Reprocess Required (and its Nothing payable group) or
   // Processed / No Change. Without tabs: the one list when anyone is on it, then every payslip.
   const onTab = paging?.tabs?.current;
-  const showRequired = onTab ? onTab === 'required' : requiredList.length > 0 || skippedAdditions.length > 0 || notOwedAdditions.length > 0;
+  const showRequired = onTab ? onTab === 'required' : requiredList.length > 0 || skippedAdditions.length > 0 || notOwedAdditions.length > 0 || heldRows.length > 0;
+  // a1a80747 r3 — the Skipped groups: on their own tab; with only the two original tabs, or none, under the one list.
+  const hasSkippedTab = paging?.tabs?.hrefs.skipped !== undefined;
+  const showSkipped = onTab ? onTab === 'skipped' || (onTab === 'required' && !hasSkippedTab) : showRequired;
   const showEmployees = onTab ? onTab === 'unchanged' : true;
+
+  /**
+   * a1a80747 r3 — SELECT ALL, APPLIED ONCE PER TOKEN. The server answered the token in the address with everyone on the
+   * tab who can be ticked; they are added (never removed: a person ticked elsewhere stays ticked), the token is
+   * remembered so a later render carrying it again changes nothing, and it is dropped from the address so paging on
+   * does not keep reading the whole tab. Unticking somebody afterwards sticks.
+   *
+   * Applied DURING RENDER (React's "adjust state when a prop changes"), not in an effect: this screen keeps no effects
+   * at all (test/payroll-reprocess-route-e440991b.test.ts — nothing here may poll). Only the address clean-up is
+   * deferred to after the render, once per new token.
+   */
+  const [appliedToken, setAppliedToken] = useState<string | null>(null);
+  const applied = selectAll?.applied ?? null;
+  if (applied && applied.token !== appliedToken) {
+    setAppliedToken(applied.token);
+    if (!applied.tooMany) {
+      setSelected((prev) => new Map([...prev, ...applied.rows.map((r) => [r.employmentId, prev.get(r.employmentId) ?? r] as [string, Selected])]));
+    }
+    if (typeof window !== 'undefined') {
+      queueMicrotask(() => {
+        const url = new URL(window.location.href);
+        if (!url.searchParams.has('selectAll')) return;
+        url.searchParams.delete('selectAll');
+        window.history.replaceState(window.history.state, '', url.toString());
+      });
+    }
+  }
 
   const toggle = (id: string) => {
     setSelected((prev) => {
@@ -383,6 +457,14 @@ export function ReprocessForm({
       <button type="button" onClick={onSelectPage} className="font-medium normal-case tracking-normal text-primary hover:underline">
         {t('reprocessSelectAll')}
       </button>
+      {/* a1a80747 r3 — every page of this tab, not just the rows shown (a link: the server reads the whole tab). */}
+      {selectAll && selectAll.total > 0 && (
+        <Link href={selectAll.href} replace scroll={false} className="font-medium normal-case tracking-normal text-primary hover:underline">
+          {selectAll.searching
+            ? t('reprocessSelectAllMatching', { n: selectAll.total })
+            : t('reprocessSelectAllEvery', { n: selectAll.total })}
+        </Link>
+      )}
       <button type="button" onClick={() => setSelected(new Map())} className="font-medium normal-case tracking-normal text-primary hover:underline">
         {t('reprocessClear')}
       </button>
@@ -415,15 +497,15 @@ export function ReprocessForm({
       {paging?.tabs&&(
         <nav aria-label={t('reprocessTabsLabel')}
           className="flex max-w-full flex-wrap gap-1 rounded-[1.25rem] border border-border bg-card p-1.5 shadow-[var(--shadow-card)] sm:w-fit">
-          {(['required','unchanged'] as const).map(key=>{
+          {(['required','skipped','unchanged'] as const).filter(key=>paging.tabs!.hrefs[key]!==undefined).map(key=>{
             const active=paging.tabs!.current===key;
             return (
-              <Link key={key} href={paging.tabs!.hrefs[key]} replace scroll={false} aria-current={active?'page':undefined}
+              <Link key={key} href={paging.tabs!.hrefs[key]!} replace scroll={false} aria-current={active?'page':undefined}
                 className={`inline-flex shrink-0 items-center gap-2 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-colors ${
                   active?'bg-primary text-primary-foreground':'text-muted-foreground hover:bg-accent hover:text-foreground'}`}>
-                <span>{key==='required'?t('reprocessTabRequired'):t('reprocessTabUnchanged')}</span>
+                <span>{key==='required'?t('reprocessTabRequired'):key==='skipped'?t('reprocessTabSkipped'):t('reprocessTabUnchanged')}</span>
                 <span className={`rounded-md px-1.5 py-0.5 text-xs tabular-nums ${active?'bg-primary-foreground/20':'bg-muted text-foreground'}`}>
-                  {paging.tabs!.counts[key].toLocaleString()}
+                  {(paging.tabs!.counts[key] ?? 0).toLocaleString()}
                 </span>
               </Link>
             );
@@ -465,7 +547,25 @@ export function ReprocessForm({
         </div>
       )}
 
+      {applied?.tooMany && (
+        <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-950 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-100">
+          {t('reprocessSelectAllTooMany', { n: selectAll?.total ?? 0, max: applied.max })}
+        </p>
+      )}
+
       {paging&&<ClientPager state={paging.existing} note={t('reprocessPagingNote')} rememberAs="payroll-reprocess-existing"/>}
+
+      {/* a1a80747 r3 — on the Skipped tab the selection is stated here, since there is no list header to carry it. */}
+      {onTab === 'skipped' && (
+        <p className="text-sm">
+          {t('reprocessSummary', { n: selected.size, total })}
+          {selected.size > 0 && (
+            <button type="button" onClick={() => setSelected(new Map())} className="ml-3 font-medium text-primary hover:underline">
+              {t('reprocessClear')}
+            </button>
+          )}
+        </p>
+      )}
 
       {/* a1a80747 — THE ONE REPROCESS REQUIRED LIST: New and Changed, each employee once. */}
       {showRequired && (
@@ -495,7 +595,48 @@ export function ReprocessForm({
       {/* a1a80747 r2 — NOT OWED ON THIS RUN: on the list (eligible, no payslip here) but this run owes them nothing —
           outside a run set up for a chosen list, removed from it on purpose, or not paid by an additional run. Neither
           counted nor ticked, so the tab's number is the Payroll Process list's number; still tickable by hand. */}
-      {showRequired && notOwedAdditions.length > 0 && (
+      {/* a1a80747 r3 — HELD FOR INCOME TAX REVIEW: skipped for income tax on this run (by processing, or by a Reprocess's
+          own tax check) and nothing has happened to them since. Neither counted in Reprocess Required nor ticked: pressing
+          Reprocess would only skip them again until their income tax history is corrected. Still tickable by hand, and
+          Process held employees ticks them all. */}
+      {showSkipped && heldRows.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="w-full min-w-[36rem] text-sm">
+            <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
+              <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span>{t('reprocessGroupHeldTitle', { n: heldRows.length })}</span>
+                {heldHref && (
+                  <Link href={heldHref} replace scroll={false} className="font-medium text-primary hover:underline">
+                    {t('taxHeldProcess')}
+                  </Link>
+                )}
+              </span>
+            </caption>
+            <tbody className="divide-y divide-border">
+              {visibleHeld.map((r) => (
+                <tr key={r.employmentId} className={selected.has(r.employmentId) ? 'bg-primary/5' : undefined}>
+                  {tickCell(r, r.kind === 'added' && r.blockers.length > 0)}
+                  <td className="whitespace-nowrap px-3 py-2">
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-medium text-rose-800 dark:bg-rose-500/15 dark:text-rose-300">
+                      {t('reprocessStatusSkipped')}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {t('reprocessReasonTaxSkipped')}
+                    {taxReviewHref && (
+                      <> · <Link href={taxReviewHref} className="font-medium text-primary hover:underline">{t('taxHeldOpenRecalculation')}</Link></>
+                    )}
+                  </td>
+                </tr>
+              ))}
+              {visibleHeld.length === 0 && noMatchRow(3)}
+            </tbody>
+          </table>
+          <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupHeldNote')}</p>
+        </div>
+      )}
+
+      {showSkipped && notOwedAdditions.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[36rem] text-sm">
             <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
@@ -519,7 +660,7 @@ export function ReprocessForm({
       {/* c3258a72 / a1a80747 — THE NOTHING PAYABLE GROUP, never mixed into Reprocess Required. Payroll already
           evaluated these people and had nothing to pay, so this is a completed outcome, not a to-do: neutral colours,
           unticked, with the run page's own reason sentence. Ticking one by hand still tries them again. */}
-      {showRequired && skippedAdditions.length > 0 && (
+      {showSkipped && skippedAdditions.length > 0 && (
         <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full min-w-[36rem] text-sm">
             <caption className="bg-muted px-3 py-2 text-left text-xs font-semibold text-foreground">
@@ -538,6 +679,12 @@ export function ReprocessForm({
           </table>
           <p className="border-t border-border px-3 py-2 text-xs text-muted-foreground">{t('reprocessGroupNothingPayableNote')}</p>
         </div>
+      )}
+
+      {onTab === 'skipped' && heldRows.length === 0 && skippedAdditions.length === 0 && notOwedAdditions.length === 0 && (
+        <p className="rounded-xl border border-border px-4 py-8 text-center text-sm text-muted-foreground">
+          {paging?.search.trim() ? t('reprocessNoMatches') : t('reprocessNoSkipped')}
+        </p>
       )}
 
       {showEmployees && (

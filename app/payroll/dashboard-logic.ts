@@ -221,6 +221,12 @@ export type RecalcMarkedRow = {
    * own mark is all there is to go on, exactly as before this item.
    */
   outstandingCount?: number | null;
+  /**
+   * a1a80747 r3 — of those, the employees skipped for income tax on the run (core/payroll-view.ts
+   * `payrollRunOutstandingCounts` `held`): they are on the run's Skipped tab, so `outstandingCount` leaves them out and
+   * the row names them on a line of their own. They still hold Close shut, so they still make the run Reprocess Required.
+   */
+  heldCount?: number | null;
 };
 
 /**
@@ -236,7 +242,7 @@ export type RecalcMarkedRow = {
 export function needsReprocess(b: RecalcMarkedRow): boolean {
   // a1a80747 r2 — OR anyone still owed processing on it (a new or pending employee with no payslip yet, or one held for
   // income tax review): the run is not finished, and Close already refuses it for exactly those people.
-  return b.status === 'processed' && (b.needsRecalcAt != null || (b.outstandingCount ?? 0) > 0);
+  return b.status === 'processed' && (b.needsRecalcAt != null || (b.outstandingCount ?? 0) > 0 || (b.heldCount ?? 0) > 0);
 }
 
 /** What the listing SHOWS for a run: the stored status, or the derived state when the mark is set. */
@@ -266,6 +272,15 @@ export function reprocessEmploymentIds(b: RecalcMarkedRow): string[] {
  * run that is not stale, so a closed or draft run can never carry a count. Without a stored answer it is the mark's own
  * set (`reprocessEmploymentIds`), as before.
  */
+/**
+ * a1a80747 r3 — THE "HELD FOR INCOME TAX REVIEW" LINE under Reprocess Required: employees skipped for income tax on this
+ * run, the number its Skipped tab's held group shows. Zero for a run that is not stale (closed and draft never carry it).
+ */
+export function reprocessHeldCount(b: RecalcMarkedRow): number {
+  if (!needsReprocess(b)) return 0;
+  return typeof b.heldCount === 'number' && Number.isFinite(b.heldCount) ? Math.max(0, Math.trunc(b.heldCount)) : 0;
+}
+
 export function reprocessAffectedCount(b: RecalcMarkedRow): number {
   if (!needsReprocess(b)) return 0;
   if (typeof b.outstandingCount === 'number' && Number.isFinite(b.outstandingCount)) return Math.max(0, Math.trunc(b.outstandingCount));
@@ -375,6 +390,8 @@ export function applyFilters<
     needsRecalcAt?: Date | string | null;
     /** a1a80747 r2 — the outstanding count, so the status filter and the badge read one derivation. */
     outstandingCount?: number | null;
+    /** a1a80747 r3 — and the held count, which also keeps a run Reprocess Required. */
+    heldCount?: number | null;
   },
 >(
   rows: readonly T[],
