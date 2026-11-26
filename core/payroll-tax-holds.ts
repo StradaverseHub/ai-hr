@@ -18,6 +18,7 @@
 import {and, asc, eq, inArray, like, lt, max, sql, type SQL} from 'drizzle-orm';
 import type {SessionContext, Tx} from '../db/client';
 import {domainEvent, employment, payrollBatch, payrollEmployeeResultHistory, payrollStatusHistory, payslip, person} from '../db/schema';
+import {groupTaxHoldsTx} from './payroll-group-tax-opening';
 import {outstandingPaymentPredicate} from './payroll-employment-eligibility';
 import {readTaxBasisFailureDetailsTx} from './payroll-tax-basis-read';
 
@@ -66,6 +67,13 @@ export async function processingTaxHoldsTx(
       .where(and(inArray(payslip.employmentId, ids), eq(payrollBatch.companyId, run.companyId),
         eq(payrollBatch.payPeriodId, run.payPeriodId), lt(payrollBatch.runSeq, run.runSeq)));
     if (earlier.length) record(await readTaxBasisFailureDetailsTx(tx, ctx, earlier.map(r => r.id), {includeImported: true, sameMonth: true}));
+  }
+  // Board 4ce2c481 — the group opening the chunk's calculation reads (the same person's earlier months this year at the
+  // group's other companies), asked through the same reader with the same arguments (core/payroll-group-tax-opening.ts).
+  // A contributing month without a usable tax basis, or a TP3 that lists a group company together with an outside
+  // employer, holds the employee with the month named.
+  for (const [employmentId, hold] of await groupTaxHoldsTx(tx, run.companyId, run.payPeriod, ids)) {
+    if (!held.has(employmentId)) held.set(employmentId, {employmentId, period: hold.period, reason: hold.reason.slice(0, REASON_MAX)});
   }
   return held;
 }

@@ -639,6 +639,9 @@ describe('7f251381 — every caption the sheet resolves exists in all six catalo
     'worksheetFlatHeading', 'worksheetFlatY', 'worksheetFlatYt', 'worksheetFlatRate', 'worksheetFlatNote',
     // ADR 0183 (board d8dc0a8c) — the custom PCB sheet.
     'worksheetCustomHeading', 'worksheetCustomRate', 'worksheetCustomAmount', 'worksheetCustomRateNote', 'worksheetCustomFixedNote',
+    // Board 4ce2c481 — the previous group employers (automatic group TP3).
+    'worksheetGroupHeading', 'worksheetGroupNote', 'worksheetGroupCompany', 'worksheetGroupSourceImported', 'worksheetGroupSourceProcessed',
+    'worksheetGroupSourceMixed', 'worksheetGroupY', 'worksheetGroupEpf', 'worksheetGroupPcb', 'worksheetGroupTp3', 'worksheetGroupTp3Replaced',
   ];
 
   it('the list above is EXHAUSTIVE — every key the builder can emit is on it', () => {

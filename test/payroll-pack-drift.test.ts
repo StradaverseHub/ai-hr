@@ -83,6 +83,8 @@ const BOUNDARIES = [
   'core/payroll-draft-tax-readiness',
   // 016276b7 — the processing chunk's income-tax holds and their durable read; payroll implementation.
   'core/payroll-tax-holds',
+  // 4ce2c481 — the group tax opening (other group companies' earlier months as a previous-employer opening).
+  'core/payroll-group-tax-opening',
   'core/payroll-permissions-admin',
   'core/pay-components',
   'core/pay-formula',
@@ -138,6 +140,7 @@ const ALWAYS_ALLOWED = [
   // a1a80747 — the Payroll Process list's stored outstanding answer and its refresh job (pack implementation).
   'core/payroll-run-outstanding.ts',
   'core/payroll-tax-holds.ts',
+  'core/payroll-group-tax-opening.ts',
   'core/payroll-permissions-admin.ts',
   'core/pay-components.ts',
   'core/pay-formula.ts',

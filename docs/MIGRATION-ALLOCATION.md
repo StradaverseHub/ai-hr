@@ -8,7 +8,7 @@ change-detection lane) were never applied anywhere and are released. In order:
 - `7540_employee_cp38_history_last_month`, journal index `10940`, timestamp `1795495007540`, SQL SHA-256 `3dc10e2b149d1896d5c3bee787f29a51d0fb91c6a6c7783b42249754404b8589`: CP38
   lane (038c304b + bc6b5490). Adds the nullable `employee_cp38.last_month_amount` and the append-only, row-secured
   `employee_cp38_revision`.
-- `7550_payroll_group_tax_opening`, journal index `10950`, timestamp `1795495007550`: group tax lane (4ce2c481). Adds the
+- `7550_payroll_group_tax_opening`, journal index `10950`, timestamp `1795495007550`, SQL SHA-256 `a1b8c2d3e074f5a67943c13b0d999f285ba42377bbcc5e5245897dba5409d491`: group tax lane (4ce2c481). Adds the
   security-definer `app.payroll_group_tax_opening` (per company and month totals only, gated by payroll administration of
   the run's company).
 - `7560_payroll_recalc_pending`, journal index `10960`, timestamp `1795495007560`: change-detection lane (124a979e). Adds

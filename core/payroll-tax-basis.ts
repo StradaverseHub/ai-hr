@@ -16,8 +16,9 @@ import {appendEvent,actorOf} from '../db/events';
 import {requirePackFor} from '../localization/registry';
 import type {StatutoryRuleset} from '../localization/country-pack';
 import {readHistoryField} from '../lib/payroll-history-import-schema';
-import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch,type TaxBasisOpening,type TaxBasisHoldReason,type TaxBasisLedgerEntry,type TaxBasisBounds,type TaxBasisHistoryRow,type TaxBasisHistoryCursor,type TaxBasisProgressState,TAX_BASIS_HISTORY_PAGE_SIZE} from '../lib/payroll-tax-basis';
+import {PayrollTaxBasisError,type TaxBasisSelection,type TaxBasisPreview,type TaxBasisEmployee,type TaxBasisMonth,type TaxBasisValue,type TaxBasisBatch,type TaxBasisOpening,type TaxBasisHoldReason,type TaxBasisLedgerEntry,type TaxBasisBounds,type TaxBasisHistoryRow,type TaxBasisHistoryCursor,type TaxBasisProgressState,type TaxBasisGroupOpening,TAX_BASIS_HISTORY_PAGE_SIZE} from '../lib/payroll-tax-basis';
 import {assertModuleGate} from './module-gate';
+import {groupTaxOpeningTx,summarizeGroupTaxOpening} from './payroll-group-tax-opening';
 import {lockAccessConfigurationWriteTx} from './access-configuration-lock';
 import {lockPayrollHistoryReadTx,lockPayrollHistoryWriteTx} from './payroll-history-lock';
 import {lap,reportSlowTaxBasisOpening,type TaxBasisLaps} from '../lib/payroll-tax-basis-timing';
@@ -358,9 +359,44 @@ export async function taxBasisOptions(ctx:SessionContext){return withTenant(ctx,
  * figures no longer match, so a change between the snapshot and the confirmation is never applied. */
 export async function calculateTaxBasisPreview(ctx:SessionContext,selection:TaxBasisSelection,options:{allowEmptySelection?:boolean}={}):Promise<TaxBasisPreview>{
  validateSelection(selection,options.allowEmptySelection);
- const computed=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);return computeTx(tx,ctx,selection);},{readOnlySnapshot:true});
+ const {computed,group}=await withTenant(ctx,async tx=>{await permission(tx,ctx,selection.companyId,true);const computed=await computeTx(tx,ctx,selection);return {computed,group:await taxBasisGroupOpeningTx(tx,selection,computed.employees)};},{readOnlySnapshot:true});
  const previewId=randomUUID(),createdAt=new Date().toISOString(),expiresAt=new Date(Date.now()+15*60000).toISOString();
- return {...computed,previewId,previewHash:hash({selection,computed}),createdAt,expiresAt};
+ // 4ce2c481 — the group section is attached AFTER the hash: it is display only and decides nothing a confirmation applies.
+ const previewHash=hash({selection,computed});
+ return {...computed,employees:computed.employees.map(employee=>group.has(employee.id)?{...employee,groupOpening:group.get(employee.id)}:employee),previewId,previewHash,createdAt,expiresAt};
+}
+/**
+ * Board 4ce2c481 — "Year to date from other group companies", per previewed employee: what live payroll now takes from
+ * the group's other companies as a previous-employer opening, through the same definer (totals per company and month;
+ * the caller needs payroll administration of the selected company, which `permission` has already required). The
+ * months counted are those before the employee's latest month here in the selected range, so a company the person
+ * moved to LATER is never shown as earlier history. Limits come from the assessment year's verified rules. One
+ * statement for the preview (SCALE rule 2). Read only; corrections stay per original employer (ADR-0167).
+ */
+async function taxBasisGroupOpeningTx(tx:Tx,selection:TaxBasisSelection,employees:readonly TaxBasisEmployee[]):Promise<Map<string,TaxBasisGroupOpening>>{
+ const out=new Map<string,TaxBasisGroupOpening>();
+ if(!employees.length)return out;
+ const cutoff=selection.year+'-'+String(selection.upToMonth).padStart(2,'0');
+ const openings=await groupTaxOpeningTx(tx,{runCompanyId:selection.companyId,payPeriod:cutoff,employmentIds:employees.map(employee=>employee.id)});
+ if(!openings.size)return out;
+ const [company]=await tx.execute<{country:string}>(sql`select country from company where id=${selection.companyId}::uuid`);
+ const pack=company?requirePackFor(company.country):null;
+ const resolved=pack?await pack.payroll.loadRulesetResolved(tx,{asOf:cutoff+'-01'}).catch(()=>null):null;
+ const tables=(resolved?.ruleset as unknown as {pcbExemptions?:{pcb?:Record<string,number>;lp?:Record<string,number>}}|undefined)?.pcbExemptions;
+ const capOf=(code:string):number|null=>{const cap=tables?.pcb?.[code]??tables?.lp?.[code];return typeof cap==='number'&&cap>0&&cap<9999999?cap:null;};
+ for(const employee of employees){
+  const opening=openings.get(employee.id);if(!opening)continue;
+  const last=employee.months.reduce<string>((latest,month)=>month.period>latest?month.period:latest,'');
+  const months=opening.months.filter(month=>!last||month.period<last||month.period===cutoff&&last===cutoff);
+  if(!months.length)continue;
+  const used=new Map<string,number>();
+  for(const month of months)for(const [code,amount] of Object.entries(month.exemptionUsed))used.set(code,round((used.get(code)??0)+amount));
+  out.set(employee.id,{tp3:opening.tp3,
+   companies:summarizeGroupTaxOpening(months).map(c=>({companyId:c.companyId,companyName:c.companyName,periods:c.periods,sources:c.sources,taxable:c.y,pcb:c.pcb,epf:c.epf,zakat:c.zakat,exemptionUsed:Object.entries(c.exemptionUsed).map(([code,amount])=>({code,used:amount}))})),
+   limits:[...used].sort(([a],[b])=>a.localeCompare(b)).map(([code,amount])=>{const cap=capOf(code);return {code,cap,used:amount,remaining:cap===null?null:round(Math.max(0,cap-amount))};}),
+   missing:months.filter(month=>month.unusable).map(month=>({companyName:month.companyName,period:month.period}))});
+ }
+ return out;
 }
 export async function saveTaxBasisPreviewTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,preview:TaxBasisPreview){
  await permission(tx,ctx,selection.companyId,true);

@@ -10291,7 +10291,18 @@
       "worksheetCustomRate": "Custom tax rate applied",
       "worksheetCustomAmount": "Fixed monthly amount set by HR",
       "worksheetCustomRateNote": "HR set a custom tax rate for this employee, applied to this month’s remuneration the way the Non-Resident rate is. LHDN publishes no calculation worksheet for it, so the lines above are the whole calculation.",
-      "worksheetCustomFixedNote": "HR set a fixed monthly PCB for this employee. Nothing was calculated: the amount above is the deduction, so there is no LHDN worksheet to set beside it."
+      "worksheetCustomFixedNote": "HR set a fixed monthly PCB for this employee. Nothing was calculated: the amount above is the deduction, so there is no LHDN worksheet to set beside it.",
+      "worksheetGroupHeading": "Previous group employer",
+      "worksheetGroupNote": "Earlier months of this tax year at other companies in the group, counted as previous-employer income the way a Form TP3 is. They are already included in the combined lines below.",
+      "worksheetGroupCompany": "Company and months",
+      "worksheetGroupSourceImported": "Months from Import Payroll History",
+      "worksheetGroupSourceProcessed": "Months processed in payroll",
+      "worksheetGroupSourceMixed": "Months imported and processed",
+      "worksheetGroupY": "Taxable pay at that company — part of Y",
+      "worksheetGroupEpf": "EPF at that company — part of K",
+      "worksheetGroupPcb": "PCB deducted at that company — part of X",
+      "worksheetGroupTp3": "Form TP3",
+      "worksheetGroupTp3Replaced": "Replaced by the group history for this company, not added"
     },
     "multiCycleWorksheet": {
       "title": "Multi-Cycle Statutory Worksheet",
@@ -36201,7 +36212,26 @@
     "employeeGroup": "Employee group {number}",
     "companyProgressFor": "Progress for {company}",
     "submittedBy": "Submitted by",
-    "submittedAt": "Submitted"
+    "submittedAt": "Submitted",
+    "groupOpeningTitle": "Year to date from other group companies",
+    "groupOpeningHelp": "Earlier months of this assessment year paid to this employee by other companies in the group. Payroll now counts them in the monthly PCB as previous-employer income, the way a Form TP3 is used. Totals only; the recalculation below still corrects this company's own months.",
+    "groupOpeningMissing": "These months cannot be used yet, so the employee is held for income tax review: {months}.",
+    "groupOpeningTp3Replaced": "The employee's Form TP3 lists a group company. Its months come from the group's payroll history instead, so they are not counted twice.",
+    "groupOpeningTp3Conflict": "The employee's Form TP3 lists a group company together with another employer. The amounts cannot be separated, so the employee is held for income tax review until the TP3 lists the other employer on its own.",
+    "groupOpeningCompany": "Company",
+    "groupOpeningMonths": "Months",
+    "groupOpeningSource": "Source",
+    "groupOpeningSources": {
+      "imported": "Imported",
+      "processed": "Processed",
+      "mixed": "Imported and processed"
+    },
+    "groupOpeningTaxable": "Taxable pay",
+    "groupOpeningPcb": "PCB deducted",
+    "groupOpeningEpf": "EPF",
+    "groupOpeningLimits": "Exemption limits used at other group companies",
+    "groupOpeningUsed": "Used so far",
+    "groupOpeningNoLimit": "No limit"
   },
   "entra": {
     "title": "Microsoft Entra ID",

@@ -10291,7 +10291,18 @@
       "worksheetCustomRate": "Thuế suất tùy chỉnh đã áp dụng",
       "worksheetCustomAmount": "Số tiền cố định hằng tháng do HR đặt",
       "worksheetCustomRateNote": "HR đã đặt thuế suất tùy chỉnh cho nhân viên này, áp dụng cho thù lao tháng này giống như thuế suất Người không cư trú. LHDN không công bố bảng tính cho trường hợp này, nên các dòng trên là toàn bộ phép tính.",
-      "worksheetCustomFixedNote": "HR đã đặt PCB hằng tháng cố định cho nhân viên này. Không có phép tính nào: số tiền trên chính là khoản khấu trừ, nên không có bảng tính LHDN để đối chiếu."
+      "worksheetCustomFixedNote": "HR đã đặt PCB hằng tháng cố định cho nhân viên này. Không có phép tính nào: số tiền trên chính là khoản khấu trừ, nên không có bảng tính LHDN để đối chiếu.",
+      "worksheetGroupHeading": "Chủ lao động trước trong tập đoàn",
+      "worksheetGroupNote": "Các tháng trước của năm thuế này tại các công ty khác trong tập đoàn, được tính là thu nhập từ chủ lao động trước như Mẫu TP3. Chúng đã nằm trong các dòng tổng hợp bên dưới.",
+      "worksheetGroupCompany": "Công ty và tháng",
+      "worksheetGroupSourceImported": "Tháng từ Nhập lịch sử lương",
+      "worksheetGroupSourceProcessed": "Tháng đã xử lý trong bảng lương",
+      "worksheetGroupSourceMixed": "Tháng nhập và đã xử lý",
+      "worksheetGroupY": "Lương chịu thuế tại công ty đó — một phần của Y",
+      "worksheetGroupEpf": "EPF tại công ty đó — một phần của K",
+      "worksheetGroupPcb": "PCB đã khấu trừ tại công ty đó — một phần của X",
+      "worksheetGroupTp3": "Mẫu TP3",
+      "worksheetGroupTp3Replaced": "Được thay bằng lịch sử tập đoàn cho công ty này, không cộng thêm"
     },
     "multiCycleWorksheet": {
       "title": "Bảng tính pháp định cho nhiều kỳ trả lương",
@@ -36201,7 +36212,26 @@
     "employeeGroup": "Nhóm nhân viên {number}",
     "companyProgressFor": "Tiến độ của {company}",
     "submittedBy": "Người gửi",
-    "submittedAt": "Thời gian gửi"
+    "submittedAt": "Thời gian gửi",
+    "groupOpeningTitle": "Lũy kế từ đầu năm tại các công ty khác trong tập đoàn",
+    "groupOpeningHelp": "Các tháng trước của năm tính thuế này mà các công ty khác trong tập đoàn đã trả cho nhân viên này. Bảng lương nay tính chúng vào PCB hằng tháng như thu nhập từ chủ lao động trước, giống cách dùng Mẫu TP3. Chỉ hiển thị tổng; phần tính lại bên dưới vẫn chỉ điều chỉnh các tháng của công ty này.",
+    "groupOpeningMissing": "Chưa thể dùng các tháng này nên nhân viên bị tạm giữ để xem xét thuế thu nhập: {months}.",
+    "groupOpeningTp3Replaced": "Mẫu TP3 của nhân viên liệt kê một công ty trong tập đoàn. Các tháng của công ty đó được lấy từ lịch sử lương của tập đoàn thay thế, nên không bị tính hai lần.",
+    "groupOpeningTp3Conflict": "Mẫu TP3 của nhân viên liệt kê một công ty trong tập đoàn cùng với một chủ lao động khác. Không thể tách số tiền, nên nhân viên bị tạm giữ để xem xét thuế thu nhập cho đến khi TP3 liệt kê riêng chủ lao động kia.",
+    "groupOpeningCompany": "Công ty",
+    "groupOpeningMonths": "Tháng",
+    "groupOpeningSource": "Nguồn",
+    "groupOpeningSources": {
+      "imported": "Nhập",
+      "processed": "Đã xử lý",
+      "mixed": "Nhập và đã xử lý"
+    },
+    "groupOpeningTaxable": "Lương chịu thuế",
+    "groupOpeningPcb": "PCB đã khấu trừ",
+    "groupOpeningEpf": "EPF",
+    "groupOpeningLimits": "Hạn mức miễn trừ đã dùng tại các công ty khác trong tập đoàn",
+    "groupOpeningUsed": "Đã dùng đến nay",
+    "groupOpeningNoLimit": "Không giới hạn"
   },
   "entra": {
     "title": "Microsoft Entra ID",
