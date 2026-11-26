@@ -242,8 +242,12 @@ describe('5084d02e Form TP3 import: file limits and scope', () => {
     await owner.db.update(schema.roleAssignment).set({ companyId: betaId }).where(eq(schema.roleAssignment.appUserId, user));
     const betaAdmin = { ...a, userId: user, personId: p.id, grants: [{ role: 'hr_admin', companyId: betaId }] } as SessionContext;
     await expect(queueTp3ImportCheck(betaAdmin, { csv, fileName: 'tp3.xlsx', operationKey: randomUUID(), companyIds: [b.companyId] })).rejects.toThrow('importAccessDenied');
-    // Within Beta, an ACME Employee ID is simply not found.
-    const checked = await check(csv, 'tp3-beta.xlsx', betaAdmin, [betaId]);
+    // "All companies" for a Beta administrator who is also employed elsewhere: the import belongs to Beta only, and
+    // within Beta an ACME Employee ID is simply not found.
+    const id = await queueTp3ImportCheck(betaAdmin, { csv, fileName: 'tp3-beta.xlsx', operationKey: randomUUID(), companyIds: [b.companyId, betaId] });
+    const [job] = await owner.client<{ company_ids: string[] }[]>`select company_ids from bulk_job where id=${id}::uuid`;
+    expect(job.company_ids).toEqual([betaId]);
+    const checked = await settle(betaAdmin, id, [betaId]);
     expect(checked.rows[0]).toMatchObject({ reason: 'employeeNotFound' });
   });
 

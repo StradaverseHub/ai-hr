@@ -55,11 +55,15 @@ type Budgeted='checkTp3ImportAction'|'readTp3ImportAction'|'confirmTp3ImportActi
 /** Recorded budgets: the largest (transactions, statements) measured over every persona and scope below. Budgets only
  * go down; raising one needs an ADR note (docs/adr/0181-database-read-cost-architecture.md). */
 const BUDGETS:Record<Budgeted,{transactions:number;statements:number}>={
- checkTp3ImportAction:{transactions:3,statements:16},
- readTp3ImportAction:{transactions:3,statements:12},
- confirmTp3ImportAction:{transactions:3,statements:17},
- logPage:{transactions:3,statements:12},
- importPage:{transactions:3,statements:12},
+ // Measured on the CI runner (alpha-focused-checks run 45834812797), the same for the group administrator at "All
+ // companies" and at one company and for the 71-grant administrator. Each is the session/scope read plus one tenant
+ // transaction: the check queues the file (scope, readiness, admission, job read), the follow is one log read (and the
+ // worker's heartbeat while queued), the confirm adds the check job's read, and each page is one log read.
+ checkTp3ImportAction:{transactions:2,statements:8},
+ readTp3ImportAction:{transactions:2,statements:6},
+ confirmTp3ImportAction:{transactions:2,statements:9},
+ logPage:{transactions:2,statements:5},
+ importPage:{transactions:2,statements:5},
 };
 type Persona='group'|'multi'|'single';
 type Scope='all'|'one';
@@ -114,7 +118,7 @@ describe('5084d02e: the Form TP3 import actions and pages at group scale',()=>{
   // One unmeasured check first: process-level caches (tenant facts the first transaction learns) fill once.
   use('group','all');
   const warm=await checkTp3ImportAction({csv:csv(),fileName:'warm.xlsx',operationKey:randomUUID()});
-  expect(warm.ok).toBe(true);
+  expect(warm).toMatchObject({ok:true});
   if(warm.ok)await settle(personaCtx('group'),warm.id,scopeOf('group','all'));
   const checks:Record<string,Awaited<ReturnType<typeof measure>>>={},reads:Record<string,Awaited<ReturnType<typeof measure>>>={},
    confirms:Record<string,Awaited<ReturnType<typeof measure>>>={},logs:Record<string,Awaited<ReturnType<typeof measure>>>={},pages:Record<string,Awaited<ReturnType<typeof measure>>>={};
@@ -122,7 +126,7 @@ describe('5084d02e: the Form TP3 import actions and pages at group scale',()=>{
    const k=`${persona}|${scope}`,scopeIds=scopeOf(persona,scope),file=`tp3-${persona}-${scope}.xlsx`,text=csv();
    checks[k]=await measure('checkTp3ImportAction',persona,scope,()=>checkTp3ImportAction({csv:text,fileName:file,operationKey:randomUUID()}));
    const queued=checks[k].result as Awaited<ReturnType<typeof checkTp3ImportAction>>;
-   expect(queued.ok,checks[k].key).toBe(true);
+   expect(queued,checks[k].key).toMatchObject({ok:true});
    if(!queued.ok)return;
    reads[k]=await measure('readTp3ImportAction',persona,scope,()=>readTp3ImportAction(queued.id));
    expect(reads[k].result,reads[k].key).toMatchObject({ok:true,job:{id:queued.id,mode:'check'}});
@@ -136,7 +140,7 @@ describe('5084d02e: the Form TP3 import actions and pages at group scale',()=>{
    if(checked.ready===0)continue;
    confirms[k]=await measure('confirmTp3ImportAction',persona,scope,()=>confirmTp3ImportAction({checkJobId:queued.id,csv:text,fileName:file}));
    const saved=confirms[k].result as Awaited<ReturnType<typeof confirmTp3ImportAction>>;
-   expect(saved.ok,confirms[k].key).toBe(true);
+   expect(saved,confirms[k].key).toMatchObject({ok:true});
    if(!saved.ok)return;
    const done=await settle(personaCtx(persona),saved.id,scopeIds);
    expect(done,k).toMatchObject({state:'completed',mode:'save'});

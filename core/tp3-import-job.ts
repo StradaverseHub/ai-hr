@@ -30,10 +30,10 @@ import { parseCsv } from '../lib/csv';
 import { bulkJobActive, type BulkJobRowError, type BulkJobState, type BulkJobWorkerStatus } from '../lib/bulk-job';
 import {
   TP3_IMPORT_MAX_CSV_BYTES, TP3_IMPORT_MAX_ROWS, readTp3ImportRow, resolveTp3ImportHeader, tp3ImportColumns,
-  type Tp3ImportCatalogue, type Tp3ImportRowInput,
+  type Tp3ImportCatalogue, type Tp3ImportRowInput, type Tp3ImportRowProblem,
 } from '../lib/tp3-import-columns';
 import { BulkJobError, bulkJobId, bulkJobTx, bulkJobWorkerStatusTx, enqueueBulkJobTx, type BulkJobRow } from './bulk-job';
-import { isTransientBulkJobError, type BulkJobHandler } from './bulk-job-worker';
+import { isTransientBulkJobError, type BulkJobHandler, type BulkJobStepOutcome } from './bulk-job-worker';
 import { withPayrollTenant } from './module-gate';
 import { lockPayrollHistoryReadTx } from './payroll-history-lock';
 import {
@@ -86,6 +86,20 @@ async function assertScopeTx(tx: Tx, ctx: SessionContext, ids: readonly string[]
     from unnest(${uuidArrayParam(ids)}) as company_scope(id)`);
   if (!scope?.allowed) throw new BulkJobError('importAccessDenied', 403);
 }
+/**
+ * The companies of the caller's selected scope that they administer, in one statement. The switcher's scope also
+ * holds the companies a company-scoped administrator is only EMPLOYED in (lib/scope.ts allowedCompanies); an import
+ * belongs to the administered ones, and is refused only when there is none.
+ */
+async function administeredTx(tx: Tx, ctx: SessionContext, ids: readonly string[]) {
+  assertActor(ctx, ids);
+  const rows = await tx.execute<{ id: string }>(sql`
+    select company_scope.id::text as id from unnest(${uuidArrayParam(ids)}) with ordinality as company_scope(id, n)
+    where app.is_admin_for(company_scope.id) order by company_scope.n`);
+  const administered = rows.map((row) => row.id);
+  if (!administered.length) throw new BulkJobError('importAccessDenied', 403);
+  return administered;
+}
 function fileOf(p: { csv: string; fileName: string }) {
   const content = Buffer.from(p.csv, 'utf8');
   if (!content.length || content.length > TP3_IMPORT_MAX_CSV_BYTES) throw new BulkJobError('fileTooLarge');
@@ -95,10 +109,9 @@ function fileOf(p: { csv: string; fileName: string }) {
 
 /** Upload: store the file on a CHECK job. Idempotent per operation key; a different file under the same key is refused. */
 export async function queueTp3ImportCheck(ctx: SessionContext, p: { csv: string; fileName: string; operationKey: string; companyIds: string[] }) {
-  const companyIds = [...new Set(p.companyIds)];
   const content = fileOf(p);
   return withPayrollTenant(ctx, async (tx) => {
-    await assertScopeTx(tx, ctx, companyIds);
+    const companyIds = await administeredTx(tx, ctx, [...new Set(p.companyIds)]);
     const { row, existing } = await enqueueBulkJobTx(tx, ctx, {
       kind: TP3_IMPORT_KIND, operationKey: p.operationKey, companyIds, source: { name: p.fileName, content }, input: { mode: 'check' },
     });
@@ -109,11 +122,10 @@ export async function queueTp3ImportCheck(ctx: SessionContext, p: { csv: string;
 
 /** Confirm: start (or return) the SAVE job for the caller's own completed check of the same file. */
 export async function confirmTp3Import(ctx: SessionContext, p: { checkJobId: string; csv: string; fileName: string; companyIds: string[] }) {
-  const companyIds = [...new Set(p.companyIds)];
   const content = fileOf(p);
   const checkJobId = bulkJobId(p.checkJobId);
   return withPayrollTenant(ctx, async (tx) => {
-    await assertScopeTx(tx, ctx, companyIds);
+    const companyIds = await administeredTx(tx, ctx, [...new Set(p.companyIds)]);
     // Row security returns only the caller's own job.
     const check = await bulkJobTx(tx, checkJobId, { kind: TP3_IMPORT_KIND }).catch((error) => {
       if (error instanceof BulkJobError) throw new BulkJobError('checkUnavailable', 404);
@@ -171,7 +183,9 @@ export async function analyseTp3Import(ctx: SessionContext, text: string, compan
     byCode.set(key, persons);
   }
 
-  const resolved = reads.map((r) => {
+  type Resolved = { base: Tp3ImportPlanRow; problem: Tp3ImportRowProblem }
+    | { base: Tp3ImportPlanRow; personId: string; hasStatutory: boolean; read: (typeof reads)[number] };
+  const resolved = reads.map((r): Resolved => {
     const base: Tp3ImportPlanRow = { rowNum: r.rowNum, employeeId: r.employeeId.slice(0, 64), ...(r.year != null ? { year: r.year } : {}) };
     if (!r.employeeId) return { base, problem: { reason: 'employeeIdRequired', field: 'employeeId' } };
     const persons = byCode.get(r.employeeId.toUpperCase());
@@ -182,16 +196,17 @@ export async function analyseTp3Import(ctx: SessionContext, text: string, compan
     return { base, personId, hasStatutory, read: r };
   });
   // The same person and year twice in one file: every such row is a problem, whichever row is right.
-  const rowsOf = new Map<string, number[]>();
+  const rowsByKey = new Map<string, number[]>();
   for (const r of resolved) if ('personId' in r) {
     const key = `${r.personId}|${r.base.year}`;
-    rowsOf.set(key, [...(rowsOf.get(key) ?? []), r.base.rowNum]);
+    const list = rowsByKey.get(key);
+    if (list) list.push(r.base.rowNum); else rowsByKey.set(key, [r.base.rowNum]);
   }
   const rows: Tp3ImportPlanRow[] = [];
   const ready: Step[] = [];
   for (const r of resolved) {
     if (!('personId' in r)) { rows.push({ ...r.base, ...r.problem }); continue; }
-    const twins = rowsOf.get(`${r.personId}|${r.base.year}`)!;
+    const twins = rowsByKey.get(`${r.personId}|${r.base.year}`)!;
     if (twins.length > 1) { rows.push({ ...r.base, reason: 'duplicateInFile', detail: { rows: twins.join(', ') } }); continue; }
     if (r.read.problem || !r.read.input) { rows.push({ ...r.base, ...(r.read.problem ?? { reason: 'unexpected' }) }); continue; }
     try {
@@ -358,7 +373,7 @@ export const tp3ImportJobHandler: BulkJobHandler<Step> = {
     await lockPayrollHistoryReadTx(tx, ctx.tenantId);
     await assertScopeTx(tx, ctx, job.company_ids);
   },
-  async applyStepTx(tx, ctx, job, { payload }) {
+  async applyStepTx(tx, ctx, job, { payload }): Promise<BulkJobStepOutcome> {
     // The employee is still in the import's companies and visible to the importer (row security).
     const [target] = await tx.execute<{ ok: number }>(sql`
       select 1 as ok from public.employment e
