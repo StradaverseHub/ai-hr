@@ -11,6 +11,7 @@ import {hash,assertNextAncestry,validateNextState} from './next-build-cache-poli
 import {NEXT_APPLICATION_STATE,NEXT_APPLICATION_MEMBERS,NEXT_APPLICATION_SEED,NEXT_APPLICATION_CODE,assertManagedNextInvocation,validateManagedNextOrigin,verifyNextPublisherTree,inspectNextStatePacket} from './next-application-cache-protocol.mjs';
 import {measuredCommand} from './diagnostics/compiler-incremental.mjs';
 import {cacheArtifactCandidates} from './cache-artifact-discovery.mjs';
+import {createMemorySeries} from './build-memory-series.mjs';
 import {assertBuildHeapEnvironment,parseMaxRssKiB,parseMemAvailableKiB,buildMemoryBudget,buildMemoryVerdict,BUILD_RSS_WARN_KIB} from './build-heap.mjs';
 const ROOT=fileURLToPath(new URL('../../',import.meta.url));
 const REPO='StradaverseHub/ai-hr';
@@ -93,7 +94,10 @@ export async function managedApplicationBuild(){
   cacheHit:false,exitCode:1,capacityProfile:e.AIHR_CI_CAPACITY_PROFILE,buildOutputRetainedForOptionalCompilerCache:true,
   memory:{nodeOptions:e.NODE_OPTIONS,heapMb,heapProfile:e.AIHR_CI_BUILD_HEAP_PROFILE??'default-6144',rssBudgetKiB:{warn:BUILD_RSS_WARN_KIB,fail:memoryBudget.rssFailKiB},minMemAvailableBudgetKiB:memoryBudget.minAvailableKiB,availableMemoryVerdict:null,minMemAvailableKiB:null,peakRssKiB:null,verdict:null}};
  let timer,recordIdentity,nextIdentity,stateBytes,envelope,logText,build,context;
+ // Diagnostic-only series (never an acceptance input); written beside comparison.json.
+ const series=createMemorySeries();
  const sample=label=>{
+  try{series.sample(label);}catch{}
   const volumes=[source,temp,homedir()].map(path=>{const s=statfsSync(path);return {path,availableBytes:s.bavail*s.bsize};});
   assert(volumes.every(v=>Number.isSafeInteger(v.availableBytes)&&v.availableBytes>=0),'Actual filesystem sample required');
   report.diskSamples.push({label,at:new Date().toISOString(),volumes});
@@ -168,6 +172,7 @@ export async function managedApplicationBuild(){
   try{assertNextBuildSource(source,e);report.sourceRestored=true;report.controllerRestored=true;}catch(error){report.cleanupError=String(error);report.exitCode=1;}
   if(report.diskSamplingError||report.diskSamples.length===0||Math.min(...report.diskSamples.flatMap(s=>s.volumes.map(v=>v.availableBytes)))<2*1024**3)report.exitCode=1;
   report.endedAt=new Date().toISOString();save(join(out,'comparison.json'),report);
+  try{save(join(out,'memory-series.json'),series.report());}catch{}
  }
  assert(report.exitCode===0,'Canonical build or owned cleanup failed');
  if(admission.publish&&stateBytes){

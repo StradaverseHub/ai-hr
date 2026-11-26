@@ -450,6 +450,20 @@ jobs:
             ${{ runner.temp }}/normal-next-application-cache/application-typegen.log
           if-no-files-found: warn
           retention-days: 3
+      # Diagnostic memory series only on build-only dispatches, which never emit a gate PASS; a gate run's
+      # artifact inventory stays exact for the release verifier.
+      - name: Preserve build-only memory series
+        if: ${{ always() && inputs.build_only }}
+        continue-on-error: true
+        timeout-minutes: 1
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: build-only-memory-series
+          path: |
+            ${{ runner.temp }}/normal-next-application-cache/memory-series.json
+            ${{ runner.temp }}/normal-next-application-cache/comparison.json
+          if-no-files-found: warn
+          retention-days: 14
       - name: Bound optional compiler cache upload
         id: next-cache-budget
         if: ${{ success() && steps.next-cache-context.outcome == 'success' && steps.next-cache.outputs.cache-hit != 'true' }}
