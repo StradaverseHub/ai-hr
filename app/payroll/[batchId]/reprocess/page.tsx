@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility, reprocessRequiredPage, reprocessSelectAll, reprocessStaleSelection, REPROCESS_SELECT_ALL_CEILING } from '@/core/payroll';
+import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility, reprocessHeldSelection, reprocessSelectAll, reprocessStaleSelection, REPROCESS_SELECT_ALL_CEILING } from '@/core/payroll';
 import { reprocessRequiredWithSkipPage, listRecomputeDisclosure, listTaxHeldEmployees } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -252,10 +252,7 @@ export default async function ReprocessPage({
   // added (016276b7), so they are narrowed to those.
   let focusRows: ReprocessStaleRow[] | undefined;
   if (sp.held === '1') {
-    const all = await reprocessRequiredPage(s, { batchId, page: parsePageQuery({ size: 'all' }), tab: 'skipped', ceiling: REPROCESS_SELECT_ALL_CEILING });
-    focusRows = all.rows.filter((r) => r.taxSkipped && r.owed && (r.kind === 'recalculated' || r.blockers.length === 0)
-      && (multiCycle || taxHeldIds.includes(r.employmentId)))
-      .map((r) => ({ employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }));
+    focusRows = await reprocessHeldSelection(s, { batchId, onlyIds: multiCycle ? undefined : taxHeldIds });
   }
   const focus = focusRows ? focusRows.map((r) => r.employmentId) : focusIds;
 
