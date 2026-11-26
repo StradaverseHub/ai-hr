@@ -54,7 +54,8 @@ const BUDGETS:Record<Action,{transactions:number;statements:number}>={
  readPayrollOutstandingRefreshAction:{transactions:1,statements:2},
  // The new-version path; the end-date-only path measured 3 transactions and 15 statements.
  saveFixedTransactionDialogAction:{transactions:3,statements:27},
- removeFixedTransactionDialogAction:{transactions:3,statements:21},
+ // 124a979e: 21 -> 22, the pending-mark INSERT ... SELECT every recalculation mark makes (ADR 0181 note, run 45770342651).
+ removeFixedTransactionDialogAction:{transactions:3,statements:22},
 };
 
 type Persona='group'|'multi'|'single';

@@ -136,6 +136,7 @@ import {
   payrollPolicy,
   payrollReprocessJob,
   payrollRunOutstanding,
+  payrollRecalcPending,
   payrollStatusHistory,
   payrollStepUpChallenge,
   payslip,
@@ -1023,7 +1024,9 @@ export type RecalcChangeCategory = (typeof RECALC_CHANGE_CATEGORIES)[number];
 export async function markRunsAffectedByEmploymentChangeTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory; from: string | null; until?:string|null },
+  // 124a979e — one save can change several kinds of input at once (a full statutory save moving the EPF election and
+  // the Zakat election together): pass every category, and the one read and one lock set name all of them.
+  p: { employmentIds?: string[]; personId?: string; category: RecalcChangeCategory | readonly RecalcChangeCategory[]; from: string | null; until?:string|null },
 ): Promise<{ batchId: string; employmentIds: string[] }[]> {
   const ids = asIdArray(p.employmentIds ?? []).filter(id=>!movementPayrollInvalidationDeferredTx(tx,id));
   if (p.personId) {
@@ -1050,28 +1053,135 @@ export async function markRunsAffectedByEmploymentChangeTx(
   const byBatch = new Map<string, Set<string>>();
   for (const r of rows) byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
   const marked = [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
-  await markBatchesNeedRecalcTx(tx, ctx, marked.map((m) => ({ ...m, category: p.category })));
+  const categories: readonly RecalcChangeCategory[] = typeof p.category === 'string' ? [p.category] : [...new Set(p.category)];
+  await markBatchesNeedRecalcTx(tx, ctx, marked.flatMap((m) => categories.map((category) => ({ ...m, category }))));
+  const untilPeriod = lastPeriodBefore(p.until ?? null);
+  await recordRecalcPendingTx(tx, ids.map((e) => ({ e, f: fromPeriod, u: untilPeriod, c: [...categories] })));
   return marked;
 }
 
+/** A pay month window: from and until are YYYY-MM (until INCLUSIVE), null = unbounded; `c` the change categories. */
+type RecalcWindow = { e: string; f: string | null; u: string | null; c: RecalcChangeCategory[] };
+/** The last pay month before an EXCLUSIVE until date (the month holding until - 1 day). */
+function lastPeriodBefore(until: string | null): string | null {
+  if (!until || !/^\d{4}-\d{2}-\d{2}$/.test(until)) return null;
+  const [y, m, d] = until.split('-').map(Number);
+  if (d > 1) return until.slice(0, 7);
+  return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
+}
+
 /**
- * A payroll input changed for these employments while a run of theirs is being processed by the background job
- * (fixed items and payroll policy, which do not otherwise mark a run). Marks only an employee that run has already
- * paid; the caller holds the employee's payroll inputs key, so no chunk can write a payslip for them meanwhile.
+ * 124a979e (approved plan item 9) — A SAVE BY SOMEBODY WHO CANNOT ADMINISTER PAYROLL FOR THE EMPLOYEE'S COMPANY.
+ *
+ * The mark writes payroll_batch, which only a payroll administrator of the run's company may write, and the payslip read
+ * above finds nothing for anyone else: an HR-side or self-service save of a payroll input would otherwise flag nothing.
+ * So the save records the employment, the months it reaches and the categories in payroll_recalc_pending (migration
+ * 7560), in its own transaction, for each employment whose CURRENT company it cannot administer payroll for; the next
+ * Payroll Process list refresh, run under a payroll administrator of that company, marks the runs and deletes the rows
+ * (consumeRecalcPendingTx). One INSERT ... SELECT for the whole save, whatever the number of employments: for a payroll
+ * administrator it inserts nothing. It never widens app.can_admin_payroll_for and reads no payroll row. The SELECT keeps
+ * only what the table's own insert rule admits (this tenant, an employment the saver can see, the saver as requester),
+ * so it can never fail the save.
  */
-export async function markProcessingRunsForEmploymentsTx(
+async function recordRecalcPendingTx(tx: Tx, windows: readonly RecalcWindow[]): Promise<void> {
+  if (windows.length === 0) return;
+  await tx.execute(sql`insert into ${payrollRecalcPending}(tenant_id,employment_id,from_period,until_period,categories,requested_by)
+    select e.tenant_id, e.id, w.f, w.u, array(select jsonb_array_elements_text(w.c)), app.current_user_id()
+    from jsonb_to_recordset(${JSON.stringify(windows)}::jsonb) w(e uuid, f text, u text, c jsonb)
+    join ${employment} e on e.id = w.e and e.tenant_id = app.current_tenant_id()
+    where not coalesce(app.can_admin_payroll_for(e.company_id), false) and jsonb_array_length(w.c) > 0`);
+}
+
+/** The payslip read and the mark for windows with their own categories (the windows variant and the consumer). */
+async function markRecalcWindowsTx(tx: Tx, ctx: SessionContext, windows: readonly RecalcWindow[]): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  const wanted = windows.filter((w) => typeof w.e === 'string' && w.e.length > 0 && w.c.length > 0 && !movementPayrollInvalidationDeferredTx(tx, w.e));
+  if (wanted.length === 0) return [];
+  const rows = await tx.execute<{ i: number; batchId: string; employmentId: string }>(sql`
+    select distinct w.i, s.batch_id::text as "batchId", s.employment_id::text as "employmentId"
+    from jsonb_to_recordset(${JSON.stringify(wanted.map((w, i) => ({ i, e: w.e, f: w.f, u: w.u })))}::jsonb) w(i int, e uuid, f text, u text)
+    join ${nativePayrollPayslip} s on s.employment_id = w.e
+    join ${payrollBatch} b on b.id = s.batch_id
+    where b.status in ('processed','processing')
+      and (w.f is null or b.pay_period >= w.f)
+      and (w.u is null or b.pay_period <= w.u)
+      and app.can_admin_payroll_for(b.company_id)`);
+  // Per run and category, the employments to add; every run once in `marked`.
+  const byTarget = new Map<string, Set<string>>();
+  const byBatch = new Map<string, Set<string>>();
+  for (const r of rows) {
+    byBatch.set(r.batchId, (byBatch.get(r.batchId) ?? new Set<string>()).add(r.employmentId));
+    for (const c of wanted[Number(r.i)].c) {
+      const key = `${r.batchId}|${c}`;
+      byTarget.set(key, (byTarget.get(key) ?? new Set<string>()).add(r.employmentId));
+    }
+  }
+  const targets = [...byTarget].sort(([a], [b]) => a.localeCompare(b)).map(([key, set]) => {
+    const [batchId, category] = key.split('|');
+    return { batchId, employmentIds: [...set].sort(), category: category as RecalcChangeCategory };
+  });
+  await markBatchesNeedRecalcTx(tx, ctx, targets);
+  await recordRecalcPendingTx(tx, wanted);
+  return [...byBatch].sort(([a], [b]) => a.localeCompare(b)).map(([batchId, set]) => ({ batchId, employmentIds: [...set].sort() }));
+}
+
+/**
+ * 124a979e — markRunsAffectedByEmploymentChangeTx for MANY employments at once, each with its own window, in one
+ * payslip read and one markBatchesNeedRecalcTx (ADR 0181 write side). The Fixed Transaction import job calls it once
+ * per chunk with every row the chunk wrote, instead of marking once per row. Same rules as the single helper: only
+ * runs holding a payslip for the employment, processed or processing, pay_period >= month(from) and, with `until`
+ * (an EXCLUSIVE date), <= month(until - 1 day); only runs this session administers payroll for (the rest are recorded
+ * as pending, see recordRecalcPendingTx); a movement-deferred employment is skipped. `from: null` is every such run.
+ */
+export async function markRunsAffectedByEmploymentWindowsTx(
   tx: Tx,
   ctx: SessionContext,
-  p: { employmentIds: string[]; category?: RecalcChangeCategory },
-): Promise<void> {
-  const ids = asIdArray(p.employmentIds);
-  if (ids.length === 0) return;
-  const rows = await tx
-    .selectDistinct({ batchId: nativePayrollPayslip.batchId })
-    .from(nativePayrollPayslip)
-    .innerJoin(payrollBatch, eq(payrollBatch.id, nativePayrollPayslip.batchId))
-    .where(and(inArray(nativePayrollPayslip.employmentId, ids), eq(payrollBatch.status, 'processing'), sql`app.can_admin_payroll_for(${payrollBatch.companyId})`));
-  await markBatchesNeedRecalcTx(tx, ctx, [...rows].sort((a, b) => a.batchId.localeCompare(b.batchId)).map(({ batchId }) => ({ batchId, employmentIds: ids, category: p.category })));
+  p: { category: RecalcChangeCategory; windows: readonly { employmentId: string; from: string | null; until?: string | null }[] },
+): Promise<{ batchId: string; employmentIds: string[] }[]> {
+  const month = (d: string | null | undefined) => (d && /^\d{4}-\d{2}/.test(d) ? d.slice(0, 7) : null);
+  const wanted = p.windows
+    .filter((w) => typeof w.employmentId === 'string' && w.employmentId.length > 0 && !movementPayrollInvalidationDeferredTx(tx, w.employmentId));
+  if (wanted.length === 0) return [];
+  if (wanted.length === 1) {
+    const [w] = wanted;
+    return markRunsAffectedByEmploymentChangeTx(tx, ctx, { employmentIds: [w.employmentId], category: p.category, from: w.from, until: w.until ?? null });
+  }
+  return markRecalcWindowsTx(tx, ctx, wanted.map((w) => ({ e: w.employmentId, f: month(w.from), u: lastPeriodBefore(w.until ?? null), c: [p.category] })));
+}
+
+/** Pending rows one refresh step consumes at most (the rest wait for the next refresh). */
+export const RECALC_PENDING_CONSUME_LIMIT = 500;
+
+/**
+ * 124a979e (plan item 9) — THE OTHER HALF: a payroll administrator's Payroll Process list refresh (the refresh job's
+ * first step, core/payroll-run-outstanding.ts) applies the pending rows of the employees whose current company they
+ * administer payroll for: one DELETE ... RETURNING (row security names exactly those rows, up to the limit, oldest
+ * first; a row a concurrent refresh deleted first is skipped by the DELETE's own re-check), then the normal mark for all of them at once
+ * (markRecalcWindowsTx: one payslip read, one lock set). A closed run is never marked (markBatchNeedsRecalc's status
+ * rule); a row whose months reach no processed run is simply deleted, its change having nothing to flag. Same
+ * transaction, so a failed mark leaves the rows for the next refresh.
+ */
+export async function consumeRecalcPendingTx(tx: Tx, ctx: SessionContext, limit = RECALC_PENDING_CONSUME_LIMIT): Promise<{ consumed: number; marked: { batchId: string; employmentIds: string[] }[] }> {
+  const bound = Math.max(1, Math.min(RECALC_PENDING_CONSUME_LIMIT, Math.trunc(limit)));
+  const gone = await tx.execute<{ employmentId: string; fromPeriod: string | null; untilPeriod: string | null; categories: string[] }>(sql`
+    with companies as materialized (
+      select c.id from ${company} c where c.tenant_id = app.current_tenant_id() and app.can_admin_payroll_for(c.id)),
+    staff as materialized (
+      select e.id from ${employment} e where e.tenant_id = app.current_tenant_id() and e.company_id = any(array(select id from companies))),
+    picked as (
+      -- Driven from the administered companies' employments (indexed), so a company-scoped administrator's consume
+      -- evaluates the row rule only for their own employees' rows, not for every pending row of the tenant.
+      select p.id from ${payrollRecalcPending} p where p.tenant_id = app.current_tenant_id()
+        and p.employment_id = any(array(select id from staff))
+      order by p.requested_at, p.id limit ${bound})
+    delete from ${payrollRecalcPending} p using picked where p.id = picked.id
+    returning p.employment_id::text as "employmentId", p.from_period as "fromPeriod", p.until_period as "untilPeriod", p.categories`);
+  if (gone.length === 0) return { consumed: 0, marked: [] };
+  const known = new Set<string>(RECALC_CHANGE_CATEGORIES);
+  const windows = gone.map((r) => ({
+    e: r.employmentId, f: r.fromPeriod, u: r.untilPeriod,
+    c: [...new Set((r.categories ?? []).filter((c) => known.has(c)))] as RecalcChangeCategory[],
+  }));
+  return { consumed: gone.length, marked: await markRecalcWindowsTx(tx, ctx, windows) };
 }
 
 /**

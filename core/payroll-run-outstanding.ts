@@ -34,7 +34,7 @@ import {payrollBatch, payrollRunOutstanding} from '../db/schema';
 import {BulkJobError, bulkJobTx, enqueueBulkJobTx} from './bulk-job';
 import type {BulkJobHandler, BulkJobPrepared, BulkJobStep} from './bulk-job-worker';
 import {assertModuleGate} from './module-gate';
-import {forgetRunOutstandingTx, runOutstandingTx} from './payroll';
+import {consumeRecalcPendingTx, forgetRunOutstandingTx, runOutstandingTx} from './payroll';
 
 export const PAYROLL_RUN_OUTSTANDING_KIND = 'payroll_run_outstanding_refresh';
 /** How old a stored answer may be before the list asks for it again, and how long a request is not repeated. */
@@ -141,10 +141,15 @@ export async function readPayrollRunOutstandingRefresh(ctx: SessionContext, jobI
   }
 }
 
-type Step = {batchId: string};
+type Step = {batchId: string} | {pending: true};
 
 /** The refresh job: one step per run, one run per transaction, on the default lane. A run the creator can no longer
- * administer is skipped, not failed; nothing is undone because nothing is staged (each step stores the owner's answer). */
+ * administer is skipped, not failed; nothing is undone because nothing is staged (each step stores the owner's answer).
+ *
+ * 124a979e (plan item 9) — ITS FIRST STEP applies the pending recalculation marks left by saves from people without
+ * payroll administration (consumeRecalcPendingTx, payroll_recalc_pending): under the creator's own authority, so only the
+ * rows of employees whose current company they administer payroll for, marked and deleted in one transaction, before the
+ * runs' answers are worked out. In the job rather than in the list's request, so a list visit pays nothing for it. */
 export const payrollRunOutstandingRefreshJobHandler: BulkJobHandler<Step> = {
   kind: PAYROLL_RUN_OUTSTANDING_KIND,
   mode: 'per-step',
@@ -153,10 +158,15 @@ export const payrollRunOutstandingRefreshJobHandler: BulkJobHandler<Step> = {
   quietNotice: () => true,
   async prepare(_ctx, job): Promise<BulkJobPrepared> {
     const ids = runOutstandingIds((job.input as {batchIds?: unknown} | null)?.batchIds);
-    return {steps: ids.map((batchId) => ({kind: 'run', payload: {batchId}})), plan: {batchIds: ids}};
+    const steps: {kind: string; payload: Step}[] = [{kind: 'pending', payload: {pending: true}}, ...ids.map((batchId) => ({kind: 'run', payload: {batchId}}))];
+    return {steps, plan: {batchIds: ids}};
   },
   async applyStepTx(tx, ctx, _job, step: BulkJobStep<Step>) {
     assertModuleGate(ctx, 'payroll');
+    if ('pending' in step.payload) {
+      const {consumed} = await consumeRecalcPendingTx(tx, ctx);
+      return {counters: {pendingConsumed: consumed}};
+    }
     const outcome = await refreshRunOutstandingTx(tx, ctx, step.payload.batchId);
     return {counters: {[outcome]: 1}};
   },

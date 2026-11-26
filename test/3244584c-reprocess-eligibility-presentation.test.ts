@@ -145,6 +145,8 @@ describe('3244584c exclusion outcomes and run-level stop reasons', () => {
       expect(typeof m[k], k).toBe('string');
       expect(ph(m[k]), k).toEqual(ph(en[k]));
     }
-    expect(Object.keys(m.recalcChangeCategory).sort()).toEqual(['compensation', 'employment_information', 'hire_date', 'statutory', 'termination', 'transfer']);
+    // 124a979e / 038c304b / bc6b5490 add CP38, fixed items, Zakat, tax settings and payroll policy.
+    expect(Object.keys(m.recalcChangeCategory).sort()).toEqual(['compensation', 'cp38', 'employment_information', 'fixed_item', 'hire_date',
+      'payroll_policy', 'statutory', 'tax_profile', 'termination', 'transfer', 'zakat']);
   });
 });

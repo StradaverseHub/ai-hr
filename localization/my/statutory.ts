@@ -337,6 +337,22 @@ async function prepareStatutoryProfileMYTx(tx:Tx,p:StatutoryInput,normalized=nor
         epfEmployeeAmount: employeeStatutoryMy.epfEmployeeAmount,
         epfEmployerAmount: employeeStatutoryMy.epfEmployerAmount,
         epfManualReason: employeeStatutoryMy.epfManualReason,
+        // 124a979e — the Zakat election and the tax inputs this full-row save also overwrites, read so a change to
+        // them marks the processed runs it makes stale (finishStatutoryProfileWriteMYTx). Not on the event.
+        zakatActive: employeeStatutoryMy.zakatActive,
+        zakatState: employeeStatutoryMy.zakatState,
+        zakatMethod: employeeStatutoryMy.zakatMethod,
+        zakatPercent: employeeStatutoryMy.zakatPercent,
+        zakatFixed: employeeStatutoryMy.zakatFixed,
+        zakatEffectiveFrom: employeeStatutoryMy.zakatEffectiveFrom,
+        zakatEffectiveTo: employeeStatutoryMy.zakatEffectiveTo,
+        numChildren: employeeStatutoryMy.numChildren,
+        isResident: employeeStatutoryMy.isResident,
+        tp3Year: employeeStatutoryMy.tp3Year,
+        tp3NetRemuneration: employeeStatutoryMy.tp3NetRemuneration,
+        tp3EpfClaimed: employeeStatutoryMy.tp3EpfClaimed,
+        tp3PcbPaid: employeeStatutoryMy.tp3PcbPaid,
+        tp3ZakatPaid: employeeStatutoryMy.tp3ZakatPaid,
       })
       .from(employeeStatutoryMy)
       .where(eq(employeeStatutoryMy.personId, p.personId))
@@ -469,9 +485,23 @@ async function finishStatutoryProfileWriteMYTx(tx:Tx,ctx:SessionContext,p:Statut
     // 3244584c — a changed EPF election or SOCSO/EIS control changes what a processed run computed. These
     // settings carry no effective date, so every processed run that paid the person is marked. A save that
     // leaves them as they were (an IC or address edit on the same form) marks nothing.
-    if (existing && STATUTORY_RECALC_FIELDS_MY.some((k) => String(existing[k] ?? '') !== String(values[k] ?? ''))) {
-      const { markRunsAffectedByEmploymentChangeTx } = await import('../../packs/payroll/service');
-      await markRunsAffectedByEmploymentChangeTx(tx, ctx, { personId: p.personId, category: 'statutory', from: null });
+    //
+    // 124a979e — the same for the Zakat election (Zakat) and for the tax inputs this full-row save carries (category,
+    // circumstance, children, residency and the TP3 opening balances: Tax settings). None of them has an effective
+    // date the payroll engine reads (the Zakat effective dates are display-only, see StatutoryInput), so every
+    // processed run of the person that is not closed is marked. One read and one lock set for all categories.
+    if (existing) {
+      // `values` also carries the circumstance writeTaxCircumstance assigned onto it (prepareStatutoryProfileMYTx).
+      const before = existing as Record<string, unknown>, after = values as Record<string, unknown>;
+      const moved = (fields: readonly string[]) => fields.some((k) => String(before[k] ?? '') !== String(after[k] ?? ''));
+      const categories: ('statutory' | 'zakat' | 'tax_profile')[] = [];
+      if (moved(STATUTORY_RECALC_FIELDS_MY)) categories.push('statutory');
+      if (moved(ZAKAT_RECALC_FIELDS_MY)) categories.push('zakat');
+      if (moved(TAX_RECALC_FIELDS_MY)) categories.push('tax_profile');
+      if (categories.length) {
+        const { markRunsAffectedByEmploymentChangeTx } = await import('../../packs/payroll/service');
+        await markRunsAffectedByEmploymentChangeTx(tx, ctx, { personId: p.personId, category: categories, from: null });
+      }
     }
     return { id,eventId };
 }
@@ -480,6 +510,12 @@ async function finishStatutoryProfileWriteMYTx(tx:Tx,ctx:SessionContext,p:Statut
 const STATUTORY_RECALC_FIELDS_MY = ['subjectToSocso','socsoCategory','eisCategory','eisEligible','subjectToSkbbk',
   'employerBearsSocso','employerBearsEis','employerBearsSkbbk','employerBearsEpf','epfMode','epfEmployeeRate',
   'epfEmployerRate','epfEmployeeAmount','epfEmployerAmount'] as const;
+/** 124a979e — every Zakat election column (the approved plan: any Zakat column change flags the employee). */
+const ZAKAT_RECALC_FIELDS_MY = ['zakatActive','zakatState','zakatMethod','zakatPercent','zakatFixed',
+  'zakatEffectiveFrom','zakatEffectiveTo'] as const;
+/** 124a979e — the tax inputs of the full-row statutory save that move PCB (the TP3 opening balances included). */
+const TAX_RECALC_FIELDS_MY = ['taxCategory','taxCircumstance','numChildren','isResident','tp3Year','tp3NetRemuneration',
+  'tp3EpfClaimed','tp3PcbPaid','tp3ZakatPaid'] as const;
 
 export async function setStatutoryProfileMY(ctx:SessionContext,p:StatutoryInput,outerTx?:Tx){
   ctx=captureStatutoryContext(ctx);p=structuredClone(p);
@@ -558,6 +594,17 @@ export async function setTp3ProfileMY(ctx: SessionContext, p: Tp3Input,outerTx?:
       .set({ ...values, updatedAt: sql`now()` })
       .where(eq(employeeStatutoryMy.id, existing.id)).returning({ancillaryHash:tp3AncillaryHashMY});
     if(!written||written.ancillaryHash!==existing.ancillaryHash)throw new Error('TP3 ancillary source changed');
+    // 124a979e — the TP3 opening balances seed PCB for their assessment year: when they moved, mark the person's
+    // processed runs (not closed) from January of the earlier of the old and new tp3 year to the end of the later.
+    const moved = (['tp3Year','tp3NetRemuneration','tp3EpfClaimed','tp3PcbPaid'] as const)
+      .some((k) => String(existing[k] ?? '') !== String(values[k] ?? ''));
+    const years = [existing.tp3Year, values.tp3Year].filter((y): y is number => Number.isInteger(y));
+    if (moved) {
+      const { markRunsAffectedByEmploymentChangeTx } = await import('../../packs/payroll/service');
+      await markRunsAffectedByEmploymentChangeTx(tx, ctx, years.length
+        ? { personId: p.personId, category: 'tax_profile', from: `${Math.min(...years)}-01-01`, until: `${Math.max(...years) + 1}-01-01` }
+        : { personId: p.personId, category: 'tax_profile', from: null });
+    }
     const eventId=await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory',
@@ -1314,6 +1361,17 @@ export type TaxInput = {
   provenance?: TaxWriteProvenance;
 };
 
+/** Key-order-independent JSON (jsonb returns keys in its own order), null for undefined. */
+function stableJsonMY(v: unknown): string {
+  const norm = (x: unknown): unknown => Array.isArray(x) ? x.map(norm)
+    : x && typeof x === 'object' ? Object.fromEntries(Object.keys(x as object).sort().map((k) => [k, norm((x as Record<string, unknown>)[k])]))
+    : x ?? null;
+  return JSON.stringify(norm(v));
+}
+/** 124a979e — the Identification & Tax card's columns the PCB calculation reads (not the reference number). */
+const TAX_PROFILE_RECALC_FIELDS_MY = ['taxCategory','taxCircumstance','numChildren','childReliefMode','taxResidency',
+  'isResident','employerBearsTax','disabledIndividual','disabledSpouse','childReliefTable'] as const;
+
 /** R46 47146ea3 — who/what moved a tax figure. See TaxInput.provenance. */
 export type TaxWriteProvenance = 'auto_child_relief';
 
@@ -1397,6 +1455,15 @@ export async function setTaxProfileMY(ctx: SessionContext, p: TaxInput,
       .update(employeeStatutoryMy)
       .set({ ...persisted, updatedAt: sql`now()` })
       .where(eq(employeeStatutoryMy.id, existing.id));
+    // 124a979e — a changed tax category, circumstance, child relief, residency, employer-bears-tax or disability
+    // relief moves PCB on every processed run that paid the person. None of them carries an effective date, so every
+    // processed run of theirs that is not closed is marked (the tax reference number alone moves no money). The
+    // employer-scoped scheme marks its own employment in saveTaxSelectionMYTx.
+    const before = existing as Record<string, unknown>, after = persisted as Record<string, unknown>;
+    if (TAX_PROFILE_RECALC_FIELDS_MY.some((k) => stableJsonMY(before[k]) !== stableJsonMY(after[k]))) {
+      const { markRunsAffectedByEmploymentChangeTx } = await import('../../packs/payroll/service');
+      await markRunsAffectedByEmploymentChangeTx(tx, ctx, { personId: p.personId, category: 'tax_profile', from: null });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'employee-statutory',

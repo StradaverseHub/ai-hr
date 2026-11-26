@@ -284,6 +284,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10890,version:'7',when:1795495007490,tag:'7490_payroll_read_history_filter',breakpoints:true},
  {idx:10900,version:'7',when:1795495007500,tag:'7500_payroll_read_history_summary',breakpoints:true},
  {idx:10940,version:'7',when:1795495007540,tag:'7540_employee_cp38_history_last_month',breakpoints:true},
+ {idx:10960,version:'7',when:1795495007560,tag:'7560_payroll_recalc_pending',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -2640,6 +2641,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'payroll_run_outstanding':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arwd/OWNER}'},
    // 7540 (bc6b5490): the append-only CP38 correction history (no UPDATE or DELETE for the application).
    'employee_cp38_revision':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
+   // 7560 (124a979e): pending recalculation marks from saves by people without payroll administration; append and consume.
+   'payroll_recalc_pending':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ard/OWNER}'},
   };
   const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
@@ -2795,6 +2798,10 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {table:'payroll_run_outstanding',name:'payroll_run_outstanding_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=payroll_run_outstanding.batch_id AND b.tenant_id=payroll_run_outstanding.tenant_id AND app.can_admin_payroll_for(b.company_id))'},
    {table:'payroll_run_outstanding',name:'payroll_run_outstanding_update',cmd:'UPDATE',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=payroll_run_outstanding.batch_id AND b.tenant_id=payroll_run_outstanding.tenant_id AND app.can_admin_payroll_for(b.company_id))',check:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=payroll_run_outstanding.batch_id AND b.tenant_id=payroll_run_outstanding.tenant_id AND app.can_admin_payroll_for(b.company_id))'},
    {table:'payroll_run_outstanding',name:'payroll_run_outstanding_delete',cmd:'DELETE',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=payroll_run_outstanding.batch_id AND b.tenant_id=payroll_run_outstanding.tenant_id AND app.can_admin_payroll_for(b.company_id))',check:null},
+   // 7560 (124a979e): recorded by the saver for an employment it can see, as itself; read and consumed by a payroll administrator of the employee's company.
+   {table:'payroll_recalc_pending',name:'payroll_recalc_pending_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:'tenant_id=app.current_tenant_id() AND requested_by IS NOT DISTINCT FROM app.current_user_id() AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=payroll_recalc_pending.employment_id AND e.tenant_id=payroll_recalc_pending.tenant_id)'},
+   {table:'payroll_recalc_pending',name:'payroll_recalc_pending_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=payroll_recalc_pending.employment_id AND e.tenant_id=payroll_recalc_pending.tenant_id AND app.can_admin_payroll_for(e.company_id))',check:null},
+   {table:'payroll_recalc_pending',name:'payroll_recalc_pending_consume',cmd:'DELETE',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employment e WHERE e.id=payroll_recalc_pending.employment_id AND e.tenant_id=payroll_recalc_pending.tenant_id AND app.can_admin_payroll_for(e.company_id))',check:null},
    // 7140 (0ec0ee00): an outcome is visible exactly when its import attempt is, and appended only while it is written.
    {table:'payroll_txn_import_outcome',name:'payroll_txn_import_outcome_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM public.payroll_txn_import_attempt a WHERE a.id=payroll_txn_import_outcome.attempt_id AND a.tenant_id=payroll_txn_import_outcome.tenant_id)',check:null},
    {table:'payroll_txn_import_outcome',name:'payroll_txn_import_outcome_append',cmd:'INSERT',role:'ai_hr_app',using:null,check:"tenant_id=app.current_tenant_id() AND EXISTS (SELECT 1 FROM public.payroll_txn_import_attempt a WHERE a.id=payroll_txn_import_outcome.attempt_id AND a.tenant_id=payroll_txn_import_outcome.tenant_id AND a.state IN ('validated','importing'))"},

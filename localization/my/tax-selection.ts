@@ -163,6 +163,12 @@ export async function saveTaxSelectionMYTx(tx:Tx,ctx:SessionContext,p:{employmen
  }
  const customColumns={customPcbAmount:custom.amount==null?null:custom.amount.toFixed(2),customPcbRate:custom.rate==null?null:custom.rate.toFixed(2)};
  const [after]=await tx.update(employmentTaxSelectionMy).set({...(p.scheme==='none'?{}:{scheme:p.scheme as PcbCalculationScheme,...customColumns}),taxApplicabilityEpoch:profile?.epoch??0,transitionState:'resolved',version:before.version+1,updatedAt:sql`now()`,updatedByUserId:ctx.userId}).where(eq(employmentTaxSelectionMy.id,before.id)).returning();
+ // 124a979e — a changed income tax scheme (or its custom PCB figure) moves PCB on every processed run that paid this
+ // employment. The selection carries no effective date the calculation reads, so every such run not closed is marked.
+ if(before.scheme!==after.scheme||String(before.customPcbAmount??'')!==String(after.customPcbAmount??'')||String(before.customPcbRate??'')!==String(after.customPcbRate??'')){
+  const {markRunsAffectedByEmploymentChangeTx}=await import('../../packs/payroll/service');
+  await markRunsAffectedByEmploymentChangeTx(tx,ctx,{employmentIds:[e.employmentId],category:'tax_profile',from:null});
+ }
  await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'employment-tax-selection',aggregateId:after.id,eventType:'employee.tax-scheme.selected',actor:actorOf(ctx),subjectEmploymentId:e.employmentId,payload:{employmentId:e.employmentId,companyId:e.companyId,selectionId:after.id,before:{scheme:before.scheme,transitionState:before.transitionState,version:before.version,customPcbAmount:before.customPcbAmount??null,customPcbRate:before.customPcbRate??null},after:{scheme:after.scheme,transitionState:after.transitionState,version:after.version,customPcbAmount:after.customPcbAmount??null,customPcbRate:after.customPcbRate??null},eligibilityDecision:p.scheme==='none'?'person_not_subject_to_income_tax':'income_tax_resident_selection',taxApplicabilityEpoch:profile?.epoch??0,effectiveScheme:p.scheme}});
  return after;
 }

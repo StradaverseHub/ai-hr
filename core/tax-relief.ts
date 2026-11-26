@@ -1874,6 +1874,22 @@ async function decide(
       .update(tp1Relief)
       .set({ status, ...stamps })
       .where(and(eq(tp1Relief.id, current.id), eq(tp1Relief.personId, personId)));
+    // 124a979e — only an APPROVED declaration feeds PCB, from its effective month to the end of its assessment year
+    // (tp1EffectiveFromMonth, the rule prefillTp1FromSelfRelief applies). Approving one, or cancelling one that was
+    // approved, therefore changes those months: mark the person's processed runs in them. A rejection, or a
+    // cancellation of a merely submitted declaration, never reached payroll and marks nothing.
+    if (status === 'approved' || (status === 'cancelled' && current.status === 'approved')) {
+      const effective = tp1EffectiveFromMonth({
+        deductionMonth: current.deductionMonth,
+        approvedMonth: status === 'approved' ? Number(stamps.approvedMonth ?? current.deductionMonth ?? 1) : current.approvedMonth,
+      });
+      const { markRunsAffectedByEmploymentChangeTx } = await import('./payroll');
+      await markRunsAffectedByEmploymentChangeTx(tx, ctx, {
+        personId, category: 'tax_profile',
+        from: `${current.assessmentYear}-${String(effective).padStart(2, '0')}-01`,
+        until: `${current.assessmentYear + 1}-01-01`,
+      });
+    }
     await appendEvent(tx, {
       tenantId: ctx.tenantId,
       aggregateType: 'tp1-relief',

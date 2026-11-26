@@ -17,6 +17,20 @@ change-detection lane) were never applied anywhere and are released. In order:
 None depends on another. Recheck both installations' watermarks and any competing reservation at admission. These
 entries carry no deployment authority.
 
+# Board change-detection lane (124a979e, plan item 9): pending recalculation marks, 26 November 2026
+
+Reserve `7560_payroll_recalc_pending`, journal index `10960`, timestamp `1795495007560`, SQL SHA-256
+`2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f`. Allocated by the integrator; renumbered from an earlier slot that the staging
+coordinator's database revamp search fix took (it installs first). It follows the
+other lanes' 7540 (CP38) and 7550 (group tax) and depends on neither. Staging's ledger watermark was 7500 (26 Nov 2026).
+Recheck both installations' watermarks and any competing reservation at admission.
+
+Creates `public.payroll_recalc_pending` (append and consume: employment, pay months reached, change categories, who and
+when), RLS forced: inserted by a principal for an employment it can see, as itself, never requiring payroll
+administration; read and deleted only where `app.can_admin_payroll_for` the employee's current company. SELECT, INSERT and
+DELETE to `ai_hr_app`, no UPDATE. FKs to tenant and employment (cascade); no company FK. No existing table, row, policy
+or function changes; the new table starts empty. This entry carries no deployment authority.
+
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 
 Reserve `7500_payroll_read_history_summary`, journal index `10900`, timestamp `1795495007500`, SQL SHA-256 `5526740b3133f61d1431b9f44e7a1b4f2812bc7f425638f4bc5ab59ef8342f1f`. Next free

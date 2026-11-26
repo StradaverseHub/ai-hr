@@ -11,6 +11,7 @@ import { isTransientBulkJobError, type BulkJobHandler } from './bulk-job-worker'
 import { lockAccessConfigurationTx } from './access-configuration-lock';
 import { lockPayrollInputsTx } from './payroll-inputs-lock';
 import { planFixedTxnImport, txnImportReason, writeFixedTxnImportRow, type ResolvedFixed } from './payroll-txn-import';
+import { markRunsAffectedByEmploymentWindowsTx, withFixedItemMarksCollectedTx, type FixedItemMark } from '../packs/payroll/service';
 
 export const FIXED_TRANSACTION_IMPORT_KIND = 'fixed_transaction_import';
 const MAX_CSV_BYTES = 900_000;
@@ -126,6 +127,12 @@ function safeDetail(reason: string, detail: ImportLogRow['detail']) {
   return detail;
 }
 
+// 124a979e — the windows each chunk's written rows moved, marked once at the end of that chunk's transaction (ADR 0181
+// write side: one payslip read and one lock set per chunk, never per row). Keyed by job id; a chunk resets its own
+// entry at the start, so a rolled-back or retried chunk never carries another attempt's windows. A step that fails
+// rolls its savepoint back and adds nothing (its windows are merged only after it returned).
+const chunkMarks = new Map<string, FixedItemMark[]>();
+
 export const fixedTransactionImportJobHandler: BulkJobHandler<Step> = {
   kind: FIXED_TRANSACTION_IMPORT_KIND,
   mode: 'per-step',
@@ -153,8 +160,14 @@ export const fixedTransactionImportJobHandler: BulkJobHandler<Step> = {
     return { plan, steps, counters: { total: preview.total, invalid: preview.invalid } };
   },
   async beginChunkTx(tx, ctx, job) {
+    chunkMarks.set(job.id, []);
     await lockAccessConfigurationTx(tx, ctx.tenantId);
     await assertScope(tx, ctx, job.company_ids);
+  },
+  async endChunkTx(tx, ctx, job) {
+    const windows = chunkMarks.get(job.id) ?? [];
+    chunkMarks.delete(job.id);
+    if (windows.length) await markRunsAffectedByEmploymentWindowsTx(tx, ctx, { category: 'fixed_item', windows });
   },
   async applyStepTx(tx, ctx, job, { payload }) {
     const row = payload.resolved;
@@ -166,7 +179,12 @@ export const fixedTransactionImportJobHandler: BulkJobHandler<Step> = {
     ));
     if (!target) throw new Error('previewChanged');
     try {
-      await writeFixedTxnImportRow(ctx, row, tx);
+      const stepMarks: FixedItemMark[] = [];
+      await withFixedItemMarksCollectedTx(tx, stepMarks, () => writeFixedTxnImportRow(ctx, row, tx));
+      const pending = chunkMarks.get(job.id);
+      if (pending) pending.push(...stepMarks);
+      // No chunk owner (a caller outside the job kernel): mark now rather than lose the rows' windows.
+      else if (stepMarks.length) await markRunsAffectedByEmploymentWindowsTx(tx, ctx, { category: 'fixed_item', windows: stepMarks });
       return { counters: { written: 1 } };
     } catch (error) {
       if (isTransientBulkJobError(error)) throw error;
