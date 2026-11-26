@@ -246,6 +246,9 @@ describe('employee search trigram candidates (7320)',()=>{
    const identity=await identityOf(c.ctx);
    const runs={before7320:{ms:[] as number[],buffers:[] as number[]},now7530:{ms:[] as number[],buffers:[] as number[]}};
    const jit=new Set<string>();
+   // One discarded warm-up of each variant first: the first measurement of a run carried cold-cache noise (focused
+   // run 45816990865: identical statements +7%), which interleaved medians alone did not remove.
+   for(const variant of ['before7320','now7530'] as const)await timed(identity,variant==='now7530'?c.search.now:c.search.before);
    for(let round=0;round<ROUNDS;round++){
     for(const variant of (round%2?['now7530','before7320']:['before7320','now7530']) as (keyof typeof runs)[]){
      const r=await timed(identity,variant==='now7530'?c.search.now:c.search.before);
