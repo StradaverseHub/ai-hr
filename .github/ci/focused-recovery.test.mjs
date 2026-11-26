@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {fixture,now,time} from './resume-test-fixtures.mjs';
 import {hash} from './manifest.mjs';
 import {assessResumeCoverage} from './resume-assessment.mjs';
-import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic} from './focused-recovery-policy.mjs';
+import {verifyFocusedRecovery,validateFocusedMetadata,validateRecoveryGrantEvidence,validateRecoveryControllerDiagnostic,focusedRecoveryIdentity} from './focused-recovery-policy.mjs';
 import {createInstallGrant} from './ci-install-grant.mjs';
 import {installationFixture} from './staging-install-test-fixture.mjs';
 
@@ -44,8 +44,18 @@ for(const [name,mutate] of [
  ['wrong focused run identity',f=>f.focused[0].report.runId='201'],['focused rerun',f=>f.focused[0].report.attempt='2'],
  ['focused execution outside producer',f=>f.focused[0].report.startedAt=time(10)],
 ])test('Recovery refuses '+name,()=>{const f=input();mutate(f);assert.throws(()=>verifyFocusedRecovery(f));});
-function metadata(){const f=input(),a=f.focused[0];return {run:a.run,jobs:a.jobs,artifacts:[a.artifact],expected:{runId:a.run.id,controller:f.plan.controller,workflowId:999,after:time(5)},now};}
+function metadata(){const f=input(),a=f.focused[0];return {run:a.run,jobs:a.jobs,artifacts:[a.artifact],expected:{runId:a.run.id,controller:f.plan.controller,controllerBranch:'main',candidate:f.plan.sha,workflowId:999,after:time(5)},now};}
 test('Focused metadata authenticates exact producing job and artifact',()=>assert.equal(validateFocusedMetadata(metadata()).name,'selected-tests'));
+test('v1 binds the original gate controller and the candidate separately (focused runs dispatched with --ref main)',()=>{
+ const f=input(),m=metadata(),identity=focusedRecoveryIdentity({candidate:f.plan.sha,baseline:f.plan.migrationBase,run:f.run});
+ assert.deepEqual(identity,{candidate:f.plan.sha,controller:f.run.head_sha,controllerBranch:'main',baseline:f.plan.migrationBase,runId:f.run.id});assert.notEqual(identity.controller,identity.candidate);
+ assert.equal(m.run.head_sha,identity.controller);assert.equal(validateFocusedMetadata({...m,expected:{...m.expected,controller:identity.controller,controllerBranch:identity.controllerBranch}}).name,'selected-tests');
+ // The former behaviour (controller=candidate) refuses the genuine --ref main focused run; it is no longer what v1 expects.
+ assert.throws(()=>validateFocusedMetadata({...m,expected:{...m.expected,controller:identity.candidate}}));
+ const c=certificate(f);assert.equal(c.sha,f.plan.sha);assert.equal(c.controller,f.run.head_sha);
+ for(const run of [{...f.run,head_branch:'feature'},{...f.run,head_sha:'short'},{...f.run,id:0}])assert.throws(()=>focusedRecoveryIdentity({candidate:f.plan.sha,baseline:f.plan.migrationBase,run}));
+ assert.throws(()=>focusedRecoveryIdentity({candidate:'x',baseline:f.plan.migrationBase,run:f.run}));
+});
 for(const [name,mutate] of [
  ['fork',f=>f.run.head_repository.id=1],['other repository',f=>f.run.repository.id=1],['other workflow',f=>f.run.workflow_id=1],
  ['other branch',f=>f.run.head_branch='feature'],['other controller',f=>f.run.head_sha='d'.repeat(40)],['PR trigger',f=>f.run.event='pull_request'],
@@ -53,7 +63,8 @@ for(const [name,mutate] of [
  ['before source completed',f=>f.run.created_at=time(6)],['missing job',f=>f.jobs.pop()],['repeated job',f=>f.jobs[1]=f.jobs[0]],
  ['foreign job',f=>f.jobs[1].run_id=3],['job rerun',f=>f.jobs[1].run_attempt=2],['failed producing job',f=>f.jobs[1].conclusion='failure'],
  ['foreign artifact',f=>f.artifacts[0].workflow_run.id=1],['unknown artifact',f=>f.artifacts[0].name='other'],['duplicate artifact',f=>f.artifacts.push(f.artifacts[0])],
- ['missing digest',f=>f.artifacts[0].digest=null],['expired artifact',f=>f.artifacts[0].expired=true],['artifact outside producer',f=>f.artifacts[0].created_at=time(4)],
+ ['missing digest',f=>f.artifacts[0].digest=null],['focused run on the other controller branch',f=>{f.run.head_branch='alpha';for(const j of f.jobs)j.head_branch='alpha';f.artifacts[0].workflow_run.head_branch='alpha';}],
+ ['focused run on the candidate instead of the gate controller',f=>{f.run.head_sha=f.expected.candidate;for(const j of f.jobs)j.head_sha=f.expected.candidate;f.artifacts[0].workflow_run.head_sha=f.expected.candidate;}],['no expected controller branch',f=>delete f.expected.controllerBranch],['expired artifact',f=>f.artifacts[0].expired=true],['artifact outside producer',f=>f.artifacts[0].created_at=time(4)],
 ])test('Focused API admission refuses '+name,()=>{const f=metadata();mutate(f);assert.throws(()=>validateFocusedMetadata(f));});
 test('A distinct recovery certificate authorizes the original successful build without relabelling the failed run',()=>{
  const f=input(),c=certificate(f),g=installationFixture(),e={...g.evidence,...c,recovery:c,fingerprint:hash(c),build:{...g.evidence.build,source:c.sha,controller:c.controller,runId:c.runId}};
