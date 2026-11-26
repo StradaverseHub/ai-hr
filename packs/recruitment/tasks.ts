@@ -32,6 +32,7 @@
  */
 import { sql, type SQL } from 'drizzle-orm';
 import type { SessionContext, Tx } from '../../db/client';
+import { executePrepared } from '../../db/prepared-read';
 import { withRecruitmentTenant } from '../../core/module-gate';
 import { pgSqlState } from '../../lib/db-error';
 import { todayInKualaLumpur } from '../../lib/hr-date';
@@ -137,7 +138,8 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
        -- …while the contact still administers the company (a demoted contact gets no to-do and cannot read the contract).
        and app.can_admin_recruitment_for(c.company_id)
      order by c.ends_on, c.id limit ${TODO_LIMIT})` : sql``;
-  const own = await tx.execute<PersonalRow>(sql`
+  // A named prepared statement (db/prepared-read.ts): it planned in about 43 ms on every call on staging and ran in 0.2 ms.
+  const own = await executePrepared<PersonalRow>(tx, sql`
     -- Approval steps are tenant-wide, like the Approvals page and its badge: they do not follow the company switcher.
     (select 'requisitionApproval'::text as kind, r.id, r.company_id, null::uuid as job_id, null::uuid as application_id, r.title,
        r.req_number as number, null::text as candidate_name, r.pending_position as position, cardinality(r.approver_user_ids) as steps,
@@ -195,7 +197,7 @@ async function personalTodosTx(tx: Tx, s: SessionContext, scope: readonly string
      where x.tenant_id = ${s.tenantId}::uuid and x.created_by_user_id = ${me} and x.status = 'in_progress'
        and x.started_at < ((${today}::date - ${CHECK_OVERDUE_DAYS}::int)::timestamp at time zone 'Asia/Kuala_Lumpur') and ${scoped(sql`x.company_id`)}
        and app.can_operate_recruitment_job(x.company_id, x.job_id)
-     order by x.started_at limit ${TODO_LIMIT})`);
+     order by x.started_at limit ${TODO_LIMIT})`, 'recruitment-personal-todos');
   if (!own.length) return [];
   const names = await personalTodoNamesTx(tx, own);
   return own.flatMap((r) => personalTodoOf(r, names)).sort(byNewest);

@@ -23,6 +23,7 @@
 import {AsyncLocalStorage} from 'node:async_hooks';
 import {sql,type SQL} from 'drizzle-orm';
 import {withTenant,type SessionContext} from '../../db/client';
+import {executePrepared} from '../../db/prepared-read';
 import {aiCentreActivity} from '../../lib/ai/centre-activity';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {assertModuleGate} from '../module-gate';
@@ -162,7 +163,8 @@ export async function readBeforePayrollBundle(ctx:SessionContext,read:BeforePayr
  const decide=<T,>(project:()=>T):BundleAnswer<T>=>{try{return Object.freeze({value:project()});}catch{return null;}};
  try{
   return await withTenant(ctx,async tx=>{
-   const [row]=await tx.execute<{bundle:Record<string,unknown>|null}>(sql`select ${sql.join(chunks,sql` || `)} as bundle`);
+   // A named prepared statement (db/prepared-read.ts): it planned in about 175 ms on every call on staging.
+   const [row]=await executePrepared<{bundle:Record<string,unknown>|null}>(tx,sql`select ${sql.join(chunks,sql` || `)} as bundle`,'before-payroll');
    const raw=row?.bundle;
    if(!raw)throw new Error('The Before payroll statement returned no row.');
    const has=(name:string)=>name in sections&&sections[name as SectionName|'range'|'calendar']!=null;

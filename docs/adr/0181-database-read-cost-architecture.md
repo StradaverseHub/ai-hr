@@ -342,6 +342,55 @@ payroll truth stays in its source tables.
   `deleteCp38DialogAction` 14 -> 15, `deleteCp38Action` 12 -> 13. Same number of transactions; the CP38 page reads
   did not move.
 
+### 9. The largest combined reads reuse their plans (planning cost, 26 November 2026)
+
+Staging's `pg_stat_statements` (24 to 26 November) put 12% of database time in planning, mostly in a few combined
+statements planned on every call (plans = calls). The cause is the driver, not the statements: drizzle-orm 0.45.2
+sends every statement through postgres.js `unsafe(query, params)`, whose default is an unnamed statement, so PostgreSQL
+parses and plans it each time (and the driver parses it twice, describing it first). The PgBouncer decision
+(`docs/adr/2026-11-10-pgbouncer-transaction-pooling.md`) assumed named statements; only raw tagged-template SQL has them.
+
+- **Named prepared statements for a short list of reads.** `db/prepared-read.ts executePrepared` sends one statement
+  with the same text and parameters as a named prepared statement: the request preamble (a Today carrier's identity
+  statement), the account task statement, the Before payroll statement, the recruitment to-dos and the payroll
+  freshness reads. The shared read snapshot memoizes a prepared read as the same read as its unnamed statement. A
+  statement prepared this way takes its lists as one array parameter (the payroll freshness reads now do), so it has a
+  handful of shapes per role, never one per login or list length; the test checks two logins of one role send one text.
+  Not every statement: a generic plan can be slower, so each one is added only with a scale measurement.
+- **The account task statement uses its generic plan from the first call.** PostgreSQL never chose its generic plan in
+  auto mode (12 custom plans of 12), although that plan runs as fast. Its owner's `set local jit=off` became one
+  simple-protocol statement that also sets `plan_cache_mode = force_generic_plan`, transaction-local; a carrier holds
+  both, and a Today carrier's identity statement sets them, so no statement is added and every route budget is kept.
+  The setting changes only how prepared statements and PL/pgSQL statements later in that transaction or carrier are
+  planned, never their rows.
+- **Retained plan memory is bounded.** A named statement keeps its plans on every backend that ran it, until the
+  connection ends (six hours), whereas an unnamed statement frees them after the call. The first full gate of this
+  change (run 45850704112) was OOM-killed in its 2 GiB PostgreSQL container for that reason. Measured per backend and
+  per statement text (`test/planning-cost-prepared-reads.test.ts`, through a test-only login holding the application
+  role and `pg_read_all_stats`): about 7.0 MB for an account task text and for the largest Before payroll text, at
+  most 1.22 MB for a request preamble, 0.92 MB for the recruitment to-dos, 1.34 MB and 0.40 MB for the payroll
+  freshness reads. These statements have several texts each, so a process prepares only the first few texts of each
+  (`PREPARED_READ_TEXT_LIMITS`: 2, 2, 3, 4, 1, 1) and sends later ones unnamed, as before. One backend then retains at
+  most about 38 MB, 47.7 MB with a 25% margin (`PREPARED_READ_BACKEND_BOUND_BYTES`); the scale test fails if a text
+  grows beyond its recorded size. Multiply by the backends that serve web processes: direct connections are web
+  processes × `AIHR_DB_POOL_MAX`; through PgBouncer, at most `default_pool_size + reserve_pool_size` server connections
+  (2 × cores + 2 + reserve) times the number of web processes.
+- **Switch back:** `AIHR_PREPARED_READS=off` (exactly `off`) sends every one of them unnamed and the jit-only setting.
+  It is read per call from the process environment, which the services load at start, so it takes a restart.
+- Measured on the hosted runner (`test/planning-cost-prepared-reads.test.ts`, 71 companies / 1,000 employments; each
+  statement replayed on its own connection; identical rows and order in every mode). Wall per call before → after:
+  account task statement 177 → 69 ms (manager, employee; 90 ms of planning gone) and 63 → 34 ms (group
+  administrator); Before payroll for an employee 192 → 148 ms; request preamble 12.5–17 → 7–12 ms; recruitment to-dos
+  2.3–3.8 → 0.2–0.6 ms; payroll freshness run read 10.7 → 1.9 ms (file read unchanged, 8.2 → 7.5 ms). Whole render,
+  AIHR_PREPARED_READS off → on, median of five (run 45743698958): Today employee 916 → 663 ms, manager 1,078 → 771 ms,
+  group administrator 650 → 571 ms; Approvals group administrator 342 → 293 ms, manager 460 → 360 ms. Statement and
+  transaction counts are unchanged (`test/route-read-budget.test.ts`). Staging plans these statements much more slowly than the runner (account tasks 106–269 ms), so the staging
+  gain should be larger; it is measured from `pg_stat_statements` deltas before and after the release.
+- Not changed: the plain identity statement of every transaction (it plans in well under a millisecond) and all other
+  drizzle statements. Preparing statements more widely would also remove the driver's describe round trip, but it
+  needs a bound on distinct statement texts per connection (PgBouncer keeps 200 per server connection) and plan-cache
+  memory measured per backend; it is a separate decision.
+
 ## Order of work
 
 | Phase | What | Schema change |

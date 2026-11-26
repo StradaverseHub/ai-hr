@@ -16,6 +16,7 @@ import {AsyncLocalStorage} from 'node:async_hooks';
 import {cancelStatementsAtDeadline,currentDatabaseReadDeadline,currentDatabaseWorkload,databaseReadSignal,inIdempotentDatabaseRead,withBackgroundDatabaseWork} from './workload';
 import {applicationDatabaseBudget,databaseAdmissionShares,databaseConnectionLifetime} from './capacity';
 import {applicationDatabaseUrl} from './pooling';
+import {executePrepared} from './prepared-read';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
 import {SharedReadSession,currentSharedRead,defaultRequestReadScope,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
@@ -392,7 +393,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
     const identityHolds = sql`current_setting('app.tenant_id', true) = ${ctx.tenantId} and current_setting('app.user_id', true) = ${ctx.userId ?? ''}
       and current_setting('app.roles', true) = ${roleNames.join(',')} and current_setting('app.grants', true) = ${JSON.stringify(grants)}
       and current_setting('app.agent_principal_id', true) = ${ctx.agent?.principalId ?? ''} and current_setting('app.payroll_tax_basis_reader', true) = '1' and current_setting('app.payroll_import_tax_basis_reader',true)='1'`;
-    return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
+    return sql`${preamble.jitOff ? sql`, set_config('jit', 'off', true)` : sql``}${preamble.genericPlans ? sql`, set_config('plan_cache_mode', 'force_generic_plan', true)` : sql``}, (select (${preamble.sql}) where ${identityHolds}) as request_preamble`;
   }
 
   /** One request's reads as ONE read-only snapshot (db/shared-read.ts). `work` is every read owner of that
@@ -486,6 +487,7 @@ export function createDb(connectionString: string, options?: { max?: number; adm
             state.bootstrapping = false;
             if (preamble) {
               if (preamble.jitOff) control.current?.hold('jit', 'off');
+              if (preamble.genericPlans) control.current?.hold('plan_cache_mode', 'force_generic_plan');
               const value = identityRow?.request_preamble;
               if (value !== null && value !== undefined) {
                 // A value of an unexpected shape answers nothing: every owner then reads its own statement.
@@ -549,9 +551,11 @@ export async function bootstrapTenantTx(tx: Tx, ctx: SessionContext, grants: Gra
     // 18.8 s against 101 ms. Owners that set `jit` themselves still do, and a read that is faster compiled may set
     // it back on for its own transaction (test/with-tenant-jit-off.test.ts).
     const columns = extra ?? sql``;
-    const [identityRow] = (await tx.execute(
-      sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true), set_config('app.payroll_import_tax_basis_reader', '1', true), set_config('jit', 'off', true)${auditBootstrap}${columns}`,
-    )) as unknown as Record<string, unknown>[];
+    const identity = sql`select set_config('app.tenant_id', ${ctx.tenantId}, true), set_config('app.user_id', ${ctx.userId ?? ''}, true), set_config('app.roles', ${roleNames.join(',')}, true), set_config('app.grants', ${JSON.stringify(grants)}, true), set_config('app.agent_principal_id', ${ctx.agent?.principalId ?? ''}, true), set_config('app.payroll_tax_basis_reader', '1', true), set_config('app.payroll_import_tax_basis_reader', '1', true), set_config('jit', 'off', true)${auditBootstrap}${columns}`;
+    // With a request preamble the statement carries a dozen owner statements and planned in about 32 ms on staging on
+    // every call: it is sent as a named prepared statement (db/prepared-read.ts), so a server connection's later calls
+    // reuse its plan. The plain identity statement plans in well under a millisecond and stays unnamed.
+    const [identityRow] = (extra ? await executePrepared(tx, identity, 'request-preamble') : await tx.execute(identity)) as unknown as Record<string, unknown>[];
     // ADR-0030 Layer 2 gate: the domain_event hash-chain trigger only fires when this GUC is 'on'.
     // Off by default → chain columns stay NULL → byte-identical behaviour (deployment flag).
     //
