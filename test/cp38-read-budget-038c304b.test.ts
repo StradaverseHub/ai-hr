@@ -61,10 +61,13 @@ type Key='page'|'saveCp38DialogAction'|'deleteCp38DialogAction'|'deleteCp38Actio
 /** Recorded budgets: the largest (transactions, statements) measured over every persona and scope below. Budgets only
  * go down; raising one needs an ADR note. */
 const BUDGETS:Record<Key,{transactions:number;statements:number}>={
- page:{transactions:12,statements:60},
- saveCp38DialogAction:{transactions:6,statements:40},
- deleteCp38DialogAction:{transactions:6,statements:40},
- deleteCp38Action:{transactions:4,statements:30},
+ // Measured on the CI runner (alpha-focused-checks run 45768875945), the same for every persona and scope: the list
+ // is 5 transactions and 17 statements; with an employee chosen, 6 and 22 (the picker's selection and their history).
+ page:{transactions:6,statements:22},
+ // Add measured 2 and 13; Edit 2 and 15.
+ saveCp38DialogAction:{transactions:2,statements:15},
+ deleteCp38DialogAction:{transactions:2,statements:14},
+ deleteCp38Action:{transactions:1,statements:12},
 };
 type Persona='group'|'multi'|'single';
 type Scope='all'|'one';
