@@ -325,19 +325,26 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   // A regular run for the month after the fixture's ten processed months, processed over the work-holding company's
   // employments (the fixture's largest company; those with a salary and statutory record get a payslip).
   const admin=await entitledCtx(b,['hr_admin']);
+  // The fixture gives ~55% of employments a salary; a run refuses to process with any in-scope employee lacking one,
+  // so the work-holding company's other active employments get one (only this describe sees them).
+  await owner.db.execute(sql`insert into compensation (tenant_id,employment_id,basic_salary,valid_from)
+   select e.tenant_id,e.id,3200,'2024-01-01' from employment e where e.company_id=${workCompanyId}::uuid and e.terminated_on is null
+    and not exists (select 1 from compensation c where c.employment_id=e.id and c.valid_to is null)`);
   try{
    const run=await createBatch(admin,{companyId:workCompanyId,payPeriod:'2026-11'});
    await generatePayslips(admin,{batchId:run.batchId});
    payrollRunId=run.batchId;
   }catch(error){
-   // Still a real run screen, of the fixture's latest processed month (no payslips): the setup line says which.
-   console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRun:'fixture month without payslips',error:String((error as Error)?.message??error).slice(0,300)}));
+   // Still a real run screen, of the latest run (a draft 2026-11 if it was opened, else a fixture month without
+   // payslips): the setup lines say which.
+   console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRun:'not processed',error:String((error as Error)?.message??error).slice(0,300)}));
    const [latest]=await owner.db.select({id:schema.payrollBatch.id}).from(schema.payrollBatch)
     .where(sql`${schema.payrollBatch.companyId}=${workCompanyId}::uuid`).orderBy(sql`${schema.payrollBatch.payPeriod} desc`).limit(1);
    payrollRunId=latest.id;
   }
   const [row]=await owner.db.select({payslips:sql<number>`count(*)::int`}).from(schema.payslip).where(sql`${schema.payslip.batchId}=${payrollRunId}::uuid`);
-  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips}));
+  const [run]=await owner.db.select({status:schema.payrollBatch.status,payPeriod:schema.payrollBatch.payPeriod}).from(schema.payrollBatch).where(sql`${schema.payrollBatch.id}=${payrollRunId}::uuid`);
+  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips,...run}));
  },240_000);
  it.each(['audit','payrollRun'] as const)('%s renders identically at a pool of 3 and with the join off, and its wall time is measured',async route=>{
   await render(route,'group','all','pool3');
@@ -348,7 +355,11 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   expect(JSON.stringify(off.output).length).toBeGreaterThan(500);
   expect(firstDifference(off.output,pooled.output),'without vs pool3').toBeNull();
   expect(pooled.peakCarriers,'pool3 carriers at once').toBeLessThanOrEqual(4);
-  expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions);
+  // Unlike the four budgeted routes, these pages have owners that take a barrier and fall back to their own
+  // transaction. An owner that falls back may first have opened a pool carrier for itself alone (BEGIN, identity,
+  // COMMIT), so the bound is the join off plus the pooled render's fallbacks.
+  expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions+pooled.fallbacks);
+  console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,refused:pooled.refused}));
   await statementTime(off);await statementTime(pooled);
   await wallTime(route,'group',['without','default','pool3']);
  },300_000);
