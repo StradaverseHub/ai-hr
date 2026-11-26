@@ -54,6 +54,8 @@ import { listPayrollCycles, seedPayrollCycleCatalog, setPayrollCycleActive, upse
 import { createMovementEvent } from '../core/movement';
 import { listProcessedPayslipsAcross } from '../core/payroll-view';
 import IndividualPayslipPage from '../app/payroll/individual-payslip/page';
+import { NetPayBand } from '../components/payslip-sections';
+import { Card } from '../components/ui';
 import {
   adminCtx,
   closeAll,
@@ -69,7 +71,7 @@ import {
 /** Depth-first walk collecting every node of a given host tag — the established way to inspect what a
  *  SERVER component handed a child without standing up a renderer (organization-companies-unscoped). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function findByTag(node: unknown, tag: string, acc: any[] = []): any[] {
+function findByTag(node: unknown, tag: unknown, acc: any[] = []): any[] {
   if (!node || typeof node !== 'object') return acc;
   if (Array.isArray(node)) {
     for (const n of node) findByTag(n, tag, acc);
@@ -118,6 +120,18 @@ function selectNamed(tree: unknown, name: string): { value: string; options: { v
 
 /** Options excluding the leading "All", which every one of these boxes keeps as its no-opinion escape. */
 const real = (s: { options: { value: string; label: string }[] }) => s.options.filter((o) => o.value !== '');
+
+/** 1ebba97e — the Payroll Cycle options that name ONE run ('payslip:<id>'), which replaced the
+ *  "Matching payroll runs" row of buttons. */
+const RUN_OPTION = /^payslip:([0-9a-f-]{36})$/;
+const runOptions = (tree: unknown) => selectNamed(tree, 'payrollCycleId').options.filter((o) => RUN_OPTION.test(o.value));
+const payslipOf = (value: string) => RUN_OPTION.exec(value)![1];
+
+/** The row is gone: no <nav>, and its heading key is not rendered anywhere. */
+function expectNoMatchingRunsRow(tree: unknown) {
+  expect(findByTag(tree, 'nav'), 'the "Matching payroll runs" row must not render').toHaveLength(0);
+  expect(textOf(tree).some((w) => w.includes('matchingRuns')), 'nor its heading').toBe(false);
+}
 
 /** Which payslip the screen is actually showing, read off the Download link's route — the one place the
  *  payslip's identity reaches the browser. Null when the screen is showing none. */
@@ -238,6 +252,20 @@ describe('5a29686c — the four dropdowns fill in with the payslip on screen', (
       'payroll.individualPayslip.otherRuns',
     );
     expect(words.some((w) => w.includes('otherRuns')), 'no run-picker heading anywhere').toBe(false);
+    expectNoMatchingRunsRow(tree);
+    expect(runOptions(tree), 'a one-run month offers no per-run options').toEqual([]);
+
+    // 1ebba97e — Net pay is the shared band (no Card, so no theme can paint it white on white), carrying
+    // this payslip's own recorded net figure, unchanged.
+    const bands = findByTag(tree, NetPayBand);
+    expect(bands, 'exactly one Net pay band').toHaveLength(1);
+    expect(findByTag(tree, Card).some((card) => findByTag(card, NetPayBand).length > 0), 'the band sits in no Card').toBe(false);
+    expect(bands[0].props.label).toBe('netPay');
+    const [saved] = await owner.db.select({ net: schema.payslip.netPay }).from(schema.payslip)
+      .where(eq(schema.payslip.id, renderedPayslipId(tree)!));
+    const figure = Number(saved.net).toLocaleString('en-MY', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    expect(Number(saved.net), 'a real net figure').toBeGreaterThan(0);
+    expect(String(bands[0].props.value), 'the recorded net pay, as stored').toContain(figure);
   });
 
   it('every option in every box leads somewhere — no dead years, months, cycles or companies', async () => {
@@ -298,6 +326,8 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     const a = await entitledCtx(base);
     scope.s = a;
     const me = await hire(a, 'Bonus Beside', 'bonus.beside@acme.test');
+    // A colleague paid in the same regular run: their payslip id is what a tampered option would name.
+    const colleague = await hire(a, 'Same Run Colleague', 'same.run.colleague@acme.test');
     await payRegular(a, '2026-06');
     const bonus = await createAdditionalRun(a, { companyId: base.companyId, payPeriod: '2026-06', runType: 'bonus' });
     // r226 — an additional run skips anybody it has nothing to pay, so a bonus run with no keyed
@@ -308,7 +338,36 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
 
     const opened = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
     expect(selectNamed(opened,'payrollCycleId').value).toBe('');
-    expect(textOf(opened)).toContain('matchingRuns');
+    // 1ebba97e — the "Matching payroll runs" row is gone; both runs are options in the Payroll Cycle box,
+    // each naming its own payslip and labelled with its run number.
+    expectNoMatchingRunsRow(opened);
+    const options = runOptions(opened);
+    expect(options, 'one option per run in June').toHaveLength(2);
+    expect(new Set(options.map((o) => o.label)).size, 'the two options must read differently').toBe(2);
+    expect(options.every((o) => o.label.startsWith('cycleRun(')), 'labelled through cycleRun').toBe(true);
+    const viaOption: string[] = [];
+    for (const o of options) {
+      const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({
+        employmentId: me.employmentId, companyId: base.companyId, year: '2026', month: '06', payrollCycleId: o.value,
+      }) });
+      expect(renderedPayslipId(tree), 'the option opens the payslip it names').toBe(payslipOf(o.value));
+      expect(selectNamed(tree, 'payrollCycleId').value, 'and the box then shows that option').toBe(o.value);
+      expectNoMatchingRunsRow(tree);
+      viaOption.push(renderedPayslipId(tree)!);
+    }
+    expect(new Set(viaOption).size, 'each option opens a different payslip').toBe(2);
+
+    // A hand-edited option naming ANOTHER employee's payslip resolves within this employee's own runs —
+    // it never opens the colleague's slip.
+    const [theirs] = await owner.db.select({ id: schema.payslip.id }).from(schema.payslip)
+      .where(eq(schema.payslip.employmentId, colleague.employmentId));
+    expect(theirs, 'the colleague was paid in the regular run').toBeTruthy();
+    const tampered = await IndividualPayslipPage({ searchParams: Promise.resolve({
+      employmentId: me.employmentId, companyId: base.companyId, year: '2026', month: '06', payrollCycleId: `payslip:${theirs.id}`,
+    }) });
+    expect(renderedPayslipId(tampered)).not.toBe(theirs.id);
+    expect(viaOption, 'it falls back to one of this employee’s own June payslips').toContain(renderedPayslipId(tampered));
+
     const pick = async (c: string) =>
       renderedPayslipId(
         await IndividualPayslipPage({
@@ -352,8 +411,22 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     }
 
     const tree = await IndividualPayslipPage({ searchParams: Promise.resolve({ employmentId: me.employmentId }) });
-    expect(real(selectNamed(tree,'payrollCycleId'))).toEqual([]);
-    expect(textOf(tree)).toContain('matchingRuns');
+    // 1ebba97e — no configured cycle exists, so the box's only real options are the three runs themselves,
+    // and the "Matching payroll runs" row that used to list them is gone.
+    expectNoMatchingRunsRow(tree);
+    const options = runOptions(tree);
+    expect(real(selectNamed(tree,'payrollCycleId')), 'nothing but the run options').toEqual(options);
+    expect(options, 'regular, bonus and its re-issue: three options').toHaveLength(3);
+    expect(new Set(options.map((o) => o.label)).size, 'two bonus runs must not read the same').toBe(3);
+    const viaOption: (string | null)[] = [];
+    for (const o of options) {
+      const opened = await IndividualPayslipPage({ searchParams: Promise.resolve({
+        employmentId: me.employmentId, companyId: base.companyId, year: '2026', month: '10', payrollCycleId: o.value,
+      }) });
+      expect(renderedPayslipId(opened), 'the option opens the payslip it names').toBe(payslipOf(o.value));
+      viaOption.push(renderedPayslipId(opened));
+    }
+    expect(new Set(viaOption).size, 'every run reachable from the cycle box — none stranded').toBe(3);
     const pick = async (c: string) =>
       renderedPayslipId(
         await IndividualPayslipPage({
@@ -392,8 +465,22 @@ describe('5a29686c — a bonus run beside a regular one is reachable from the cy
     })});
     const tree=await page(first.id);
     expect(renderedPayslipId(tree)).toBe(slips[2]);
-    expect(real(selectNamed(tree,'payrollCycleId')).map(option=>option.label)).toEqual(['Commission','Incentive','Unpaid special']);
-    expect(textOf(tree)).toContain('matchingRuns');
+    const configured=real(selectNamed(tree,'payrollCycleId')).filter(option=>!RUN_OPTION.test(option.value));
+    expect(configured.map(option=>option.label)).toEqual(['Commission','Incentive','Unpaid special']);
+    // 1ebba97e — Commission holds TWO runs this month, which its cycle option cannot tell apart, so each is
+    // an option of its own, listed right under Commission. Incentive holds one and needs none.
+    expectNoMatchingRunsRow(tree);
+    const runOpts=runOptions(tree);
+    expect(runOpts.map(option=>payslipOf(option.value))).toEqual([slips[0],slips[2]]);
+    expect(runOpts.every(option=>option.label.includes('"cycle":"Commission"')),'named after the configured cycle').toBe(true);
+    expect(real(selectNamed(tree,'payrollCycleId')).map(option=>option.label).slice(0,3),'listed under their cycle')
+      .toEqual(['Commission',runOpts[0].label,runOpts[1].label]);
+    for(const option of runOpts) expect(renderedPayslipId(await page(option.value))).toBe(payslipOf(option.value));
+    // A run option for a run its cycle CAN name (a stale or hand-made link) still opens that payslip, and the
+    // box shows the cycle — never a value missing from its own list.
+    const incentive=await page(`payslip:${slips[1]}`);
+    expect(renderedPayslipId(incentive)).toBe(slips[1]);
+    expect(selectNamed(incentive,'payrollCycleId').value).toBe(second.id);
     expect(renderedPayslipId(await page(first.id,slips[0]))).toBe(slips[0]);
     expect(renderedPayslipId(await page(first.id,slips[1]))).toBeNull();
     expect(renderedPayslipId(await page(second.id))).toBe(slips[1]);
