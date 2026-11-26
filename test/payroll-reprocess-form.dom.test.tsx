@@ -934,3 +934,116 @@ describe('a1a80747 r2 — owed rows are the list; the rest are Not owed on this 
     expect(posted(container).sort()).toEqual(['c1', 'h3', 'n2', 'o4']);
   });
 });
+
+/**
+ * a1a80747 r3 — THE SKIPPED TAB AND SELECT ALL, proved by rendering against the real en.json.
+ *   - three tabs, each with its count; the Skipped tab holds employees skipped for income tax (New and Changed alike),
+ *     nothing-payable and not-owed people, each with its reason, none ticked for the operator;
+ *   - Select all adds the whole tab (server-read identities, off-page people included) ONCE per token: unticking
+ *     somebody afterwards sticks across a re-render carrying the same token; a new token adds again;
+ *   - more than the server reads at once ticks nobody and says so.
+ */
+describe('a1a80747 r3 — the Skipped tab and Select all', () => {
+  const THREE = (current: 'required' | 'skipped' | 'unchanged') => ({
+    current,
+    counts: { required: 2, skipped: 4, unchanged: 3 },
+    hrefs: { required: '?tab=required', skipped: '?tab=skipped', unchanged: '?tab=unchanged' },
+  });
+  const skippedRows: ReprocessRequiredRow[] = [
+    { kind: 'recalculated', employmentId: 'k1', employeeCode: 'EMP0201', name: 'Changed Taxheld', taxSkipped: true },
+    added({ employmentId: 'k2', employeeCode: 'EMP0202', name: 'New Taxheld', owed: true, notOwedReason: null, taxSkipped: true }),
+    added({ employmentId: 'k3', employeeCode: 'EMP0203', name: 'Nothing Due', owed: false, notOwedReason: 'other', warnings: ['nothingPayable'], skip: 'NOTHING_PAYABLE_THIS_PERIOD' }),
+    added({ employmentId: 'k4', employeeCode: 'EMP0204', name: 'Removed One', owed: false, notOwedReason: 'removed' }),
+  ];
+  const onSkipped = (over: Partial<Parameters<typeof ReprocessForm>[0]> = {}) => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm key="selection" batchId="b1" employees={[]} required={skippedRows} currency="MYR"
+        stale={{ rows: [], withoutPayslip: 0 }} taxReviewHref="/payroll/income-tax-recalculation?company=c1" heldHref="?tab=skipped&held=1"
+        paging={{ existing: pageState(parsePageQuery(), 4, 4), runTotal: 9, existingTotal: 4, search: '', tabs: THREE('skipped') }} {...over} />
+    </NextIntlClientProvider>
+  );
+
+  it('shows three tabs with their counts, and the Skipped tab its three groups with reasons, nobody ticked', () => {
+    const { container } = render(onSkipped());
+    const tabs = screen.getByRole('navigation', { name: 'Employees on this run' });
+    const skipped = within(tabs).getByRole('link', { name: /Skipped/ });
+    expect(skipped.textContent).toContain('4');
+    expect(skipped.getAttribute('aria-current')).toBe('page');
+    expect(within(tabs).getByRole('link', { name: /Reprocess Required/ }).textContent).toContain('2');
+    const held = [...container.querySelectorAll('table')].find((tb) => tb.querySelector('caption')?.textContent?.includes('Held for income tax review'))!;
+    expect(held, 'held group').toBeTruthy();
+    expect(held.querySelector('caption')!.textContent).toContain('Held for income tax review — 2 employee(s)');
+    expect(held.textContent).toContain('Changed Taxheld');
+    expect(held.textContent).toContain('New Taxheld');
+    expect(held.textContent).toContain('Skipped — income tax recalculation required.');
+    expect(within(held).getAllByRole('link', { name: 'Open Income Tax Recalculation' })[0].getAttribute('href')).toBe('/payroll/income-tax-recalculation?company=c1');
+    expect(within(held).getByRole('link', { name: 'Process held employees' }).getAttribute('href')).toBe('?tab=skipped&held=1');
+    expect(container.textContent).toContain('Nothing payable');
+    expect(container.textContent).toContain('Not owed on this run');
+    expect(posted(container)).toEqual([]);
+    // No Select all on the Skipped tab.
+    expect(screen.queryByRole('link', { name: /^Select all/ })).toBeNull();
+  });
+
+  it('Process held employees ticks exactly the held people, off-page ones included', () => {
+    const { container } = render(onSkipped({ focusIds: ['k1', 'k2', 'k9'], focusRows: [{ employmentId: 'k9', employeeCode: 'EMP0209', name: 'Offpage Taxheld' }] }));
+    expect(posted(container).sort()).toEqual(['k1', 'k2', 'k9']);
+  });
+
+  it('on Reprocess Required, held people are never there and never ticked; the groups are not under the list', () => {
+    const rows: ReprocessRequiredRow[] = [
+      { kind: 'recalculated', employmentId: 'c1', employeeCode: 'EMP0101', name: 'Owed Changed' },
+      added({ employmentId: 'n2', employeeCode: 'EMP0102', name: 'Owed New', owed: true, notOwedReason: null }),
+    ];
+    const { container } = render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <ReprocessForm batchId="b1" employees={[]} required={rows} currency="MYR" stale={{ rows: [{ employmentId: 'c1', employeeCode: 'EMP0101', name: 'Owed Changed' }], withoutPayslip: 0 }}
+          paging={{ existing: pageState(parsePageQuery(), 2, 2), runTotal: 9, existingTotal: 4, search: '', tabs: THREE('required') }} />
+      </NextIntlClientProvider>,
+    );
+    expect(posted(container).sort()).toEqual(['c1', 'n2']);
+    expect(container.textContent).not.toContain('Held for income tax review');
+  });
+
+  describe('Select all', () => {
+    const ROWS = [
+      { kind: 'recalculated' as const, employmentId: 'c1', employeeCode: 'EMP0101', name: 'Page One' },
+    ];
+    const everyone = Array.from({ length: 60 }, (_, i) => ({ employmentId: 'a' + String(i).padStart(2, '0'), employeeCode: 'A' + String(i).padStart(4, '0'), name: 'Person ' + i }));
+    const withSelectAll = (applied: { token: string; rows: typeof everyone; tooMany: boolean; max: number } | null, search = '') => (
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <ReprocessForm key="selection" batchId="b1" employees={[]} required={ROWS} currency="MYR" stale={{ rows: [], withoutPayslip: 0 }}
+          selectAll={{ total: 60, searching: search !== '', href: '?tab=required&selectAll=required.x', applied }}
+          paging={{ existing: pageState(parsePageQuery({ size: '25' }), 60, 1), runTotal: 60, existingTotal: 0, search, tabs: THREE('required') }} />
+      </NextIntlClientProvider>
+    );
+
+    it('offers "Select all 60 employees" (or "matching" under a search) as a link to the whole tab', () => {
+      const { unmount } = render(withSelectAll(null));
+      expect(screen.getByRole('link', { name: 'Select all 60 employees' }).getAttribute('href')).toBe('?tab=required&selectAll=required.x');
+      unmount();
+      render(withSelectAll(null, 'person'));
+      expect(screen.getByRole('link', { name: 'Select all 60 matching employees' })).toBeTruthy();
+    });
+
+    it('adds the whole tab once per token, keeps an untick across a re-render with the same token, and adds again on a new one', async () => {
+      const user = userEvent.setup();
+      const { container, rerender } = render(withSelectAll({ token: 't1', rows: everyone, tooMany: false, max: 20000 }));
+      expect(posted(container)).toHaveLength(60);
+      expect(new Set(posted(container)).size).toBe(60);
+      expect(container.textContent).toContain('60 of 60 selected');
+      await user.click(screen.getByRole('button', { name: 'Clear' }));
+      expect(posted(container)).toHaveLength(0);
+      rerender(withSelectAll({ token: 't1', rows: everyone, tooMany: false, max: 20000 }));
+      expect(posted(container), 'the same token never re-ticks').toHaveLength(0);
+      rerender(withSelectAll({ token: 't2', rows: everyone, tooMany: false, max: 20000 }));
+      expect(posted(container)).toHaveLength(60);
+    });
+
+    it('more than can be read at once ticks nobody and says so', () => {
+      const { container } = render(withSelectAll({ token: 't3', rows: [], tooMany: true, max: 20000 }));
+      expect(posted(container)).toEqual([]);
+      expect(screen.getByText(/more than Select all can tick at once \(20,000\)/)).toBeTruthy();
+    });
+  });
+});

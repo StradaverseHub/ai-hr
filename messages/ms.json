@@ -6360,7 +6360,8 @@
       "colProcessedDate": "Tarikh diproses",
       "rowView": "Lihat",
       "rowContinue": "Teruskan",
-      "rowMoreActions": "Tindakan lain"
+      "rowMoreActions": "Tindakan lain",
+      "reprocessHeld": "{n, plural, other {# ditahan untuk semakan cukai pendapatan}}"
     },
     "reports": {
       "pageTitle": "Gaji",
@@ -7656,7 +7657,15 @@
       "taxHeldReasonGeneric": "Sejarah cukai pendapatan bagi {period} perlu disemak.",
       "taxHeldOpenRecalculation": "Buka Kira Semula Cukai Pendapatan",
       "taxHeldMore": "dan {n} lagi",
-      "closeBlockedTaxHeld": "Proses ini tidak boleh ditutup: {n} pekerja ditahan untuk semakan cukai pendapatan dan belum dalam penggajian ini: {names}. Betulkan sejarah cukai pendapatan mereka, kemudian tambah mereka dengan Proses pekerja yang ditahan (atau keluarkan mereka daripada proses ini), dan tutup semula."
+      "closeBlockedTaxHeld": "Proses ini tidak boleh ditutup: {n} pekerja ditahan untuk semakan cukai pendapatan dan belum dalam penggajian ini: {names}. Betulkan sejarah cukai pendapatan mereka, kemudian tambah mereka dengan Proses pekerja yang ditahan (atau keluarkan mereka daripada proses ini), dan tutup semula.",
+      "reprocessTabSkipped": "Dilangkau",
+      "reprocessSelectAllEvery": "Pilih semua {n, plural, other {# pekerja}}",
+      "reprocessSelectAllMatching": "Pilih semua {n, plural, other {# pekerja yang sepadan}}",
+      "reprocessSelectAllTooMany": "Tab ini mempunyai {n} pekerja, melebihi had Pilih semua sekali gus ({max}). Gunakan carian untuk mengecilkan senarai dahulu, atau tandakan halaman demi halaman.",
+      "reprocessGroupHeldTitle": "Ditahan untuk semakan cukai pendapatan — {n} pekerja",
+      "reprocessGroupHeldNote": "Tidak ditandakan dan tidak dikira dalam Perlu Proses Semula: menekan Proses Semula akan melangkau mereka semula sehingga sejarah cukai pendapatan mereka dibetulkan. Betulkan dalam Kira Semula Nilai Cukai Pendapatan, kemudian tandakan mereka atau tekan Proses pekerja yang ditahan.",
+      "reprocessReasonTaxSkipped": "Dilangkau — kira semula cukai pendapatan diperlukan.",
+      "reprocessNoSkipped": "Tiada sesiapa dalam larian ini dilangkau."
     },
     "transactions": {
       "title": "Kemasukan Transaksi",

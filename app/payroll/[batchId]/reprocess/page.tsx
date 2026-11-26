@@ -5,7 +5,7 @@ import { cookies } from 'next/headers';
 import { notFound } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { requireAdmin } from '@/lib/authz';
-import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility, reprocessStaleSelection } from '@/core/payroll';
+import { batchSummary, payrollEmployeeSelectionPage, payrollReprocessResultIdentities, decodeReprocessEmployeeOutcomes, getReprocessJob, listBatches, reprocessEligibility, reprocessRequiredPage, reprocessSelectAll, reprocessStaleSelection, REPROCESS_SELECT_ALL_CEILING } from '@/core/payroll';
 import { reprocessRequiredWithSkipPage, listRecomputeDisclosure, listTaxHeldEmployees } from '@/core/payroll-view';
 import { STATUTORY_BASE_KEYS, type StatutoryBaseKey, type StatutoryLineKey } from '@/core/payslip-recompute';
 import { isModuleEnabledOrFalse } from '@/core/entitlements';
@@ -19,7 +19,8 @@ import { formatMoney } from '@/lib/money';
 // months, company, cycle and status selection was thrown away. Whitelisted by shape, never echoed raw.
 import {parsePageQuery} from '@/lib/pagination';
 import { payrollListReturnTo } from '@/lib/return-to';
-import { ReprocessForm, type ReprocessCandidate, type ReprocessRequiredRow } from './reprocess-form';
+import { randomUUID } from 'node:crypto';
+import { ReprocessForm, type ReprocessCandidate, type ReprocessRequiredRow, type ReprocessSelectAll, type ReprocessStaleRow, type ReprocessTab } from './reprocess-form';
 // b372e923 — one Payroll Result href per result row, joined to this run's payslips by employment. The
 // join lives in its own module so the "opens somebody else's result" failure can be checked row by row
 // against a real reprocessed run; see the module header for why that is not a four-line inline map.
@@ -91,7 +92,7 @@ export default async function ReprocessPage({
   searchParams,
 }: {
   params: Promise<{ batchId: string }>;
-  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;q?:string;tab?:string;held?:string }>;
+  searchParams: Promise<{ error?: string; job?: string; from?: string;page?:string;size?:string;q?:string;tab?:string;held?:string;selectAll?:string }>;
 }) {
   const s = await requireAdmin();
   const t = await getTranslations('payroll.batch');
@@ -202,21 +203,23 @@ export default async function ReprocessPage({
   // the screen's total reconciles with that count.
   const stale = await reprocessStaleSelection(s, batchId);
 
-  // a1a80747 — two tabs. Reprocess Required is ONE list (`reprocessRequiredWithSkipPage`): the payslips the run marked
-  // out of date ("Changed") and everyone eligible for the month with no payslip on it yet ("New"), each employee once,
-  // searched, counted and paged in SQL; the New rows carry their readiness and the run's nothing-payable decision (those
-  // go to their own Nothing payable group on the form). Processed / No Change is every other payslip, with its money
-  // (`payrollEmployeeSelectionPage`'s unchanged tab). A URL parameter on this same page, so changing tab is a router
-  // replace that keeps the form (and its selection) mounted. No `tab` ⇒ Reprocess Required when it has anyone.
-  const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';
-  const required=await reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q});
-  // a1a80747 r2 — the tab counts and pre-ticks exactly the employees this run OWES processing (`owed`, the rule Close
-  // uses), which is the number the Payroll Process list prints; everyone else on the list (outside a chosen-list run,
-  // removed on purpose, not paid by an additional run) goes to the form's unticked Not owed group. No `tab` ⇒ Reprocess
-  // Required when somebody is owed.
-  const current: 'required' | 'unchanged' = tab === 'default' ? (required.owedRunTotal > 0 ? 'required' : 'unchanged') : tab;
+  // a1a80747 — Reprocess Required is ONE list (`reprocessRequiredWithSkipPage`): the payslips the run marked out of date
+  // ("Changed") and everyone eligible for the month with no payslip on it yet ("New"), each employee once, searched,
+  // counted and paged in SQL. Processed / No Change is every other payslip, with its money (`payrollEmployeeSelectionPage`'s
+  // unchanged tab). A URL parameter on this same page, so changing tab is a router replace that keeps the form (and its
+  // selection) mounted.
+  // a1a80747 r3 — THREE TABS. That one list is split in the same statement: Reprocess Required keeps who the run still owes
+  // processing and is not skipped for income tax (the number the Payroll Process list prints as "employees affected");
+  // Skipped holds the rest — skipped for income tax (held by processing or by a Reprocess's own tax check), nothing
+  // payable, not owed on this run — each with its reason, never ticked for the operator. No `tab` ⇒ Skipped for
+  // "Process held employees", else Reprocess Required when anybody is on it, else Processed / No Change.
+  const tab = sp.tab === 'required' || sp.tab === 'skipped' || sp.tab === 'unchanged' ? sp.tab : 'default';
+  const listTab = tab === 'skipped' || (tab === 'default' && sp.held === '1') ? 'skipped' : 'required';
+  const required=await reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q,tab:listTab});
+  const current: ReprocessTab = tab !== 'default' ? tab : listTab === 'skipped' ? 'skipped'
+    : required.requiredRunTotal > 0 ? 'required' : 'unchanged';
   const selection=await payrollEmployeeSelectionPage(s,{batchId,kind:'reprocess',page:parsePageQuery(sp),search:sp.q,tab:'unchanged'});
-  const candidates: ReprocessCandidate[] = current === 'required' ? [] : selection.rows.map((sl) => ({
+  const candidates: ReprocessCandidate[] = current !== 'unchanged' ? [] : selection.rows.map((sl) => ({
     employmentId: sl.employmentId,
     employeeCode: sl.employeeCode,
     name: sl.name,
@@ -229,18 +232,51 @@ export default async function ReprocessPage({
   }));
   // fbcf706d — a New row is somebody eligible for this month with NO payslip on this run; pressing the button pays
   // them (the same period window and readiness checks the engine applies). Plain serialisable data.
-  const requiredRows: ReprocessRequiredRow[] = current === 'required' ? required.rows.map((r): ReprocessRequiredRow => r.kind === 'added'
+  const requiredRows: ReprocessRequiredRow[] = current !== 'unchanged' ? required.rows.map((r): ReprocessRequiredRow => r.kind === 'added'
     ? { kind: 'added', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name, hiredOn: r.hiredOn,
         outsideScope: r.outsideScope, blockers: r.blockers, warnings: r.warnings, skip: r.skip,
-        owed: r.owed, notOwedReason: r.notOwedReason }
-    : { kind: 'recalculated', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }) : [];
-  /** The same screen on the other tab: page back to 1, every other parameter (search, sizes, from) kept. */
-  const tabHref = (to: 'required' | 'unchanged') => {
+        owed: r.owed, notOwedReason: r.notOwedReason, taxSkipped: r.taxSkipped }
+    : { kind: 'recalculated', employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name, taxSkipped: r.taxSkipped }) : [];
+  /** This screen with these parameters changed (and the page back to 1); every other parameter (search, sizes, from) kept.
+   * A one-time Select all token is never carried on. */
+  const hrefWith = (set: Record<string, string>) => {
     const next = new URLSearchParams();
-    for (const [k, v] of Object.entries(sp)) if (typeof v === 'string' && v !== '' && !['page', 'tab', 'error'].includes(k)) next.set(k, v);
-    next.set('tab', to);
+    for (const [k, v] of Object.entries(sp)) if (typeof v === 'string' && v !== '' && !['page', 'tab', 'error', 'selectAll', 'held'].includes(k)) next.set(k, v);
+    for (const [k, v] of Object.entries(set)) next.set(k, v);
     return `/payroll/${batchId}/reprocess?${next.toString()}`;
   };
+  const tabHref = (to: ReprocessTab) => hrefWith({ tab: to });
+
+  // a1a80747 r3 — "Process held employees" on the Skipped tab: tick exactly the employees skipped for income tax whom the
+  // run still owes and who can be added, on every page. Without the multi-cycle module only the processing holds can be
+  // added (016276b7), so they are narrowed to those.
+  let focusRows: ReprocessStaleRow[] | undefined;
+  if (sp.held === '1') {
+    const all = await reprocessRequiredPage(s, { batchId, page: parsePageQuery({ size: 'all' }), tab: 'skipped', ceiling: REPROCESS_SELECT_ALL_CEILING });
+    focusRows = all.rows.filter((r) => r.taxSkipped && r.owed && (r.kind === 'recalculated' || r.blockers.length === 0)
+      && (multiCycle || taxHeldIds.includes(r.employmentId)))
+      .map((r) => ({ employmentId: r.employmentId, employeeCode: r.employeeCode, name: r.name }));
+  }
+  const focus = focusRows ? focusRows.map((r) => r.employmentId) : focusIds;
+
+  // a1a80747 r3 — SELECT ALL on Reprocess Required and Processed / No Change (never on Skipped). The link carries a
+  // one-time token naming its tab; when the address carries a token for the tab on screen, the whole tab is read once
+  // (`reprocessSelectAll`: identities only, search applied) and the form adds them to the selection.
+  let selectAll: ReprocessSelectAll | null = null;
+  if (current === 'required' || current === 'unchanged') {
+    const totalOnTab = current === 'required' ? required.requiredTotal : selection.tabCounts.unchanged;
+    const token = /^(required|unchanged)\.([0-9a-f-]{36})$/.exec(sp.selectAll ?? '');
+    const asked = token && token[1] === current
+      ? await reprocessSelectAll(s, { batchId, tab: current, search: sp.q })
+      : null;
+    selectAll = {
+      total: totalOnTab,
+      searching: (sp.q ?? '').trim() !== '',
+      href: hrefWith({ tab: current, ...(sp.page ? { page: sp.page } : {}), selectAll: `${current}.${randomUUID()}` }),
+      applied: asked && token ? { token: token[2], rows: asked.rows, tooMany: asked.tooMany, max: REPROCESS_SELECT_ALL_CEILING } : null,
+    };
+  }
+  const heldHref = hrefWith({ tab: 'skipped', held: '1' });
 
   // 97a9b0ab — every recomputation this run has had, each diffed against the calculation it replaced
   // with the cause named. It reads `payroll_employee_result_history`, NOT domain events, so the Audit
@@ -342,15 +378,19 @@ export default async function ReprocessPage({
             batchId={batchId}
             employees={candidates}
             required={requiredRows}
-            focusIds={focusIds}
+            focusIds={focus}
+            focusRows={focusRows}
+            selectAll={selectAll}
+            taxReviewHref={eligibility.taxReviewHref ?? null}
+            heldHref={heldHref}
             stale={stale}
             jobRunning={thisJob?.status==='queued' || thisJob?.status==='running'}
             currency={currency}
             from={listFrom ?? null}
-            paging={{existing:current==='required'?required.state:selection.state,runTotal:selection.runTotal+required.addedRunTotal,
+            paging={{existing:current!=='unchanged'?required.state:selection.state,runTotal:selection.runTotal+required.addedRunTotal,
               existingTotal:selection.runTotal,search:sp.q??'',
-              tabs:{current,counts:{required:required.owedTotal,unchanged:selection.tabCounts.unchanged},
-                hrefs:{required:tabHref('required'),unchanged:tabHref('unchanged')}}}}
+              tabs:{current,counts:{required:required.requiredTotal,skipped:required.skippedTotal,unchanged:selection.tabCounts.unchanged},
+                hrefs:{required:tabHref('required'),skipped:tabHref('skipped'),unchanged:tabHref('unchanged')}}}}
           />
         </div>
       </Card>

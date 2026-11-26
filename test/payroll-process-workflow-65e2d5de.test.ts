@@ -326,7 +326,10 @@ describe('6aee208b — Reprocess Required tabs and the all-pages selection', () 
   const KEYS = ['reprocessPageDefaultsNote','reprocessPagingNote','reprocessTabsLabel','reprocessTabRequired','reprocessTabUnchanged',
     'reprocessStatusRequired','reprocessReasonRequired','reprocessStaleAllSelected','reprocessStalePartSelected','reprocessStaleOthers',
     'reprocessStaleWithoutPayslipNew','reprocessStaleSelectAgain','reprocessClearSelection','reprocessNoRequired','reprocessNoUnchanged',
-    'reprocessReviewMore','reprocessReviewStaleLeftOut'] as const;
+    'reprocessReviewMore','reprocessReviewStaleLeftOut',
+    // a1a80747 r3 — the Skipped tab and Select all.
+    'reprocessTabSkipped','reprocessSelectAllEvery','reprocessSelectAllMatching','reprocessSelectAllTooMany','reprocessGroupHeldTitle',
+    'reprocessGroupHeldNote','reprocessReasonTaxSkipped','reprocessNoSkipped'] as const;
   const read = (loc: string) => JSON.parse(fs.readFileSync(path.join(ROOT, 'messages', `${loc}.json`), 'utf8')).payroll.batch as Record<string, unknown>;
   const args = (v: string) => [...v.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
   const en = read('en');
@@ -349,12 +352,14 @@ describe('6aee208b — Reprocess Required tabs and the all-pages selection', () 
   });
 
   it('the tab rides the same route: links built on the server, page reset, search kept', () => {
-    expect(REPROCESS_PAGE).toContain("const tab = sp.tab === 'required' || sp.tab === 'unchanged' ? sp.tab : 'default';");
-    // a1a80747 — Reprocess Required is the one union list; Processed / No Change stays the payslip reader's tab.
-    expect(REPROCESS_PAGE).toContain('reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q})');
+    // a1a80747 r3 — three tabs: Reprocess Required and Skipped split the one union list; Processed / No Change stays the
+    // payslip reader's tab.
+    expect(REPROCESS_PAGE).toContain("const tab = sp.tab === 'required' || sp.tab === 'skipped' || sp.tab === 'unchanged' ? sp.tab : 'default';");
+    expect(REPROCESS_PAGE).toContain('reprocessRequiredWithSkipPage(s,{batchId,page:parsePageQuery(sp),search:sp.q,tab:listTab})');
     expect(REPROCESS_PAGE).toMatch(/payrollEmployeeSelectionPage\(s,\{batchId,kind:'reprocess',page:parsePageQuery\(sp\),search:sp\.q,tab:'unchanged'\}\)/);
-    expect(REPROCESS_PAGE).toContain("!['page', 'tab', 'error'].includes(k)");
-    expect(REPROCESS_FORM).toMatch(/<Link key=\{key\} href=\{paging\.tabs!\.hrefs\[key\]\} replace scroll=\{false\}/);
+    // A one-time Select all token and the held focus are never carried to another tab.
+    expect(REPROCESS_PAGE).toContain("!['page', 'tab', 'error', 'selectAll', 'held'].includes(k)");
+    expect(REPROCESS_FORM).toMatch(/<Link key=\{key\} href=\{paging\.tabs!\.hrefs\[key\]!\} replace scroll=\{false\}/);
     // The form keeps its one mount per job, which is what keeps the ticks across a tab change.
     expect(REPROCESS_PAGE).toContain("key={thisJob?.id ?? 'selection'}");
   });

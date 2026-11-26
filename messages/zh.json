@@ -6360,7 +6360,8 @@
       "colProcessedDate": "处理日期",
       "rowView": "查看",
       "rowContinue": "继续",
-      "rowMoreActions": "更多操作"
+      "rowMoreActions": "更多操作",
+      "reprocessHeld": "{n, plural, other {# 名因所得税复核暂缓}}"
     },
     "reports": {
       "pageTitle": "薪资",
@@ -7656,7 +7657,15 @@
       "taxHeldReasonGeneric": "{period} 的所得税历史需要审核。",
       "taxHeldOpenRecalculation": "打开所得税重新计算",
       "taxHeldMore": "另有 {n} 名",
-      "closeBlockedTaxHeld": "无法关闭本次运行：{n} 名员工因所得税审核而暂缓，尚未计入本次薪资：{names}。请先更正其所得税历史，再通过“处理暂缓员工”添加他们（或将他们从本次运行中移除），然后再次关闭。"
+      "closeBlockedTaxHeld": "无法关闭本次运行：{n} 名员工因所得税审核而暂缓，尚未计入本次薪资：{names}。请先更正其所得税历史，再通过“处理暂缓员工”添加他们（或将他们从本次运行中移除），然后再次关闭。",
+      "reprocessTabSkipped": "已跳过",
+      "reprocessSelectAllEvery": "全选 {n, plural, other {# 名员工}}",
+      "reprocessSelectAllMatching": "全选 {n, plural, other {# 名匹配员工}}",
+      "reprocessSelectAllTooMany": "此标签页有 {n} 名员工，超过全选一次可勾选的上限（{max}）。请先搜索以缩小列表，或逐页勾选。",
+      "reprocessGroupHeldTitle": "因所得税复核暂缓 — {n} 名员工",
+      "reprocessGroupHeldNote": "未勾选，也不计入需重新处理：在其所得税历史更正之前，点击重新处理仍会跳过他们。请在重新计算所得税值中更正，然后勾选他们或点击处理暂缓员工。",
+      "reprocessReasonTaxSkipped": "已跳过 — 需要重新计算所得税。",
+      "reprocessNoSkipped": "本次运行没有被跳过的员工。"
     },
     "transactions": {
       "title": "交易录入",
