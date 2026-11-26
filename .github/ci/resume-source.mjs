@@ -20,7 +20,7 @@ const timestamp = value => typeof value === 'string' ? Date.parse(value) : NaN;
 const jobName = unit => unit.kind === 'browser' ? `browser (${unit.engine})` : `test (${unit.id})`;
 
 /** Digest check precedes bounded JSON-only extraction; no caller-supplied extracted object is trusted. */
-function archiveJson(artifact, bytes, filename, members = null) {
+function archiveJson(artifact, bytes, filename, members = null, extractor = './extract-artifact.py') {
   if (!Buffer.isBuffer(bytes) || bytes.length !== artifact.size_in_bytes || bytes.length > maxArchiveBytes)
     fail('archive byte size mismatch: ' + artifact.name);
   verifyArtifactBytes(artifact, bytes);
@@ -29,7 +29,7 @@ function archiveJson(artifact, bytes, filename, members = null) {
     const archive = join(temporary, 'source.zip');
     const extracted = join(temporary, 'json');
     writeFileSync(archive, bytes, {flag: 'wx', mode: 0o600});
-    execFileSync('python3', [fileURLToPath(new URL('./extract-artifact.py', import.meta.url)), archive, extracted],
+    execFileSync('python3', [fileURLToPath(new URL(extractor, import.meta.url)), archive, extracted],
       {timeout: 10000, stdio: 'pipe'});
     if(members&&!isDeepStrictEqual(readdirSync(extracted).sort(),members))fail('supplemental compiler packet members differ');
     return filename===null?new Map(readdirSync(extracted).map(name=>[name,readFileSync(join(extracted,name))])):JSON.parse(readFileSync(join(extracted, filename), 'utf8'));
@@ -103,11 +103,11 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
   const planArtifact = artifactByName.get('gate-plan');
   if (!planArtifact) fail('missing archived plan');
 
-  function fromJob(artifact, name, filename, members = null) {
+  function fromJob(artifact, name, filename, members = null, extractor = undefined) {
     const job = byName.get(name), when = timestamp(artifact.created_at);
     if (!job || job.conclusion === 'skipped' || when < timestamp(job.started_at) || when > timestamp(job.completed_at))
       fail('artifact outside producing job: ' + artifact.name);
-    return archiveJson(artifact, archives.get(artifact.name), filename, members);
+    return archiveJson(artifact, archives.get(artifact.name), filename, members, extractor);
   }
   const buildArtifact=artifactByName.get(BUILD_ARTIFACT);
   if(buildArtifact){
@@ -127,7 +127,8 @@ export function assessResumeSource({expectedPlan, expected, run, jobs, artifacts
   const applicationFailure=artifactByName.get(NEXT_APPLICATION_FAILURE);
   if(applicationFailure){
     if(byName.get('build').conclusion==='success')fail('failure diagnostic attached to successful build job');
-    const report=fromJob(applicationFailure,'build','comparison.json',['comparison.json']);
+    // Fix 2026-11-24: the real upload also carries bounded GNU time logs; only comparison.json is parsed here.
+    const report=fromJob(applicationFailure,'build','comparison.json',null,'./build-failure-extract.py');
     if(report.kind!=='CANONICAL_CI_APPLICATION_COMPILER_STATE_NOT_RELEASE'||report.releaseAuthorized!==false
       ||report.source!==expected.candidate||report.controller!==expected.controller||report.runId!==String(run.id)||report.attempt!=='1')fail('build failure diagnostic identity differs');
     // Job failure remains authoritative. This diagnostic supplies no reusable result.

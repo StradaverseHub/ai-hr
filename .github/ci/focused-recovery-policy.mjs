@@ -21,9 +21,15 @@ export function validateRecoveryControllerDiagnostic({run,jobs,controller,now=Da
  assert(jobs.find(j=>j.name==='resolve').steps?.some(s=>s.name==='CI integrity regression checks'&&s.conclusion==='success'),'Controller integrity controls did not pass');
  return {runId:run.id,controller,resolveJobId:jobs.find(j=>j.name==='resolve').id,kind:'CONTROLLER_ONLY_NOT_APPLICATION_GATE'};
 }
+/** Fix 2026-11-24: v1 binds the candidate (the frozen checkout) and the original gate's controller (its main/alpha
+ * head_sha) separately. Focused runs dispatched with `--ref main|alpha` execute on that controller, not the candidate. */
+export function focusedRecoveryIdentity({candidate,baseline,run}){
+ assert(sha(candidate)&&sha(baseline)&&positive(run?.id)&&sha(run.head_sha)&&['main','alpha'].includes(run.head_branch),'Exact candidate, baseline and original main/alpha gate controller required');
+ return {candidate,controller:run.head_sha,controllerBranch:run.head_branch,baseline,runId:run.id};
+}
 export function validateFocusedMetadata({run,jobs,artifacts,expected,now=Date.now()}){
  assert(run.id===expected.runId&&positive(run.id)&&run.repository?.id===REPOSITORY_ID&&run.repository.full_name===REPOSITORY&&run.head_repository?.id===REPOSITORY_ID,'Foreign focused run');
- assert(positive(expected.workflowId)&&run.workflow_id===expected.workflowId&&run.path==='.github/workflows/alpha-focused-checks.yml'&&run.event==='workflow_dispatch'&&['main','alpha'].includes(run.head_branch)&&run.head_sha===expected.controller,'Untrusted focused controller/workflow');
+ assert(positive(expected.workflowId)&&run.workflow_id===expected.workflowId&&run.path==='.github/workflows/alpha-focused-checks.yml'&&run.event==='workflow_dispatch'&&['main','alpha'].includes(run.head_branch)&&run.head_branch===expected.controllerBranch&&sha(expected.controller)&&run.head_sha===expected.controller,'Untrusted focused controller/workflow');
  assert(run.status==='completed'&&run.conclusion==='success'&&run.run_attempt===1,'Focused run must be a successful first attempt');
  const created=Date.parse(run.created_at),finished=Date.parse(run.updated_at);
  assert(Number.isFinite(created)&&Number.isFinite(finished)&&created>=Date.parse(expected.after)&&finished>=created&&finished<=now+60000&&now-created<=86400000,'Focused evidence is stale or precedes source completion');

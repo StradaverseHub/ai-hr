@@ -183,6 +183,19 @@
       "candidate": "07e5a8fb91a20ac3f326a3a522e090066ff7dd64",
       "conclusion": "success",
       "scope": "Focused file timings for the stalled unit's files not timed by the gate; no release authority"
+    },
+    {
+      "runIds": [
+        45792803264,
+        45797094461
+      ],
+      "candidate": "a8f7255df1923098a9168177ee5f5ef049830f8a",
+      "conclusion": "failure",
+      "scope": "Larger of two gate intervals for the two previously unhinted attendance keyset-scale DB files only; scheduling estimates, never coverage, pass or release authority",
+      "files": [
+        "test/attendance-daily-keyset-scale.test.ts",
+        "test/attendance-month-keyset-scale.test.ts"
+      ]
     }
   ],
   "durationsMs": {
@@ -1365,12 +1378,14 @@
     "test/attendance-clock-policy-runtime.test.ts": 8858,
     "test/attendance-clock-policy-storage.test.ts": 6659,
     "test/attendance-correction-review-store.test.ts": 47181,
+    "test/attendance-daily-keyset-scale.test.ts": 20083,
     "test/attendance-day-native-transaction.test.ts": 4548,
     "test/attendance-day-schedule-effects.test.ts": 30557,
     "test/attendance-final-decision-window-5143.test.ts": 16789,
     "test/attendance-formula-frozen-overtime.test.ts": 5,
     "test/attendance-formula-retirement.test.ts": 2184,
     "test/attendance-mobile-kernel-seams.test.ts": 7909,
+    "test/attendance-month-keyset-scale.test.ts": 20963,
     "test/attendance-month-native-scale.test.ts": 109369,
     "test/attendance-month-presentation.test.ts": 24293,
     "test/attendance-on-behalf-96a54ed2.test.ts": 25035,
