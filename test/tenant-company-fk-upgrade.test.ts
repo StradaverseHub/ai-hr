@@ -2638,6 +2638,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'payroll_txn_import_outcome':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // 7450 (a1a80747): the stored outstanding-employee answer per processed run, written by payroll administrators.
    'payroll_run_outstanding':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arwd/OWNER}'},
+   // 7510 (bc6b5490): the append-only CP38 correction history (no UPDATE or DELETE for the application).
+   'employee_cp38_revision':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
   };
   const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
@@ -2785,6 +2787,9 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   // 7510 (bc6b5490): CP38 history is readable where the employee's CP38 is; appended by an administrator who can see them.
+   {table:'employee_cp38_revision',name:'employee_cp38_revision_read',cmd:'SELECT',role:'ai_hr_app',using:'(tenant_id = app.current_tenant_id()) AND (employment_id = ANY ((SELECT app.visible_employment_ids())::uuid[]))',check:null},
+   {table:'employee_cp38_revision',name:'employee_cp38_revision_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:'(tenant_id = app.current_tenant_id()) AND (SELECT app.is_admin()) AND (employment_id = ANY ((SELECT app.visible_employment_ids())::uuid[]))'},
    // 7450 (a1a80747): visible exactly where the run is; written only by a payroll administrator of the run's company.
    {table:'payroll_run_outstanding',name:'payroll_run_outstanding_read',cmd:'SELECT',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=payroll_run_outstanding.batch_id AND b.tenant_id=payroll_run_outstanding.tenant_id)',check:null},
    {table:'payroll_run_outstanding',name:'payroll_run_outstanding_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.payroll_batch b WHERE b.id=payroll_run_outstanding.batch_id AND b.tenant_id=payroll_run_outstanding.tenant_id AND app.can_admin_payroll_for(b.company_id))'},

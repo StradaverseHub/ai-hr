@@ -15,7 +15,8 @@
 --    before and after, who and when. It exists because the event log may not carry the amount (ADR-0006 / ADR-0030
 --    Layer 0: domain_event has a broader read surface than the CP38 row), and the reporter asked to see amounts
 --    before and after. So the amounts live here, behind the same row security as employee_cp38 itself.
---      * Append-only: ai_hr_app gets SELECT and INSERT only, no UPDATE or DELETE.
+--      * Append-only: ai_hr_app gets SELECT and INSERT only; the UPDATE and DELETE the owner's default privileges add
+--        are revoked, and no UPDATE or DELETE policy exists.
 --      * Read: the employment is one the viewer can see (the precomputed visible-employment answer, read once per
 --        statement, exactly as employee_cp38_rls reads it since 0515).
 --      * Insert: an administrator (as employee_cp38's WITH CHECK) and an employment they can see. Payroll
@@ -51,6 +52,8 @@ CREATE INDEX employee_cp38_revision_employment_idx ON employee_cp38_revision (em
 ALTER TABLE employee_cp38_revision ENABLE ROW LEVEL SECURITY;--> statement-breakpoint
 REVOKE ALL ON employee_cp38_revision FROM PUBLIC;--> statement-breakpoint
 GRANT SELECT, INSERT ON employee_cp38_revision TO ai_hr_app;--> statement-breakpoint
+-- The owner's default privileges also give ai_hr_app UPDATE and DELETE on every new table: take them back.
+REVOKE UPDATE, DELETE, TRUNCATE ON employee_cp38_revision FROM ai_hr_app;--> statement-breakpoint
 CREATE POLICY employee_cp38_revision_read ON employee_cp38_revision FOR SELECT TO ai_hr_app
   USING ((tenant_id = app.current_tenant_id()) AND (employment_id = ANY ((SELECT app.visible_employment_ids())::uuid[])));--> statement-breakpoint
 CREATE POLICY employee_cp38_revision_insert ON employee_cp38_revision FOR INSERT TO ai_hr_app

@@ -40,7 +40,7 @@ import {
   updateCp38,
 } from '../core/cp38';
 import { applyCp38EffectiveTo, listCp38EffectiveToCandidates } from '../scripts/cp38-inclusive-effective-to-bc6b5490';
-import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, type Base } from './harness';
+import { adminCtx, closeAll, entitledCtx, migrateTestDb, owner, resetDb, seedBase, setModule, type Base } from './harness';
 
 let base: Base;
 let a: SessionContext;
@@ -196,8 +196,11 @@ describe('bc6b5490 — corrections after processing', () => {
     expect(await listRecalcChangeCategories(a, { batchId: feb })).toEqual({ [e.employmentId]: ['cp38'] });
     // Reprocess reads the corrected record; nothing was reprocessed automatically before that.
     expect(((await slip(feb, e.employmentId)).statutory as Record<string, number>).cp38).toBe(200);
-    const job = await reprocessSelectedEmployees(a, { batchId: feb, employmentIds: [e.employmentId], idempotencyKey: randomUUID() });
-    expect(((await getReprocessJob(a, job.jobId))!.result as { outcomes: { status: string }[] }).outcomes[0]).toMatchObject({ status: 'reprocessed' });
+    // Selective reprocess is the multi-cycle module's (core/payroll.ts enqueueSelectiveReprocess).
+    await setModule(base.tenantId, 'multi_cycle_payroll', 'active');
+    const reprocessor = await entitledCtx(base);
+    const job = await reprocessSelectedEmployees(reprocessor, { batchId: feb, employmentIds: [e.employmentId], idempotencyKey: randomUUID() });
+    expect(((await getReprocessJob(reprocessor, job.jobId))!.result as { outcomes: { status: string }[] }).outcomes[0]).toMatchObject({ status: 'reprocessed' });
     expect(((await slip(feb, e.employmentId)).statutory as Record<string, number>).cp38).toBe(250);
 
     // Delete: gone from the engine and both screens' current lists, kept (as deleted) in listCp38 and in History.
@@ -352,7 +355,8 @@ describe('038c304b — the company-wide list pages by key', () => {
 describe('bc6b5490 — the Effective to data step', () => {
   it('lists operator-typed ends only, moves only confirmed rows, marks the processed run and never a closed one', async () => {
     const typed = await paid('Fictional Typed End', '900101011111');
-    const closing = await hire(a, 'Fictional Closing End');
+    // Paid too: a run refuses to process while anyone in scope is not ready (no salary or IC).
+    const closing = await paid('Fictional Closing End', '900101013131');
     const closedMonth = await paid('Fictional Closed Month', '900101012121');
     const raw = (employmentId: string, cp38Ref: string, from: string, to: string | null) =>
       owner.db.insert(schema.employeeCp38).values({ tenantId: base.tenantId, employmentId, cp38Ref, amount: '100.00', validFrom: from, validTo: to }).returning({ id: schema.employeeCp38.id });

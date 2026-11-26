@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useTransition, type ReactNode } from 'react';
+import { useState, useTransition, type FormEvent, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Button, Field, inputCls } from '@/components/ui';
@@ -84,13 +84,19 @@ function Shell({ trigger, title, open, onOpenChange, children }: {
   );
 }
 
-/** Run a value-returning action; on success navigate in-app with its feedback, else show the refusal. */
+/**
+ * Run a value-returning action; on success navigate in-app with its feedback, else show the refusal. Dispatched from
+ * onSubmit, never `<form action>`: React 19 resets a form whose action settles, and a refused save must keep the typing
+ * (the Fixed Transaction pop-up's reason, app/payroll/transactions/fixed/edit-fixed-dialog.tsx).
+ */
 function useCp38Submit(onDone: () => void) {
   const router = useRouter();
   const showFeedback = useActionFeedbackToast();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const submit = (action: (fd: FormData) => Promise<Cp38DialogResult>) => (fd: FormData) =>
+  const submit = (action: (fd: FormData) => Promise<Cp38DialogResult>) => (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const fd = new FormData(event.currentTarget);
     start(async () => {
       fd.set(ACTION_NAVIGATION_FIELD, 'client');
       const result = await action(fd);
@@ -106,6 +112,7 @@ function useCp38Submit(onDone: () => void) {
       showFeedback(feedback);
       router.push(href);
     });
+  };
   return { pending, message, setMessage, submit };
 }
 
@@ -119,7 +126,7 @@ function Cp38Form({ record, employmentId, returnTo, defaultFrom, labels, onDone 
 }) {
   const { pending, message, submit } = useCp38Submit(onDone);
   return (
-    <form action={submit(saveCp38DialogAction)} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2" data-cp38-form="">
+    <form onSubmit={submit(saveCp38DialogAction)} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2" data-cp38-form="">
       <input type="hidden" name="employmentId" value={employmentId} />
       <input type="hidden" name="returnTo" value={returnTo} />
       {record && <input type="hidden" name="id" value={record.id} />}
@@ -215,7 +222,7 @@ export function Cp38RowActions({ record, returnTo, labels, history, deleteDescri
       >
         <Cp38HistoryList entries={history} labels={labels.historyLabels} />
       </Shell>
-      <form action={del.submit(deleteCp38DialogAction)}>
+      <form onSubmit={del.submit(deleteCp38DialogAction)}>
         <input type="hidden" name="id" value={record.id} />
         <input type="hidden" name="returnTo" value={returnTo} />
         <ConfirmSubmit size="sm" title={labels.deleteTitle} description={deleteDescription} confirmLabel={labels.delete} disabled={del.pending}>

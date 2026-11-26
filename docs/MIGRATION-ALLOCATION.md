@@ -1,6 +1,6 @@
 # Board CP38 lane (038c304b + bc6b5490): CP38 correction history and last-month amount, 26 November 2026
 
-Reserve `7510_employee_cp38_history_last_month`, journal index `10910`, timestamp `1795495007510`, SQL SHA-256 `ba15f839bb1e5c1e3e8a7702a662672708883a6e95047e66800a05dadb5afe3c`. Next free slot after
+Reserve `7510_employee_cp38_history_last_month`, journal index `10910`, timestamp `1795495007510`, SQL SHA-256 `c82f4eb2e5f3e3d50aab08e759dda9651de6c68fbb4f68a879e05f9ff8229739`. Next free slot after
 `7500_payroll_read_history_summary`: the highest migration on every remote branch (400 most recent) and the staging
 ledger watermark (1795495007500, read 26 Nov 2026) are both 7500, and no branch reserves above it. Adds the nullable
 `employee_cp38.last_month_amount` and the append-only, row-secured `employee_cp38_revision`. Recheck both installations'

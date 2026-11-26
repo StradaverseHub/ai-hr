@@ -82,7 +82,7 @@ beforeAll(async()=>{
  // CP38 records on ~400 employees spread over the staffed companies: open, ended and upcoming, some with a last month.
  const subjects=fixture.employmentIds.filter((_,i)=>i%5<2);
  const rows=subjects.map((employmentId,i)=>({tenantId:b.tenantId,employmentId,cp38Ref:`CP38/FX/${String(i).padStart(4,'0')}`,amount:String(100+i%50),
-  validFrom:i%7===0?'2027-01-01':'2026-01-01',validTo:i%3===0?'2026-07-01':null,lastMonthAmount:i%3===0&&i%2===0?'12.34':null,remarks:i%4===0?'Fictional letter':null}));
+  validFrom:i%7===0?'2027-01-01':'2026-01-01',validTo:i%3===0&&i%7!==0?'2026-07-01':null,lastMonthAmount:i%3===0&&i%7!==0&&i%2===0?'12.34':null,remarks:i%4===0?'Fictional letter':null}));
  for(let i=0;i<rows.length;i+=500)await owner.db.insert(schema.employeeCp38).values(rows.slice(i,i+500));
  // Correction history on every tenth record, one edit each, written as the native writer writes it.
  const recs=await owner.db.select({id:schema.employeeCp38.id,employmentId:schema.employeeCp38.employmentId}).from(schema.employeeCp38).where(eq(schema.employeeCp38.tenantId,b.tenantId));
