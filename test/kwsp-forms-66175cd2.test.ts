@@ -10,11 +10,12 @@
  * test/kwsp-viewer-back-66175cd2.dom.test.tsx), and "EPF contributions (KWSP)" off the shelf, its Open Form
  * step and Filing history's forms to produce — while staying registered for everything else that reads it.
  *
- * Commit 3 — Borang A and BBCD redrawn to the reporter's references: the KWSP logo top left from the
- * owner-supplied official file ONLY (a synthetic, fictional PNG stands in for it here — no logo image is in
- * the repository), bold masthead and headings, Borang A's KWSP 6 / BORANG / A block, and no small print of
- * ours at the foot. Read off the rendered PDFs.
+ * Commit 3 — Borang A and BBCD redrawn to the reporter's references: the KWSP logo top left, bold masthead
+ * and headings, Borang A's KWSP 6 / BORANG / A block, and no small print of ours at the foot. Read off the
+ * rendered PDFs. Synthetic PNGs pin the geometry; plan r2 (26 Nov 2026) adds KWSP's own crest at
+ * assets/kwsp/kwsp-logo.png, pinned by its SHA-256 and drawn on every sheet.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import zlib from 'node:zlib';
@@ -313,17 +314,19 @@ const fictionalRow = (i: number): BorangARow => ({
 const formOf = (n: number) => borangAFrom({ header: formHeader, rows: Array.from({ length: n }, (_, i) => fictionalRow(i)) });
 const WIDE_LOGO = syntheticPng(600, 400);
 
-describe('commit 3 — the KWSP logo comes only from the owner-supplied official file', () => {
-  it('reads one documented path, accepts a PNG at least 300 px on its shorter side, refuses anything else', () => {
+describe('commit 3 — the KWSP logo comes only from the official KWSP file', () => {
+  it('reads one documented path, accepts a PNG at least 180 px on its shorter side, refuses anything else', () => {
     expect(KWSP_LOGO_PATH).toBe(path.join('assets', 'kwsp', 'kwsp-logo.png'));
-    expect(KWSP_LOGO_MIN_PX).toBe(300);
+    expect(KWSP_LOGO_MIN_PX).toBe(180);
+    expect(kwspLogoRefusal(syntheticPng(180, 240))).toBeNull();
+    expect(kwspLogoRefusal(syntheticPng(179, 400))).toMatch(/at least 180 px/);
     expect(pngSize(syntheticPng(640, 480))).toEqual({ width: 640, height: 480 });
     expect(kwspLogoRefusal(syntheticPng(600, 600))).toBeNull();
     expect(kwspLogoRefusal(syntheticPng(96, 93))).toMatch(/too small to print clearly/);
     expect(kwspLogoRefusal(new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]))).toBe('not a PNG file');
     // The README beside it says exactly what to supply.
     const readme = read('assets/kwsp/README.md');
-    for (const s of ['assets/kwsp/kwsp-logo.png', 'PNG', '300 px', '600 px']) expect(readme).toContain(s);
+    for (const s of ['assets/kwsp/kwsp-logo.png', 'PNG', '180 px', 'kwsp.gov.my', 'SHA-256']) expect(readme).toContain(s);
   });
 
   it('is read by both PDF routes and handed to the renderers, which stay pure', () => {
@@ -392,6 +395,31 @@ describe('commit 3 — the KWSP logo comes only from the owner-supplied official
     expect(img.x + img.w, 'the logo runs into the masthead').toBeLessThan(masthead.x);
     expect(page.texts).toEqual(plain.texts);
     expect(plain.images).toEqual([]);
+  });
+
+  // Plan r2 (26 Nov 2026) — the committed file IS KWSP's crest, byte for byte the one recorded in the README
+  // (cropped from kwsp.gov.my's own logo), accepted by the loader and drawn on every Borang A sheet and the BBCD.
+  it('plan r2: the committed crest is the recorded KWSP file, accepted, and printed on every sheet and the BBCD', async () => {
+    const committed = new Uint8Array(fs.readFileSync(path.join(ROOT, KWSP_LOGO_PATH)));
+    const sha = createHash('sha256').update(committed).digest('hex');
+    expect(read('assets/kwsp/README.md')).toContain(sha);
+    expect(sha).toBe('a821ed912c0e2f0292696a9f1a7f53444dc4b4109812e1b53346d2e490ae52f6');
+    expect(kwspLogoRefusal(committed)).toBeNull();
+    expect(pngSize(committed)).toEqual({ width: 182, height: 180 });
+    const form = formOf(45);
+    const sheets = readPdf(Buffer.from(await renderBorangAPdf(form, { logo: committed })));
+    expect(sheets).toHaveLength(3);
+    const box = BORANG_A_SHEET_GEOMETRY.logoBox;
+    for (const [n, sheet] of sheets.entries()) {
+      expect(sheet.images, `sheet ${n + 1}`).toHaveLength(1);
+      const img = sheet.images[0];
+      expect(img.w / img.h).toBeCloseTo(182 / 180, 2);
+      expect(img.x).toBeGreaterThanOrEqual(box.x - 0.01);
+      expect(img.y + img.h).toBeLessThanOrEqual(box.y + box.h + 0.01);
+    }
+    const [bbcd] = readPdf(Buffer.from(await renderBorangBbcdPdf(borangBbcdFrom(formOf(3)), { logo: committed })));
+    expect(bbcd.images).toHaveLength(1);
+    expect(bbcd.images[0].w / bbcd.images[0].h).toBeCloseTo(182 / 180, 2);
   });
 
   it('refuses a truncated or damaged file BEFORE pdf-lib sees it (pdf-lib spins on a truncated PNG)', () => {
@@ -488,7 +516,7 @@ describe('commit 3 — no small print of ours at the foot of Borang A and BBCD',
       const src = read(lib);
       expect(src).not.toContain('NOT KWSP ARTWORK, AND THE PAGE SAYS SO');
       expect(src).not.toContain('NO LOGO: the sample');
-      expect(src).toContain('owner-supplied official file');
+      expect(src).toContain('official KWSP file');
     }
   });
 });

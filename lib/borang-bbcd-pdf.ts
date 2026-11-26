@@ -11,7 +11,7 @@
  *
  * ── BOARD 66175cd2 (plan r1): THE KWSP LOGO, BOLD HEADINGS, NO FOOTNOTES OF OURS ───────────────────────
  * Reverses r411's "no logo" at the reporter's explicit request (docs/adr/2026-11-25-kwsp-forms-official-logo-and-no-footer.md):
- *   • THE KWSP LOGO, TOP LEFT, drawn ONLY from the owner-supplied official file (lib/kwsp-logo.ts reads
+ *   • THE KWSP LOGO, TOP LEFT, drawn ONLY from the official KWSP file (lib/kwsp-logo.ts reads
  *     `assets/kwsp/kwsp-logo.png`; the route passes its bytes as `opts.logo`), scaled to fit its box with its
  *     proportions kept. Never the other vendor's reproduction, never traced. Without the file the box is
  *     left blank and nothing else moves.
@@ -99,7 +99,7 @@ export function borangBbcdProvenance(form: Pick<BorangBbcdForm, 'contributionMon
 
 /**
  * Draw the BBCD. `opts.logo` is the official KWSP logo's PNG bytes (lib/kwsp-logo.ts `readKwspLogo()`), or
- * absent/null when the owner has not supplied one. Pass only bytes `readKwspLogo()` accepted:
+ * absent/null when no acceptable file is installed. Pass only bytes `readKwspLogo()` accepted:
  * pdf-lib does not return on a truncated PNG, and that function refuses one before it gets here — the page is then the same, with the logo box empty.
  */
 export async function renderBorangBbcdPdf(form: BorangBbcdForm, opts: { logo?: Uint8Array | null } = {}): Promise<Uint8Array> {

@@ -23,3 +23,17 @@ reference forms, with the logo and with nothing else at the foot.
 `EPF contributions (KWSP)` (`my.epf`) is off the shelf, the Open Form step and the Filing history
 choice (`ReportDef.shelf: false`). It stays registered because its submission drives the suspended-tenant
 statutory override, its id is in the audit form list and recorded generations still refer to it.
+
+## Plan revision 2 (26 November 2026): the crest is committed from KWSP's own website
+
+The reporter refuted revision 1 because the logo box printed empty: no owner file was ever supplied. They
+approved revision 2 on 26 November 2026, and the owner approved downloading KWSP's files and committing the
+crest to the repository.
+
+- `assets/kwsp/kwsp-logo.png` is KWSP's round crest, cropped from the logo KWSP publishes at
+  kwsp.gov.my. Its source, retrieval date and SHA-256 are in `assets/kwsp/README.md`. Nothing was traced or
+  redrawn, and the vendor reproduction in the reporter's references is still not used.
+- `KWSP_LOGO_MIN_PX` drops from 300 to 180 px. KWSP publishes its crest at 180 px; across the 0.78 inch box
+  that prints at about 230 dpi. A larger official copy can replace the file without a code change.
+- KWSP's current crest differs slightly from the vendor copy on the references (no lettering in the ring).
+  The forms use KWSP's current mark.
