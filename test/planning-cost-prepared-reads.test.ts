@@ -89,6 +89,9 @@ const evidence:unknown[]=[];
 
 let b:Base,fixture:ScaleFixture;
 let personas:Record<Persona,SessionContext>;
+/** A test-only login that holds the application role (so row security and its plans are the application's) and
+ * pg_read_all_stats (so it may read its own backend's memory contexts, which the application role may not). */
+const measurer={name:'planning_measure_'+randomUUID().replace(/-/g,'').slice(0,12),password:randomUUID(),appRole:''};
 beforeAll(async()=>{
  // Staging's setting: Today's carriers and the default read join (ADR 0181 package 1.1).
  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
@@ -101,6 +104,10 @@ beforeAll(async()=>{
  await owner.db.execute(sql`insert into app.resignation_runtime_verifier(singleton,secret) values(true,${resignationRuntimeKey('7'.repeat(64))})`);
  await owner.db.insert(schema.tenantModule).values(MODULE_CATALOG.filter(m=>!m.isCore&&m.packBacked).map(m=>({tenantId:b.tenantId,moduleCode:m.code,status:'active' as const}))).onConflictDoNothing();
  fixture=await buildScaleFixture(b,{employments:1000});
+ measurer.appRole=decodeURIComponent(new URL(applicationDatabaseUrl(process.env).url).username);
+ expect(measurer.appRole).toMatch(/^[a-z_][a-z0-9_]*$/);
+ await owner.db.execute(sql.raw(`create role "${measurer.name}" login password '${measurer.password}' in role "${measurer.appRole}"`));
+ await owner.db.execute(sql.raw(`grant pg_read_all_stats to "${measurer.name}"`));
  const base=await entitledCtx(b,['hr_admin']);
  const own=async(employmentId:string,roles:string[]):Promise<SessionContext>=>{
   const [row]=await owner.db.select({personId:schema.employment.personId}).from(schema.employment).where(sql`${schema.employment.id}=${employmentId}::uuid`);
@@ -127,6 +134,7 @@ beforeAll(async()=>{
 },300_000);
 afterAll(async()=>{
  vi.unstubAllEnvs();
+ await owner.db.execute(sql.raw(`drop role if exists "${measurer.name}"`)).catch(()=>undefined);
  if(process.env.AIHR_FOCUSED_EVIDENCE_DIR)writeFileSync(join(process.env.AIHR_FOCUSED_EVIDENCE_DIR,'planning-cost-prepared-reads.json'),
   JSON.stringify({kind:'PLANNING_COST_PREPARED_READS',fictional:true,source:process.env.AIHR_CI_HEAD??null,measurements:evidence},null,1));
  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete process.env.AIHR_VIEWER_MENU_CACHE;delete process.env.AIHR_PREPARED_READS;await closeAll();});
@@ -181,7 +189,9 @@ const planOf=(rows:unknown)=>((rows as Record<string,unknown>[])[0]['QUERY PLAN'
 /** The measurement of one statement for one persona on one application connection of its own (the application role,
  * so row security applies; a new backend, so no plan or prepared statement of the renders is reused). */
 async function measure(pair:Pair){
- const connection=postgres(applicationDatabaseUrl(process.env).url,{max:1,onnotice:()=>{}});
+ const url=new URL(applicationDatabaseUrl(process.env).url);url.username=measurer.name;url.password=measurer.password;
+ const connection=postgres(url.toString(),{max:1,onnotice:()=>{}});
+ await connection.unsafe(`set role "${measurer.appRole}"`);
  // drizzle's own driver settings (its date and JSON parameter serializers), as the application's client has them.
  drizzle(connection);
  try{
@@ -193,8 +203,15 @@ async function measure(pair:Pair){
   let genericPlanningMs:number|null=null;
   try{genericPlanningMs=Math.round(planOf((await call(connection,pair,false,'generic')).rows)['Planning Time']*100)/100;}catch{genericPlanningMs=null;}
   // Plan cache memory this backend holds for the prepared statement (the application role may not read it everywhere).
-  const memory=async()=>{try{const [row]=await connection.unsafe<{bytes:string}[]>(`select coalesce(sum(total_bytes),0)::text as bytes from pg_backend_memory_contexts
-   where name in ('CachedPlanSource','CachedPlanQuery','CachedPlan')`);return Number(row.bytes);}catch{return null;}};
+  // This backend's plan cache and whole memory, read as the measurer (the application role may not read them).
+  const memory=async()=>{
+   await connection.unsafe('reset role');
+   try{
+    const [row]=await connection.unsafe<{plans:string;total:string}[]>(`select coalesce(sum(total_bytes) filter (where name in
+     ('CachedPlanSource','CachedPlanQuery','CachedPlan')),0)::text as plans, coalesce(sum(total_bytes),0)::text as total from pg_backend_memory_contexts`);
+    return {plans:Number(row.plans),total:Number(row.total)};
+   }finally{await connection.unsafe(`set role "${measurer.appRole}"`);}
+  };
   const memoryBefore=await memory();
   const prepared=[];for(let i=0;i<PREPARED_CALLS;i++)prepared.push(await call(connection,pair,true));
   const memoryAfter=await memory();
@@ -208,13 +225,16 @@ async function measure(pair:Pair){
   try{for(let i=0;i<GENERIC_CALLS;i++)generic.push(await call(connection,pair,true));}
   finally{await connection.unsafe(`reset plan_cache_mode`);}
   const forced=await counters();
+  const memoryGeneric=await memory();
   const expected=unnamed[0].rows;
   const differing=[...unnamed,...prepared,...generic].map((result,index)=>JSON.stringify(result.rows)===JSON.stringify(expected)?null:index).filter(index=>index!==null);
   const row={target:pair.target,persona:pair.persona,parameters:pair.statement.params.length,textLength:pair.statement.sql.length,
    rows:Array.isArray(expected)?expected.length:null,resultBytes:JSON.stringify(expected).length,
    unnamed:{wallMs:median(unnamed.map(result=>result.ms)),planningMs:median(explained.map(plan=>plan['Planning Time'])),executionMs:median(explained.map(plan=>plan['Execution Time']??0))},
    prepared:{firstFiveMs:median(prepared.slice(0,5).map(result=>result.ms)),laterMs:median(prepared.slice(5).map(result=>result.ms)),plans:auto,
-    cachedPlanBytes:memoryBefore===null||memoryAfter===null?null:memoryAfter-memoryBefore},
+    cachedPlanBytes:memoryAfter.plans-memoryBefore.plans},
+   retained:{autoPlanBytes:memoryAfter.plans-memoryBefore.plans,genericPlanBytes:memoryGeneric.plans-memoryBefore.plans,
+    backendBytesBefore:memoryBefore.total,backendBytesAfterGeneric:memoryGeneric.total},
    generic:{wallMs:median(generic.map(result=>result.ms)),planningOnceMs:genericPlanningMs,plans:forced},differing};
  console.log('PLANNING_COST '+JSON.stringify(row));
   evidence.push(row);
