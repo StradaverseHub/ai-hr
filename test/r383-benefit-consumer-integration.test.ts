@@ -46,6 +46,13 @@ describe('r383 generated saved benefit consumers',()=>{
   await upsertPayComponent(ctx,{...flags,code:'SYNTH_CAR',name:'Synthetic BIK changed',displayCategory:'bik',eaFormLine:'EA_B3',pcbExemptionCode:'PCB_CHILD_CARE'});
   await setEmploymentPayComponent(ctx,{employmentId:e.employmentId,componentId:bik.id,amount:9900,effectiveFrom:'2026-06-01'});
   await pack.statutory.setTax(ctx,{personId:e.personId,employmentId:e.employmentId,expectedCompanyId:base.companyId,taxResidency:'rep'});
+  // 124a979e: these input changes flag the employee's processed May runs Reprocess Required, and the worksheet leaves a
+  // flagged run out rather than replay a stale result.
+  const runs=await owner.db.select({at:schema.payrollBatch.needsRecalcAt,ids:schema.payrollBatch.recalcEmploymentIds}).from(schema.payrollBatch).where(eq(schema.payrollBatch.tenantId,base.tenantId));
+  expect(runs.some(run=>run.at!=null&&Array.isArray(run.ids)&&(run.ids as string[]).includes(e.employmentId))).toBe(true);
+  expect((await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]})).rows).toEqual([]);
+  // Still the r383 claim: once the runs are taken as reviewed, today's catalogue and recurring values change no recorded replay.
+  await owner.db.update(schema.payrollBatch).set({needsRecalcAt:null,recalcEmploymentIds:null}).where(eq(schema.payrollBatch.tenantId,base.tenantId));
   const after=await multiCycleWorksheetMY(ctx,{companyIds:[base.companyId]});expect(after.rows).toEqual(before.rows);expect(after.movement).toEqual(before.movement);
   const row=await payslipForReview(ctx,{companyIds:[base.companyId],payslipId:saved[0].id});expect(row).toBeTruthy();
   const x=explainPcb(row!.statutory,null);expect(x.kind).toBe('mtd');expect(x.taxSelection).toBeTruthy();if(x.kind==='mtd')expect(x.calculationScheme).toBe('resident');
