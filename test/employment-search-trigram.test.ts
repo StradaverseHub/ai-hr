@@ -116,13 +116,15 @@ describe('employee search trigram candidates (7320)',()=>{
  },300_000);
 
  it('the candidates never contain an employment the caller cannot see, and contain every visible match',async()=>{
+  const narrowed:string[]=[];
   for(const [name,ctx] of Object.entries(fixture.personas)){
    const visible=new Set((await withTenant(ctx,tx=>tx.select({id:schema.employment.id}).from(schema.employment))).map(r=>r.id));
    for(const q of ['tan','bulk 01','bk-00','fictional']){
     const [row]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates(${q}::text,null::uuid[],true) as ids`));
-    // NULL: 7530 declines to narrow (a broad term for a caller with cheap row security); the caller
-    // then reads as before 7320, which the directory and picker equivalence tests cover.
+    // NULL: 7530 declines to narrow (at most 1,000 employments in scope outside the caller's administered and
+    // partner companies); the caller then reads as before 7320, which the equivalence tests cover.
     if(row.ids===null)continue;
+    narrowed.push(`${name}/${q}`);
     const candidates=row.ids;
     expect(candidates.every(id=>visible.has(id)),`${name}/${q}: only visible employments`).toBe(true);
     for(const id of await directoryExpected(ctx,[...fixture.companyIds,...await allCompanies(ctx)],q))
@@ -137,6 +139,9 @@ describe('employee search trigram candidates (7320)',()=>{
    const [none]=await withTenant(ctx,tx=>tx.execute<{ids:string[]|null}>(sql`select app.employment_search_candidates('am',null::uuid[],true) as ids`));
    expect(none.ids,`${name}: a 2-character term is not narrowed`).toBeNull();
   }
+  // Non-vacuous: the single-company administrator asking the whole group (about 5,900 employments outside their
+  // company) is narrowed, so the two guarantees above were checked on real candidates.
+  expect(narrowed.filter(n=>n.startsWith('single/')),'the single-company administrator is narrowed').toHaveLength(4);
  },180_000);
 
  it('under the caller\'s own claims, the candidate search reads the trigram indexes',async()=>{
@@ -191,7 +196,8 @@ describe('employee search trigram candidates (7320)',()=>{
   const searchStatements=async(work:()=>Promise<unknown>)=>{
    const observed=await observeStatements(work);
    const reads=observed.statements.filter(s=>!isIdentityStatement(s.sql)&&/^(select|with|\()/i.test(s.sql.trim()));
-   expect(reads.filter(s=>CANDIDATES.test(s.sql.trim())).length,'one candidates statement per search').toBe(1);
+   // At most one candidates statement: none for a group-wide administrator, who is never narrowed (7530).
+   expect(reads.filter(s=>CANDIDATES.test(s.sql.trim())).length,'at most one candidates statement per search').toBeLessThanOrEqual(1);
    const narrowed=reads.some(s=>CLAUSE.test(s.sql));
    const before=reads.filter(s=>!CANDIDATES.test(s.sql.trim())).map(s=>({...s,sql:s.sql.replace(CLAUSE,'($1::uuid[] is not null or true)')}));
    for(const s of before)expect(s.sql,'one narrowing clause per statement').not.toMatch(CLAUSE);
@@ -246,7 +252,7 @@ describe('employee search trigram candidates (7320)',()=>{
    expect([...jit],`${c.caller} ${c.screen}: JIT as the app sets it`).toEqual(['off']);
    const row={before7320:{medianMs:Math.round(median(runs.before7320.ms)*100)/100,buffers:median(runs.before7320.buffers)},
     now7530:{medianMs:Math.round(median(runs.now7530.ms)*100)/100,buffers:median(runs.now7530.buffers)}};
-   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:c.search.narrowed,statements:c.search.now.length,jit:[...jit].join(','),...row}));
+   console.log('SEARCH_COST_7530 '+JSON.stringify({caller:c.caller,screen:c.screen,narrowed:c.search.narrowed,asked:c.search.now.length>c.search.before.length,statements:c.search.now.length,jit:[...jit].join(','),...row}));
    // No slower than before 7320, with 1 ms (or 10 %) for runner noise between interleaved medians.
    const allowance=Math.max(1,row.before7320.medianMs*0.1);
    if(row.now7530.medianMs>row.before7320.medianMs+allowance)failures.push(`${c.caller} ${c.screen}: ${row.now7530.medianMs} ms > ${row.before7320.medianMs} ms before 7320`);

@@ -1430,7 +1430,7 @@ export function listEmployeesPage(
   const read = async (tx: Tx) => {
     const currentAssignment = currentAssignmentJoin();
     // 7320/7530: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
-    const where = and(employeeListWhere(p), await employmentSearchNarrowingTx(tx, sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
+    const where = and(employeeListWhere(p), await employmentSearchNarrowingTx(tx, ctx, sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const rows = (await tx
       .select(employeeListRowSelection())
       .from(employment)
@@ -1481,7 +1481,7 @@ export async function listEmployeesDirectoryPage(
   if (!Number.isSafeInteger(p.limit) || p.limit < 1 || p.limit > ALL_ROW_CEILING) throw new RangeError('Invalid directory page');
   return withTenant(ctx, async tx => {
     // 7320/7530: a name / e-mail / code search narrows to the trigram candidates (a superset of the ILIKE matches).
-    const where = and(employeeListWhere(p), await employmentSearchNarrowingTx(tx, sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
+    const where = and(employeeListWhere(p), await employmentSearchNarrowingTx(tx, ctx, sql`${employment.id}`, p.q?.trim(), p.companyIds, { email: true }));
     const anchorKey = (id: string) => sql`(select anchor_person.full_name, anchor_employment.id
       from employment anchor_employment join person anchor_person on anchor_person.id = anchor_employment.person_id
       where anchor_employment.id = ${id}::uuid)`;

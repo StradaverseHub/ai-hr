@@ -1,16 +1,16 @@
 # ADR 0181 search follow-up: employee search visible-set cost, 26 November 2026
 
 Reserve `7530_employment_search_visible_set`, journal index `10930`, timestamp `1795495007530`, SQL SHA-256
-`2f3539680ecc6da108509400ac9fbd4c2c7601156bfe56e8de5c60ee1c24a8f6`. Assigned by the coordinator: 7510 and 7520 are reserved by the board session, so 7530 is the
-next slot not held. Built on slot 5 `c0f6cf5b9` (alpha after release 4). Because Drizzle skips a pending migration whose
-timestamp is below the highest applied one, 7510 and 7520 must install before 7530 on every installation, or be
-renumbered above it. Recheck both installations' watermarks and any competing reservation at admission.
+`a8252781428c402dd83e81ff0a8bf3752b21478231b8c1c923bd0ab6e3dae31d`. Assigned by the coordinator. 7510 and 7520 stay permanently unused; the board session moved its items to 7540, 7550
+and 7560, which install after this. Built on slot 5 `c0f6cf5b9` (alpha after release 4). Recheck both installations'
+watermarks and any competing reservation at admission.
 
 Replaces only the body of `app.employment_search_candidates` (7320), guarded by the 7320 body's md5. Same signature,
-grants and answer set. It tests trigram matches against `app.employment_read_companies()` first and asks
-`app.access_visible_employment_ids()` only for matches outside those companies, instead of materialising
-`app.visible_employment_ids()` on every call. It answers NULL (the caller reads as before 7320) for a small named scope
-or a broad administrator search, and the application asks it once per search (core/employment-search.ts). The owner held the production release for this on 26 November 2026.
+grants and answer set when it narrows. It asks the caller's administrator and partner companies only among the
+companies in scope, and answers NULL (the caller reads as before 7320) when at most 1,000 employments in scope lie
+outside them. Otherwise it narrows by trigram and asks `app.access_visible_employment_ids()` only for matches outside
+those companies. The application skips the call for a group-wide administrator and asks at most once per search
+(core/employment-search.ts). The owner held the production release for this on 26 November 2026.
 
 # ADR 0181 payroll read addendum, F: imported-history run summary, 25 November 2026
 

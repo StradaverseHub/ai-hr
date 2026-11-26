@@ -112,10 +112,8 @@ it('measures exact full and missing searches over the real 50k Unicode populatio
  if(facetAdmission){
   // 304 since 9e32ad8ec (9 Nov 2026, after this count was pinned): an empty first page no longer runs the separate
   // count, so the missing search reads one statement fewer. Checked directly, so a change there names itself.
-  // 305 since 7530 (26 Nov 2026): the missing search's ASCII term asks the trigram candidates in their own statement.
   expect(statements.filter(entry=>String(entry.sql).trimStart().startsWith('select count(*)::int as total'))).toEqual([]);
-  expect(statements.filter(entry=>/^select app\.employment_search_candidates\(/.test(String(entry.sql).trimStart()))).toHaveLength(1);
-  expect(statements).toHaveLength(305);
+  expect(statements).toHaveLength(304);
   expect(captured).toHaveLength(4);
   await probeDepartmentFacet({b,ctx,organisationTagSample,captured,dialect,report,save,actual,caseStart,signal:context.signal},facetAdmission);
  }

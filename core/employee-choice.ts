@@ -114,7 +114,7 @@ async function readChoicePageTx(
    and ${filters.businessUnitId?sql`${assignment.businessUnitId}=${filters.businessUnitId}::uuid`:sql`true`})) is true
   and ${inStatus}`:where;
    // 7320: the trigram candidates (a superset of the matches) let the page fetch matching rows by key.
-   const narrowed=await employmentSearchNarrowingTx(tx,sql`${employment.id}`,q,p.companyIds,{email:false});
+   const narrowed=await employmentSearchNarrowingTx(tx,ctx,sql`${employment.id}`,q,p.companyIds,{email:false});
    const pageWhere=exactAscii?sql`${identityWhere} and ${exactAscii}${narrowed?sql` and ${narrowed}`:sql``}`:identityWhere;
    const population=employeeIdentityFrom(ctx.tenantId);
    const page=await tx.execute<EmployeeChoice&{total:number}>(sql`
@@ -129,7 +129,7 @@ async function readChoicePageTx(
   }else{
    // PostgreSQL locale lower/ILIKE is not ECMAScript lower/includes. ASCII-only rows
    // admit exact native candidates; every non-ASCII row remains a conservative candidate.
-   const candidate=choiceCandidate(q,await employmentSearchNarrowingTx(tx,sql`${employment.id}`,q,p.companyIds,{email:false}));
+   const candidate=choiceCandidate(q,await employmentSearchNarrowingTx(tx,ctx,sql`${employment.id}`,q,p.companyIds,{email:false}));
    // The cursor owns minimal identity facts for both paths. Organisation filters
    // retain native joined membership; only matching page identities get full
    // assignment/label projection afterwards in the same read-only snapshot.
@@ -164,7 +164,7 @@ export async function readEmployeeChoiceIdsTx(tx:Tx,ctx:SessionContext,p:Employe
  signal?.throwIfAborted();await assertAiPresentationPrincipalTx(tx,ctx);signal?.throwIfAborted();
  const ids:string[]=[];
  await visitEmployeeChoiceMatches(tx,sql`select ${employment.id} as "employmentId",${person.fullName} as name,${employment.employeeCode} as "employeeCode"
-  ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q,await employmentSearchNarrowingTx(tx,sql`${employment.id}`,q,input.companyIds,{email:false})):sql`true`}
+  ${organisationFilter?from:employeeIdentityFrom(ctx.tenantId)} where ${where} and ${q?choiceCandidate(q,await employmentSearchNarrowingTx(tx,ctx,sql`${employment.id}`,q,input.companyIds,{email:false})):sql`true`}
   order by ${person.fullName},${employment.id}${organisationFilter?sql`,${assignment.id}`:sql``}`,q,row=>{ids.push(row.employmentId);},signal);
  return ids;
 }
