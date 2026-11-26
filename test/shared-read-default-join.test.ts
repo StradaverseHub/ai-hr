@@ -8,11 +8,17 @@
  * before; another identity, an agent, a login-less context or another hard read deadline never joins; every refusal
  * still reruns the owner in its own transaction with its own result; a default join reads no request preamble; after
  * a fallback has completed (it may have written), a default join never reads through a carrier opened before it, so
- * the read sees that commit; and both switches turn the default off without touching an explicit shared snapshot. */
+ * the read sees that commit; and both switches turn the default off without touching an explicit shared snapshot.
+ *
+ * The bounded carrier pool (AIHR_DEFAULT_REQUEST_READ_CARRIERS=2|3, last block): one identity's concurrent default joins
+ * spread over at most that many carriers and never more; every owner and its nested reads stay on one carrier (one
+ * snapshot); two owners of one render may read two snapshots, exactly as without the join; an explicit composition
+ * never spreads; a pooled composition (the app frame) may take all N, and the page then opens one carrier of its own
+ * (N+1 at most) so a page read never queues behind the frame; the stale-carrier rule and every refusal still hold. */
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
 import {requestReadJoinEnabled,requestScopedReadStats,withSharedReadSnapshot,withTenant,withoutDefaultRequestJoin,type SessionContext,type Tx} from '../db/client';
-import {classifySharedStatement,withIndependentTransactions,type SharedReadStats} from '../db/shared-read';
+import {classifySharedStatement,requestReadCarrierLimit,withIndependentTransactions,type SharedReadStats} from '../db/shared-read';
 import {withDatabaseReadDeadline} from '../db/workload';
 import {requestReadScope,withRequestReadScope} from '../lib/request-read-scope';
 // The request preamble every request scope's composition carriers read (registered on import, as the root layout does).
@@ -30,8 +36,8 @@ beforeAll(async()=>{
  hooks.__aihrPerfSharedRead=stats=>{closed.push(stats);};
  process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';
 });
-afterEach(()=>{closed.length=0;process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';});
-afterAll(async()=>{delete hooks.__aihrPerfSharedRead;delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;await closeAll();});
+afterEach(()=>{closed.length=0;process.env.AIHR_DEFAULT_REQUEST_READ_JOIN='on';delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;});
+afterAll(async()=>{delete hooks.__aihrPerfSharedRead;delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;await closeAll();});
 
 type Probe={at:string;iso:string;pid:number;tenant:string;companies:string[]};
 async function probeTx(tx:Tx):Promise<Probe>{
@@ -219,5 +225,216 @@ describe('default request join (ADR 0181 package 1.1)',()=>{
   expect(results.every(row=>row.companies.join()===a.companyId)).toBe(true);
   const [stats]=await requestScopedReadStats(scope);
   expect(stats.fallbacks).toBe(4);
+ });
+});
+
+describe('bounded carrier pool for the default join (AIHR_DEFAULT_REQUEST_READ_CARRIERS)',()=>{
+ const pool=(size:1|2|3)=>{if(size===1)delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;else process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS=String(size);};
+
+ it('accepts only 2 or 3; unset and any other value is one carrier',()=>{
+  for(const [value,size] of [[undefined,1],['1',1],['2',2],['3',3],['4',1],['0',1],['two',1],[' 2',1]] as const){
+   if(value===undefined)delete process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;else process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS=value;
+   expect(requestReadCarrierLimit(),String(value)).toBe(size);
+  }
+ });
+
+ it.each([1,2,3] as const)('spreads concurrent reads over at most %i carriers, each answer its own transaction\'s',async size=>{
+  pool(size);
+  const scope={};
+  const reads=()=>Promise.all(Array.from({length:7},()=>probe(ctxA)));
+  const shared=await observeStatements(()=>render(scope,reads));
+  expect(shared.transactions).toBe(size);
+  expect(new Set(shared.result.map(row=>row.pid)).size).toBe(size);
+  expect(shared.result.every(row=>row.iso==='repeatable read')).toBe(true);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.carriers,stats.peakCarriers,stats.joins,stats.defaultJoins,stats.fallbacks]).toEqual([size,size,7,7,0]);
+  const independent=await render({},()=>withoutDefaultRequestJoin(reads));
+  expect(shared.result.map(comparable)).toEqual(independent.map(comparable));
+ });
+
+ it('never opens more carriers than the pool, wave after wave, and none while the join is off',async()=>{
+  pool(2);
+  const scope={};
+  const wave=()=>Promise.all(Array.from({length:5},()=>probe(ctxA)));
+  const waves=await observeStatements(()=>render(scope,async()=>{await wave();await wave();return wave();}));
+  // Each wave's carriers commit when it settles; the next wave opens at most the pool again.
+  expect(waves.transactions).toBe(6);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.carriers,stats.peakCarriers]).toEqual([6,2]);
+  delete process.env.AIHR_DEFAULT_REQUEST_READ_JOIN;
+  const off=await observeStatements(()=>render({},wave));
+  expect(off.transactions).toBe(5);
+  expect(off.result.every(row=>row.iso==='read committed')).toBe(true);
+ });
+
+ it('keeps every owner, and the reads nested in it, on the one carrier (one snapshot) it joined',async()=>{
+  pool(3);
+  const scope={};
+  const ownerRead=()=>withTenant(ctxA,async tx=>{
+   const first=await probeTx(tx);
+   const nested=await probe(ctxA);
+   const again=await probeTx(tx);
+   return {first,nested,again};
+  });
+  const owners=await render(scope,()=>Promise.all([ownerRead(),ownerRead(),ownerRead()]));
+  for(const {first,nested,again} of owners){
+   expect([nested.pid,again.pid,nested.at,again.at]).toEqual([first.pid,first.pid,first.at,first.at]);
+  }
+  expect(new Set(owners.map(row=>row.first.pid)).size).toBe(3);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.carriers,stats.joins,stats.defaultJoins]).toEqual([3,6,3]);
+ });
+
+ it('may give two owners of one render two snapshots, exactly as each owner\'s own transaction would',async()=>{
+  const run=async(size:1|2)=>{
+   pool(size);
+   const scope={},holding=deferred(),opened=deferred();
+   // A: an owner that is still reading when the commit below lands.
+   const held=render(scope,()=>withTenant(ctxA,async tx=>{const before=await probeTx(tx);opened.resolve();await holding.promise;return {before,after:await probeTx(tx)};}));
+   await opened.promise;
+   // A commit from outside the render (another user's save).
+   const [row]=await owner.db.insert(schema.company).values({tenantId:a.tenantId,legalName:'Fictional Carrier Pool Sdn Bhd'}).returning({id:schema.company.id});
+   // B: an owner that starts after the commit, while A still reads.
+   const later=await render(scope,()=>probe(ctxA));
+   holding.resolve();
+   const first=await held;
+   await owner.db.execute(sql`delete from company where id=${row.id}::uuid`);
+   return {added:row.id,first,later};
+  };
+  // One carrier: B joins A's snapshot and does not see the commit.
+  const one=await run(1);
+  expect(one.later.pid).toBe(one.first.before.pid);
+  expect(one.later.companies).not.toContain(one.added);
+  // Two carriers: B opens a second snapshot and sees it, as B's own Read Committed transaction (join off) would.
+  const two=await run(2);
+  expect(two.later.pid).not.toBe(two.first.before.pid);
+  expect(two.later.companies).toContain(two.added);
+  // Either way A reads one snapshot throughout, never a mix.
+  for(const {first,added} of [one,two]){
+   expect(first.before.companies).not.toContain(added);
+   expect(first.after.companies).toEqual(first.before.companies);
+  }
+ });
+
+ it('never spreads an explicit composition: its owners share one carrier at any pool size',async()=>{
+  pool(3);
+  const scope={};
+  const rows=await render(scope,()=>withSharedReadSnapshot(ctxA,()=>Promise.all(Array.from({length:5},()=>probe(ctxA))),undefined,requestReadScope()));
+  expect(new Set(rows.map(row=>row.pid)).size).toBe(1);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.carriers,stats.peakCarriers,stats.joins,stats.defaultJoins]).toEqual([1,1,5,0]);
+ });
+
+ it.each([[1,1],[2,2],[3,3]] as const)('with a pool of %i, spreads a pooled composition (the app frame) over at most %i carriers; only its first reads the preamble',async(size,carriers)=>{
+  pool(size);
+  const scope={};
+  const nestedRead=()=>withTenant(ctxA,async tx=>{const outer=await probeTx(tx);const inner=await probe(ctxA);return {outer,inner};});
+  const rows=await observeStatements(()=>render(scope,()=>withSharedReadSnapshot(ctxA,()=>Promise.all(Array.from({length:5},nestedRead)),undefined,requestReadScope(),{pooled:true})));
+  // The frame may take the whole pool; the page's own carrier is opened beside it when the page reads (below).
+  expect(rows.transactions).toBe(carriers);
+  expect(new Set(rows.result.map(row=>row.outer.pid)).size).toBe(carriers);
+  for(const {outer,inner} of rows.result)expect([inner.pid,inner.at]).toEqual([outer.pid,outer.at]);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.carriers,stats.peakCarriers,stats.joins,stats.defaultJoins,stats.preambles]).toEqual([carriers,carriers,10,0,1]);
+  const independent=await render({},()=>withoutDefaultRequestJoin(()=>Promise.all(Array.from({length:5},nestedRead))));
+  expect(rows.result.map(row=>comparable(row.outer))).toEqual(independent.map(row=>comparable(row.outer)));
+ });
+
+ it.each([1,2,3] as const)('with a pool of %i, a page read never queues behind a busy frame carrier (the page opens one of its own)',async size=>{
+  pool(size);
+  const scope={},holding=deferred(),started=Array.from({length:4},deferred);
+  // The frame: a pooled composition whose four owners all hold their carriers.
+  const frame=render(scope,()=>withSharedReadSnapshot(ctxA,()=>Promise.all(started.map(gate=>withTenant(ctxA,async tx=>{
+   const row=await probeTx(tx);gate.resolve();await holding.promise;return row;}))),undefined,requestReadScope(),{pooled:true}));
+  await Promise.all(started.map(gate=>gate.promise));
+  // The page, while every frame owner is still busy: a default join and a pinned composition (the Today sections).
+  const [page,today]=await render(scope,()=>Promise.all([probe(ctxA),withSharedReadSnapshot(ctxA,()=>probe(ctxA),undefined,requestReadScope())]));
+  holding.resolve();
+  const frameRows=await frame;
+  const framePids=new Set(frameRows.map(row=>row.pid));
+  const [stats]=await requestScopedReadStats(scope);
+  expect(stats.peakCarriers).toBeLessThanOrEqual(size===1?1:size+1);
+  if(size===1){
+   // One carrier: everything shares it, exactly as before the pool.
+   expect([page.pid,today.pid]).toEqual([frameRows[0].pid,frameRows[0].pid]);
+   expect(stats.carriers).toBe(1);
+  }else{
+   // The frame holds the whole pool; the page opens exactly one more, shared by its default join and its pinned
+   // composition: N+1 at most, and only while the two overlap.
+   expect(framePids.size).toBe(size);
+   expect(framePids.has(page.pid)).toBe(false);
+   expect(framePids.has(today.pid)).toBe(false);
+   expect(today.pid).toBe(page.pid);
+   expect([stats.carriers,stats.peakCarriers]).toEqual([size+1,size+1]);
+  }
+  expect([page.iso,today.iso]).toEqual(['repeatable read','repeatable read']);
+ });
+
+ it('after a completed fallback, opens a fresh carrier while the pool has room, and falls back only when every carrier is stale and busy',async()=>{
+  pool(2);
+  const scope={};
+  const holding=deferred(),opened=[deferred(),deferred()];
+  // A and B: two owners holding both carriers of the pool.
+  const held=[0,1].map(index=>render(scope,()=>withTenant(ctxA,async tx=>{const before=await probeTx(tx);opened[index].resolve();await holding.promise;return before;})));
+  await Promise.all(opened.map(gate=>gate.promise));
+  // W: refused in the carrier (barrier), reruns in its own transaction and commits a new company before it settles.
+  let added:string|undefined;
+  await render(scope,()=>withTenant(ctxA,async tx=>{
+   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('carrier-pool-stale',0))`);
+   if(!added){const [row]=await owner.db.insert(schema.company).values({tenantId:a.tenantId,legalName:'Fictional Pool Stale Sdn Bhd'}).returning({id:schema.company.id});added=row.id;}
+  }));
+  // C: both carriers predate W and are busy, and the pool is full: C reads in its own transaction and sees W.
+  const full=await render(scope,()=>probe(ctxA));
+  expect(full.iso).toBe('read committed');
+  expect(full.companies).toContain(added);
+  // Release A and B: their carriers commit, the pool has room, and D opens a fresh snapshot that sees W.
+  holding.resolve();
+  const before=await Promise.all(held);
+  for(const row of before)expect(row.companies).not.toContain(added);
+  const fresh=await render(scope,()=>probe(ctxA));
+  expect(fresh.iso).toBe('repeatable read');
+  expect(fresh.companies).toContain(added);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.staleSkips,stats.peakCarriers]).toEqual([1,2]);
+  // A fresh carrier is opened while one stale carrier is still busy (room in the pool), instead of falling back.
+  const scope2={},hold2=deferred(),open2=deferred();
+  const busy=render(scope2,()=>withTenant(ctxA,async tx=>{const row=await probeTx(tx);open2.resolve();await hold2.promise;return row;}));
+  await open2.promise;
+  await render(scope2,()=>withTenant(ctxA,async tx=>{await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('carrier-pool-stale',1))`);}));
+  const roomy=await render(scope2,()=>probe(ctxA));
+  hold2.resolve();
+  const old=await busy;
+  expect(roomy.iso).toBe('repeatable read');
+  expect(roomy.pid).not.toBe(old.pid);
+  expect(roomy.at).not.toBe(old.at);
+  const [stats2]=await requestScopedReadStats(scope2);
+  // The busy carrier, the one the refused owner opened (and left at once), and the fresh one.
+  expect([stats2.staleSkips,stats2.carriers]).toEqual([0,3]);
+  await owner.db.execute(sql`delete from company where id=${added!}::uuid`);
+ });
+
+ it.each([2,3] as const)('finishes concurrent joined and refused owners with a pool of %i, each with its own result',async size=>{
+  pool(size);
+  const scope={};
+  const owners=()=>Array.from({length:8},(_,index)=>withTenant(ctxA,async tx=>{
+   if(index%2)await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('carrier-pool-mixed',0))`);
+   return probeTx(tx);
+  }));
+  const results=await render(scope,()=>Promise.all(owners()));
+  expect(results.every(row=>row.companies.join()===a.companyId)).toBe(true);
+  const [stats]=await requestScopedReadStats(scope);
+  expect(stats.fallbacks).toBe(4);
+  expect(stats.peakCarriers).toBeLessThanOrEqual(size);
+  expect(Object.keys(stats.failures)).toEqual([]);
+ });
+
+ it('pools per identity: another identity in the same render has its own pool',async()=>{
+  pool(2);
+  const scope={};
+  const rows=await observeStatements(()=>render(scope,()=>Promise.all([...Array.from({length:4},()=>probe(ctxA)),...Array.from({length:4},()=>probe(ctxB))])));
+  expect(rows.transactions).toBe(4);
+  expect(rows.result.slice(0,4).every(row=>row.companies.join()===a.companyId)).toBe(true);
+  expect(rows.result.slice(4).every(row=>row.companies.join()===b.companyId)).toBe(true);
+  expect((await requestScopedReadStats(scope)).map(row=>row.peakCarriers)).toEqual([2,2]);
  });
 });
