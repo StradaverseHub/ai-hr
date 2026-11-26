@@ -7,14 +7,14 @@ import { inflateSync } from 'node:zlib';
  * Board 66175cd2 — THE ONE PLACE THE KWSP LOGO IS READ OFF DISK, for Borang A and BBCD.
  *
  * The reporter asked for the official KWSP logo at the top left of both forms, as on their reference forms.
- * The repository does NOT ship one: the only copy in hand is a low-resolution reproduction inside another
- * vendor's printed form, which is neither KWSP's file nor fit to print. So the logo is drawn ONLY from an
- * official file the owner supplies at `KWSP_LOGO_PATH`; until then both forms lay out their masthead
- * correctly without it (the space is left blank, nothing is traced or redrawn). See assets/kwsp/README.md.
+ * Plan r2 (26 Nov 2026): the file at `KWSP_LOGO_PATH` is KWSP's OWN crest, cropped (not traced, redrawn,
+ * recoloured or upscaled) from the logo KWSP publishes on kwsp.gov.my; its source and SHA-256 are in
+ * assets/kwsp/README.md. The vendor reproduction inside the reporter's reference PDFs is never used. Without
+ * the file both forms still lay out their masthead correctly (the space is left blank).
  *
  * WHAT IS ACCEPTED: a complete, well-formed, non-interlaced PNG (pdf-lib embeds PNG without a native
  * dependency) whose shorter side is at least `KWSP_LOGO_MIN_PX` pixels, so the mark prints sharp at the
- * ~0.8 in it occupies. Anything else — a missing file, another format, a truncated or corrupt file, a file
+ * ~0.8 in it occupies (180 px across 0.78 in is about 230 dpi). Anything else — a missing file, another format, a truncated or corrupt file, a file
  * too small to print clearly — is NOT drawn, and the reason is logged once per process so the operator can
  * see why the logo is absent.
  *
@@ -29,8 +29,12 @@ import { inflateSync } from 'node:zlib';
  * next request, so dropping the official file in place takes effect without a restart.
  */
 export const KWSP_LOGO_PATH = join('assets', 'kwsp', 'kwsp-logo.png');
-/** The shorter side, in pixels: 600 px across ~0.8 in prints at ~750 dpi; 300 px is the floor (~375 dpi). */
-export const KWSP_LOGO_MIN_PX = 300;
+/**
+ * The shorter side, in pixels. 180 px across the ~0.78 in box prints at about 230 dpi, sharp on an office
+ * printer. Plan r2 lowered it from 300: KWSP publishes its crest at 180 px, and an official 180 px crest beats
+ * an empty box. A larger official copy can replace the file with no other change.
+ */
+export const KWSP_LOGO_MIN_PX = 180;
 
 const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
