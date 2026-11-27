@@ -34,7 +34,10 @@ export type SharedReadStats={joins:number;fallbacks:number;statements:number;mem
   * a completed fallback and another owner was still inside it. */
  defaultJoins:number;staleSkips:number;
  /** The most carriers this session held open at once (the pool's size, plus the page's one extra carrier). */
- peakCarriers:number};
+ peakCarriers:number;
+ /** Carriers no owner sent an admitted statement on: they began no transaction (no admission, BEGIN, identity
+  * statement or COMMIT), because every owner inside was refused first or read nothing (see the pool notes). */
+ unopened:number};
 const sessions=new AsyncLocalStorage<SharedReadSession<unknown>>();
 const joins=new AsyncLocalStorage<Join>();
 
@@ -146,7 +149,15 @@ export function defaultRequestReadScope():object|undefined{
  * page's (every other read of the request: default joins and pinned compositions). Each lane joins its own carriers
  * first. The frame may open up to N. When the frame holds every carrier and the page has none, the page opens ONE
  * more, so a page read (a redirect check, say) never queues behind frame statements: at most N+1 carriers per identity,
- * and N+1 only while the frame and the page overlap. With one carrier everything shares it, exactly as before. */
+ * and N+1 only while the frame and the page overlap. With one carrier everything shares it, exactly as before.
+ *
+ * A CARRIER BEGINS ON ITS FIRST ADMITTED STATEMENT. Choosing a carrier reserves its place in the pool; its transaction
+ * (admission, BEGIN, the identity statement and the preamble) begins only when the statement guard admits an owner's
+ * statement on it. An owner whose first statement is refused (a barrier, a control statement, a write) reruns in its
+ * own transaction exactly as before, and a carrier nobody sent an admitted statement on commits nothing, because it
+ * began nothing: such an owner costs only its own transaction. SET TRANSACTION READ ONLY, already in force on every
+ * carrier, is answered without beginning one. Choice, lanes, refusals, fallbacks and the stale-carrier rule are
+ * unchanged; a snapshot taken later than its carrier was chosen is only fresher than the stale-carrier rule assumes. */
 export function requestReadCarrierLimit():number{
  const value=process.env.AIHR_DEFAULT_REQUEST_READ_CARRIERS;
  return value==='2'?2:value==='3'?3:1;
@@ -159,8 +170,9 @@ export type SharedReadCarrierControl={seed(seeds:readonly SharedReadSeed[]):numb
 export type SharedReadCarrier<Tx>={tx:Promise<Tx>;finish:()=>void;done:Promise<void>};
 /** What a carrier's opener and its statement guard know about that one carrier. */
 export type SharedReadCarrierState={
- /** True only while the carrier sets its own transaction-local identity, before any owner can join it. */
- bootstrapping:boolean;
+ /** Until the carrier's transaction is open, its opener's: begin it (admission, BEGIN, the identity statement and the
+  * preamble) for a statement the guard admitted. The opener clears it once open; undefined means already open. */
+ open?:()=>Promise<void>;
  /** Opened by a default join: it reads no request preamble (package 1.1). */
  readonly plain:boolean;
  /** Statements sent on this carrier and not yet answered (diagnostic flight count only). */
@@ -189,7 +201,7 @@ export class SharedReadSession<Tx>{
  private waitingOwn=0;
  /** Request-scoped sessions only: compositions currently running inside this session. */
  private works=0;
- readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0,defaultJoins:0,staleSkips:0,peakCarriers:0};
+ readonly stats:SharedReadStats={joins:0,fallbacks:0,statements:0,memoHits:0,refused:{},failures:{},carriers:0,flights:0,preambles:0,seeded:0,defaultJoins:0,staleSkips:0,peakCarriers:0,unopened:0};
  /** Fallbacks completed so far. */
  private settledFallbacks=0;
  /** The request preamble each new carrier reads (decision 12), if its request declared one. */
@@ -281,7 +293,7 @@ export class SharedReadSession<Tx>{
  }
  private begin(plain:boolean,lane:Lane):Slot<Tx>{
   this.stats.carriers++;
-  const state:SharedReadCarrierState={bootstrapping:true,plain,inFlight:0};
+  const state:SharedReadCarrierState={plain,inFlight:0};
   const slot:Slot<Tx>={carrier:this.open(state),state,lane,active:0,fallbacks:this.settledFallbacks};
   this.slots.push(slot);
   this.stats.peakCarriers=Math.max(this.stats.peakCarriers,this.slots.length);
@@ -322,7 +334,15 @@ export class SharedReadSession<Tx>{
   return new SharedReadIncompatibleError(reason);
  }
  failed(code:string){this.stats.failures[code]=(this.stats.failures[code]??0)+1;this.poisoned=true;const join=joins.getStore();if(join)join.tainted=true;}
+ /** A carrier could not begin its transaction (admission, a deadline, a lost connection): exactly as when a carrier
+  * failed to open before any owner joined it, every owner that awaited it reruns alone and no later owner joins. */
+ openFailed(){this.poisoned=true;const join=joins.getStore();if(join)join.tainted=true;}
 }
+
+/** The carrier's own identity statement (and its preamble), sent by its opener as the transaction begins: never
+ * counted, classified or memoized, and never waiting for the carrier to open. Only `work`'s statements on `state`. */
+const identityStatements=new AsyncLocalStorage<SharedReadCarrierState>();
+export function sendCarrierIdentity<T>(state:SharedReadCarrierState,work:()=>Promise<T>):Promise<T>{return identityStatements.run(state,work);}
 
 /** The carrier transactions of shared sessions: one REPEATABLE READ READ ONLY snapshot each, for one identity. */
 const carrierTransactions=new WeakSet<object>();
@@ -483,10 +503,22 @@ export function sharedReadDriver<T extends object>(sqlTx:T,session:SharedReadSes
   });
  };
  const execute=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values'):Promise<unknown>=>{
-  // The carrier's own identity statement, before any owner can join: never counted, classified or memoized.
-  if(state.bootstrapping){const sent=driver.unsafe(query,params,options);return Promise.resolve(mode==='values'?sent.values():sent);}
+  // The carrier's own identity statement, as its transaction begins: never counted, classified or memoized.
+  if(identityStatements.getStore()===state){const sent=driver.unsafe(query,params,options);return Promise.resolve(mode==='values'?sent.values():sent);}
   const statement=classifySharedStatement(query);
+  // Refused before the carrier begins: an owner refused first costs no carrier transaction.
   if(statement.kind==='refuse')return Promise.reject(session.refuse(statement.reason));
+  // A setting already in force needs no transaction: the carrier is begun READ ONLY.
+  if(statement.kind==='pass'&&options===undefined&&passedSettings(query)?.every(([key,value])=>held.get(key)===value)){
+   session.stats.memoHits++;return Promise.resolve(Object.assign([],{count:null,command:'SET'}));
+  }
+  // Admitted: the carrier begins its transaction now if no owner statement has begun it yet. Its request preamble then
+  // answers ahead, so the memo is read only after it is open.
+  const opening=state.open?.();
+  if(opening)return opening.then(()=>admitted(query,params,options,mode,statement),error=>{session.openFailed();throw error;});
+  return admitted(query,params,options,mode,statement);
+ };
+ const admitted=(query:string,params:unknown[]|undefined,options:unknown,mode:'rows'|'values',statement:SharedStatementClass):Promise<unknown>=>{
   // A transaction-local setting the carrier already holds changes nothing when sent again: answer it here. The carrier
   // is begun READ ONLY, so SET TRANSACTION READ ONLY is always already in force.
   if(statement.kind==='pass'&&options===undefined){

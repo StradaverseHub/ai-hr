@@ -20,8 +20,8 @@ function fakeDriver(){
 }
 const fakeSession=()=>({stats:{statements:0,flights:0,memoHits:0,seeded:0},
  refuse:(reason:string)=>new Error('refused '+reason),failed:()=>{}});
-/** One open carrier's state (db/shared-read.ts SharedReadCarrierState): past its identity statement. */
-const openCarrier=():SharedReadCarrierState=>({bootstrapping:false,plain:false,inFlight:0});
+/** One open carrier's state (db/shared-read.ts SharedReadCarrierState): its transaction already begun (no `open`). */
+const openCarrier=():SharedReadCarrierState=>({plain:false,inFlight:0});
 
 afterEach(()=>{delete process.env.AIHR_PREPARED_READS;__resetPreparedReadAdmissionForTests();});
 

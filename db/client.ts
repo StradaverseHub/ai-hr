@@ -19,7 +19,7 @@ import {applicationDatabaseUrl} from './pooling';
 import {executePrepared} from './prepared-read';
 import {processConnectionOptions} from './worker-connection';
 import {markDatabaseCapacityFailure,retryAdmissionRefusal,retryIdempotentRead} from './read-retry';
-import {SharedReadSession,currentSharedRead,defaultRequestReadScope,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
+import {SharedReadSession,currentSharedRead,defaultRequestReadScope,independentTransactionsRequired,markSharedCarrierTransaction,runInSharedRead,scopePreamble,sendCarrierIdentity,sharedReadDriver,type SharedReadCarrierControl,type SharedReadPreambleRead,type SharedReadStats} from './shared-read';
 export {declareSharedReadWindow,declareSharedReadPreamble,requestReadJoinEnabled,withOwnerPreambleReads,withoutDefaultRequestJoin} from './shared-read';
 export {withIndependentTransactions} from './shared-read';
 const applicationBudget = applicationDatabaseBudget(process.env);
@@ -440,66 +440,105 @@ export function createDb(connectionString: string, options?: { max?: number; adm
 
   function newSession(ctx: SessionContext, grants: Grant[], roleNames: string[], identity: string, signal: AbortSignal | undefined, readDeadline: AbortSignal | undefined, idleRelease: boolean): SharedReadSession<Tx> {
     const permits = { held: 0 };
-    // The carrier factory runs only when the first owner joins, after `session` is assigned.
+    // The carrier factory runs only when an owner chooses a new carrier, after `session` is assigned. The carrier's
+    // transaction begins only when the statement guard admits an owner's statement on it (db/shared-read.ts, "A carrier
+    // begins on its first admitted statement"): until then it holds no admission permit and no connection, and a
+    // carrier whose owners were all refused first finishes without sending BEGIN, the identity statement or COMMIT.
     const session: SharedReadSession<Tx> = new SharedReadSession<Tx>(client!, identity, (state) => {
       // A carrier a default join opens reads no request preamble (db/shared-read.ts, package 1.1).
       const plain = state.plain;
       let finish: () => void = () => {};
-      const finished = new Promise<void>((resolve) => { finish = resolve; });
+      let finishing = false;
+      const finished = new Promise<void>((resolve) => { finish = () => { finishing = true; resolve(); }; });
       let resolveTx: (tx: Tx) => void = () => {};
       let rejectTx: (error: unknown) => void = () => {};
       const tx = new Promise<Tx>((resolve, reject) => { resolveTx = resolve; rejectTx = reject; });
       tx.catch(() => undefined);
       const readSignal = databaseReadSignal(signal);
-      const done = (async () => {
+      // The transaction begins in the context the carrier was chosen in (its workload, permit nesting and deadline),
+      // not in that of the owner statement that happens to begin it.
+      const inChoosingContext = AsyncLocalStorage.snapshot();
+      const control: { current?: SharedReadCarrierControl } = {};
+      let timing: ReturnType<NonNullable<typeof globalForPg.__aihrPerfBeginTransaction>> | undefined;
+      let release: (() => void) | undefined;
+      let stopDeadline: (() => void) | undefined;
+      let held = false;
+      let carrierTx: Tx | undefined;
+      /** The driver's transaction client, once begun; and the begun transaction, settled after its COMMIT or ROLLBACK. */
+      let driverTx: postgres.TransactionSql | undefined;
+      let committed: Promise<unknown> | undefined;
+      let opening: Promise<void> | undefined;
+      const beginTransaction = async () => {
         readSignal?.throwIfAborted();
-        const timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
-        let release: (() => void) | undefined;
-        let stopDeadline: (() => void) | undefined;
-        let held = false;
-        try {
-          // The carrier is this tenant's ordinary capped work unless the request already holds the tenant's permit:
-          // it was inside a transaction or carrier when the snapshot was installed, or a carrier of this session
-          // holds one now (withSharedReadSnapshot installs that fact around every composition). A pooled default
-          // join's further carriers are nested in the first exactly as a fallback owner is, so one request holds at most
-          // the pool size, one carrier for the page and its concurrent fallbacks: never more than its owners would hold
-          // with the join off.
-          release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
-          held = true; permits.held++;
-          const control: { current?: SharedReadCarrierControl } = {};
-          const carrierClient = new Proxy(client!, { get(target, property, receiver) {
-            if (property !== 'begin') return Reflect.get(target, property, receiver);
-            return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) =>
-              target.begin('isolation level repeatable read read only', (sqlTx) => {
-                // As in withTenant's own transaction, the deadline cancels the carrier's running statement and
-                // refuses later ones. It is armed on the driver's own client, beneath the shared statement guard.
-                if (readDeadline) stopDeadline = cancelStatementsAtDeadline({ client: sqlTx } as unknown as Parameters<typeof cancelStatementsAtDeadline>[0], readDeadline);
-                return fn(sharedReadDriver(sqlTx, session as SharedReadSession<unknown>, state, control));
-              });
-          } });
-          await drizzle(carrierClient).transaction(async (carrierTx) => {
-            timing?.acquired();
-            readSignal?.throwIfAborted();
-            // Decision 12: the request preamble rides this carrier's identity statement and answers its owner statements
-            // ahead, before any owner can join. Without one (or switched off) the statement is the plain bootstrap.
-            const preamble = session.openPreamble(ctx, carrierTx, plain);
-            const identityRow = await bootstrapTenantTx(carrierTx, ctx, grants, roleNames, preamble ? preambleColumns(preamble, ctx, grants, roleNames) : undefined);
-            state.bootstrapping = false;
-            if (preamble) {
-              if (preamble.jitOff) control.current?.hold('jit', 'off');
-              if (preamble.genericPlans) control.current?.hold('plan_cache_mode', 'force_generic_plan');
-              const value = identityRow?.request_preamble;
-              if (value !== null && value !== undefined) {
-                // A value of an unexpected shape answers nothing: every owner then reads its own statement.
-                let seeds: ReturnType<SharedReadPreambleRead['decode']> = [];
-                try { seeds = preamble.decode(value); } catch { seeds = []; }
-                if (control.current?.seed(seeds)) session.stats.preambles++;
-              }
+        timing = globalForPg.__aihrPerfBeginTransaction?.(configuredPoolMax);
+        // The carrier is this tenant's ordinary capped work unless the request already holds the tenant's permit:
+        // it was inside a transaction or carrier when the snapshot was installed, or a carrier of this session
+        // holds one now (withSharedReadSnapshot installs that fact around every composition). A pooled default
+        // join's further carriers are nested in the first exactly as a fallback owner is, so one request holds at most
+        // the pool size, one carrier for the page and its concurrent fallbacks: never more than its owners would hold
+        // with the join off.
+        release = await poolAdmission.acquire(ctx.tenantId, currentDatabaseWorkload(), readSignal, nestedInTenant(ctx.tenantId));
+        held = true; permits.held++;
+        let ready: () => void = () => {};
+        const open = new Promise<void>((resolve) => { ready = resolve; });
+        committed = client!.begin('isolation level repeatable read read only', async (sqlTx) => {
+          // As in withTenant's own transaction, the deadline cancels the carrier's running statement and
+          // refuses later ones. It is armed on the driver's own client, beneath the shared statement guard.
+          if (readDeadline) stopDeadline = cancelStatementsAtDeadline({ client: sqlTx } as unknown as Parameters<typeof cancelStatementsAtDeadline>[0], readDeadline);
+          driverTx = sqlTx;
+          timing?.acquired();
+          readSignal?.throwIfAborted();
+          // Decision 12: the request preamble rides this carrier's identity statement and answers its owner statements
+          // ahead, before the admitted statement that began it reads the memo. Without one (or switched off) the
+          // statement is the plain bootstrap.
+          const preamble = session.openPreamble(ctx, carrierTx, plain);
+          const identityRow = await sendCarrierIdentity(state, () => bootstrapTenantTx(carrierTx!, ctx, grants, roleNames, preamble ? preambleColumns(preamble, ctx, grants, roleNames) : undefined));
+          if (preamble) {
+            if (preamble.jitOff) control.current?.hold('jit', 'off');
+            if (preamble.genericPlans) control.current?.hold('plan_cache_mode', 'force_generic_plan');
+            const value = identityRow?.request_preamble;
+            if (value !== null && value !== undefined) {
+              // A value of an unexpected shape answers nothing: every owner then reads its own statement.
+              let seeds: ReturnType<SharedReadPreambleRead['decode']> = [];
+              try { seeds = preamble.decode(value); } catch { seeds = []; }
+              if (control.current?.seed(seeds)) session.stats.preambles++;
             }
-            markSharedCarrierTransaction(carrierTx);
-            resolveTx(carrierTx);
+          }
+          state.open = undefined;
+          ready();
+          await finished;
+        });
+        // A failure before the carrier is open rejects here; once open, `committed` settles only after `finished`.
+        await Promise.race([open, committed]);
+      };
+      state.open = () => {
+        // A statement after the carrier finished cannot begin it again: its owner reruns in its own transaction.
+        if (finishing && !opening) return Promise.reject(new Error('This shared read carrier has already finished.'));
+        return opening ??= inChoosingContext(beginTransaction);
+      };
+      // The driver's transaction client is handed to drizzle before it exists: every owner statement reaches it only
+      // through the shared statement guard, which begins the transaction first.
+      const driver = new Proxy({} as postgres.TransactionSql, { get(_target, property) {
+        if (property === 'unsafe') return (...args: Parameters<postgres.TransactionSql['unsafe']>) => {
+          if (!driverTx) throw new Error('A shared read carrier statement was sent before its transaction began.');
+          return driverTx.unsafe(...args);
+        };
+        return driverTx ? Reflect.get(driverTx, property) : undefined;
+      } });
+      const carrierClient = new Proxy(client!, { get(target, property, receiver) {
+        if (property !== 'begin') return Reflect.get(target, property, receiver);
+        return (fn: (sqlTx: postgres.TransactionSql) => Promise<unknown>) => fn(sharedReadDriver(driver, session as SharedReadSession<unknown>, state, control));
+      } });
+      const done = (async () => {
+        try {
+          await drizzle(carrierClient).transaction(async (opened) => {
+            carrierTx = opened;
+            markSharedCarrierTransaction(opened);
+            resolveTx(opened);
             await finished;
           });
+          if (opening) { await opening; await committed; }
+          else session.stats.unopened++;
         } catch (error) {
           throw markDatabaseCapacityFailure(error);
         } finally {
