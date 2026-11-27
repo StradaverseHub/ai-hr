@@ -34,7 +34,7 @@ describe('Overtime Settings table (board 4197534a)',()=>{
   // 2,080 / 208 hours = 10.00 an hour. Workday 3 h: 2 h x 1.5 + 1 h x 2.0 = 50.00.
   const definition=validateOvertimePattern(overtimeSettingsToDefinition(blankOvertimePattern(currency),settings()));
   const workday=evaluateOvertimePattern(definition,day('180'));
-  expect(workday.status).toBe('ready');if(workday.status!=='ready')throw new Error(JSON.stringify(workday.issues));
+  expect(workday.status).toBe('ready');if(workday.status!=='ready')throw new Error(JSON.stringify(workday.status==='refused'?workday.issues:workday.status));
   expect(workday.amountMinorUnits).toBe('5000');
   // Rest day 3 h: 2 h x 2.0 + 1 h x 2.0 (blank rest rate = OT Rate 2.0) = 60.00. Public holiday: 3 h x 3.0 = 90.00.
   const rest=evaluateOvertimePattern(definition,day('180','rest_day')),holiday=evaluateOvertimePattern(definition,day('180','holiday'));
