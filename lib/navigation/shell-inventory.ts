@@ -65,6 +65,9 @@ export type CollapsibleGroupItem = {
   tour?: string;
   activeMatch?: 'children';
   defaultHref?: string;
+  /** Breadcrumb and "Go to" only (board 8fa0a31d: Security Center's overview): the module's admitted landing page.
+   *  Never rendered as a rail row or link, and it does not split the trigger as `defaultHref` does. */
+  landingHref?: string;
   collapsible: true;
   labelKey: string;
   icon: LucideIcon;
@@ -79,12 +82,7 @@ export const AI_PROVIDER_HREF = '/control-tower/agents/provider';
 export const isAiAdministrationHref = (href: string) => href === '/admin/ai' || href === '/control-tower' || href.startsWith('/control-tower/');
 export type Group = {
   labelKey?: string; adminOnly?: boolean; managerUp?: boolean; items: Row[];
-  /** Rendered sections only (board 8fa0a31d): the section heading's own icon. In the collapsed icon rail such a
-   *  section is one trigger with this icon that opens its rows as a flyout. */
-  icon?: LucideIcon;
-  /** Rendered sections only: an admitted landing page for the section heading in the breadcrumb. Never a menu row. */
-  landingHref?: string;
-  /** Rendered sections only: pinned to the end of the rail. */
+  /** Rendered sections only (board 8fa0a31d): pinned to the end of the rail. */
   pinEnd?: boolean;
 };
 
@@ -492,7 +490,7 @@ export const GROUPS: Group[] = [
       REPORTS_NODE,
       { href: '/admin/audit', labelKey: 'auditTrail', icon: ScrollText },
       // Board 8fa0a31d: the Security Center overview (/admin/security-center) is no longer a row. It repeated the name
-      // of the Security Center section it sat in. It stays that section's breadcrumb landing (shell-resolver
+      // of the Security Center menu it sat in. It stays the Security Center module's breadcrumb landing (shell-resolver
       // securityLanding) with its route, guard and Back links unchanged.
       ...SECURITY_MENU_PAGES.map(page=>({href:page.href,labelKey:page.navKey,icon:ShieldCheck,exactHref:true})),
     ],

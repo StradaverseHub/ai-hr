@@ -102,15 +102,28 @@ describe.each(['classic','monolith','atelier'] as const)('%s Ops/Strata navigati
   route.pathname='/admin/organization';route.search='';view.rerender(ui());
   expect(screen.getByRole('button',{name:messages.nav.workspaceOps})).toHaveAttribute('aria-pressed','true');
   expect(screen.getByRole('button',{name:messages.nav.modulePeople})).toBeEnabled();
-  const section=document.querySelector<HTMLButtonElement>('button[aria-controls="nav-section-systemConfiguration"]')!;
-  expect(section).not.toBeNull();
-  if(section.getAttribute('aria-expanded')==='false')fireEvent.click(section);
-  // Board 8fa0a31d — the section heading is the gear; no second System Configuration dropdown sits inside it.
-  expect(screen.getAllByRole('button',{name:messages.nav.systemConfiguration})).toEqual([section]);
+  // Board 8fa0a31d (revision 2) — System Configuration is one module trigger (the gear), as Payroll is: no section
+  // heading carries its name and no second System Configuration control sits anywhere in the rail.
+  expect(document.getElementById('nav-section-systemConfiguration')).toBeNull();
+  const gears=screen.getAllByRole('button',{name:messages.nav.systemConfiguration});expect(gears).toHaveLength(1);
+  const gear=gears[0];
+  if(gear.getAttribute('aria-expanded')!=='true')fireEvent.click(gear);
   const panel=screen.getByRole('navigation',{name:messages.nav.systemConfiguration});
-  expect(panel.id).toBe('nav-section-systemConfiguration');
+  expect(gear).toHaveAttribute('aria-controls',theme==='monolith'?panel.id:panel.parentElement!.id);
   expect(within(panel).getAllByRole('link').length).toBeGreaterThan(0);
   expect(within(panel).queryByRole('link',{name:messages.nav.systemLabels})).toBeNull();
+ });
+ it('keeps System Configuration and Security Center as the last two module rows in Ops and in Strat',async()=>{
+  document.documentElement.setAttribute('data-ui-theme',theme);const user=userEvent.setup();
+  render(ui({canAdministerSecurity:true,canConfigureAccess:true,canProvisionUsers:true}));
+  for(const workspace of [messages.nav.workspaceStrata,messages.nav.workspaceOps]){
+   await user.click(screen.getByRole('button',{name:workspace}));
+   const pinned=document.querySelector<HTMLElement>('[data-nav-pinned]')!;
+   expect(pinned.parentElement!.lastElementChild).toBe(pinned);
+   expect(within(pinned).getAllByRole('button').map(button=>button.getAttribute('aria-controls')?.split('-').at(-1))).toEqual(['systemConfiguration','securityCenter']);
+   expect(within(pinned).queryAllByRole('link')).toHaveLength(0);
+   for(const key of ['systemConfiguration','securityCenter'])expect(document.getElementById(`nav-section-${key}`)).toBeNull();
+  }
  });
  it('offers only self-service Payroll to employees and keeps current-link ownership out of My Profile',()=>{
   document.documentElement.setAttribute('data-ui-theme',theme);route.pathname='/me/payslip';route.search='';

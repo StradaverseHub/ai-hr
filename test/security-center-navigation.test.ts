@@ -30,8 +30,10 @@ describe('closed Security Center navigation',()=>{
   expect(legacySecurityDestination('#anything',query)).toBeNull();
   expect(legacySecurityDestination('#invite-user',new URLSearchParams({activate:'javascript:alert(1)'}))).toBe('/admin/users/invite');
  });
- it('lists every Security Center page exactly once in the menu, in the reporter order, without the overview (board 8fa0a31d)',()=>{
-  expect(SECURITY_MENU_PAGES.map(page=>page.href)).toEqual(['/admin/users/access','/admin/security-center/password-policy','/admin/users/function-access','/admin/users','/admin/users/create','/admin/users/invite']);
+ it('lists every Security Center page exactly once in the menu, in the reporter order, without the overview (board 8fa0a31d revision 2)',()=>{
+  // Revision 2: Security & Permissions, Password Policy, Users, Function Access, Create a Login Manually, Invite a User.
+  expect(SECURITY_MENU_PAGES.map(page=>page.href)).toEqual(['/admin/users/access','/admin/security-center/password-policy','/admin/users','/admin/users/function-access','/admin/users/create','/admin/users/invite']);
+  expect(SECURITY_MENU_PAGES.map(page=>en.nav[page.navKey])).toEqual(['Security & Permissions','Password Policy','Users','Function Access','Create a Login Manually','Invite a User']);
   expect([...SECURITY_MENU_PAGES].sort((a,b)=>a.key.localeCompare(b.key))).toEqual([...SECURITY_PAGES].sort((a,b)=>a.key.localeCompare(b.key)));
   const rows=GROUPS.flatMap(group=>group.items.flatMap(row=>isCollapsible(row)?row.children:[row])).map(row=>row.href);
   expect(rows).not.toContain(SECURITY_CENTER);

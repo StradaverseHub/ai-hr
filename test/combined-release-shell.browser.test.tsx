@@ -43,11 +43,11 @@ const tick=()=>new Promise<void>(resolve=>requestAnimationFrame(()=>requestAnima
 const box=(element:Element)=>element.getBoundingClientRect();
 function providers(theme:UiTheme,children:ReactNode){return <NextIntlClientProvider locale="en" messages={en}><UiThemeProvider theme={theme}><NavIndexProvider>{children}</NavIndexProvider></UiThemeProvider></NextIntlClientProvider>;}
 function NavProbe(){const index=useNavIndex();return <output data-testid="nav-inventory" hidden>{JSON.stringify(index.entries)}</output>;}
-function Screen({theme,title='Fictional personnel',admin=true}:{theme:UiTheme;title?:string;admin?:boolean}){
+function Screen({theme,title='Fictional personnel',admin=true,security=false}:{theme:UiTheme;title?:string;admin?:boolean;security?:boolean}){
  const query=parsePageQuery(Object.fromEntries(new URLSearchParams(ports.search)));
  const state=pageState(query,100,25);
  return providers(theme,<div data-app-shell className={geometry.shell}>
-  <Sidebar isAdmin={admin} canApprove={admin} enabledModules={null} defaultCollapsed={false}/>
+  <Sidebar isAdmin={admin} canApprove={admin} canAdministerSecurity={security} canConfigureAccess={security} canProvisionUsers={security} enabledModules={null} defaultCollapsed={false}/>
   <div data-app-content className={geometry.content}>
    <header data-app-header className={geometry.header}>
     <div className="flex min-w-0 items-center gap-2"><ShellRoutePath/><CompanySwitcher companies={companies} selected={['fictional-a']}/></div>
@@ -62,9 +62,9 @@ function Screen({theme,title='Fictional personnel',admin=true}:{theme:UiTheme;ti
   </div>
  </div>);
 }
-async function mount(theme:UiTheme,width:number,dark=false,admin=true,title='Fictional personnel'){
+async function mount(theme:UiTheme,width:number,dark=false,admin=true,title='Fictional personnel',security=false){
  await page.viewport(width,844);document.documentElement.setAttribute('data-ui-theme',theme);document.documentElement.classList.toggle('dark',dark);document.body.className=geometry.body;
- const view=render(<Screen theme={theme} admin={admin} title={title}/>);view.container.style.height='100%';await tick();return view;
+ const view=render(<Screen theme={theme} admin={admin} title={title} security={security}/>);view.container.style.height='100%';await tick();return view;
 }
 async function capture(name:string,element:Element){
  const wrapper=window.frameElement?.parentElement,style=wrapper?.getAttribute('style'),scale=wrapper?.getAttribute('data-scale');
@@ -119,6 +119,15 @@ describe('isolated combined release: actual shell CSS and controls',()=>{
   view.rerender(<Screen theme="atelier" title="Fictional attendance B"/>);
   await waitFor(()=>expect(crumb.querySelector('[aria-current=page]')?.textContent).toBe('Fictional attendance B'));expect(crumb.textContent).not.toContain('Fictional attendance A');
   await capture('atelier-final-record-b',document.querySelector('[data-app-shell]')!);
+ });
+ it('links the Security Center module crumb to its overview from a Security Center page (board 8fa0a31d)',async()=>{
+  // The breadcrumb is Atelier's (components/shell-top-line.tsx); the other themes show the route path.
+  ports.path='/admin/users/access';ports.search='';await mount('atelier',1280,false,true,'Fictional permissions',true);
+  const crumb=await screen.findByRole('navigation',{name:en.topbar.breadcrumb});
+  await waitFor(()=>expect(Array.from(crumb.querySelectorAll('a')).map(link=>link.getAttribute('href'))).toEqual(['/admin/security-center']));
+  expect(within(crumb).getByRole('link',{name:en.nav.securityCenter})).toBeVisible();
+  // The overview stays a breadcrumb landing only: it is no rail row.
+  expect(document.querySelector('[data-app-sidebar] a[href="/admin/security-center"]')).toBeNull();
  });
  it('updates a renamed heading on the same path and clears a removed or empty heading',async()=>{
   ports.path='/attendance/individual/2026-10-29';const view=await mount('atelier',1280,false,true,'Fictional attendance A');

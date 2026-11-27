@@ -10,10 +10,11 @@ describe('composed application navigation declarations, not permission or execut
   // The combined inventory contains 225 durable identities (board 8fa0a31d retired the duplicate Security Center overview row), including Contract and Offboarding postings, Recruitment and employee referrals.
   expect(app.issues).toEqual([]);expect(app.declarations).toHaveLength(225);
   expect(app.declarations.slice(0,shell.declarations.length)).toEqual(shell.declarations);
-  // Board 8fa0a31d: the overview row's binding is retired; the moved Security Center rows keep their identities.
+  // Board 8fa0a31d: the overview row's binding is retired; the moved Security Center rows keep their identities, in the
+  // revision-2 menu order.
   expect(app.declarations.some(row=>row.id==='shell.securityCenter')).toBe(false);
   expect(app.declarations.filter(row=>row.sourceOwner==='lib/security-center-navigation.ts'&&row.id.startsWith('shell.')).map(row=>row.id)).toEqual([
-   'shell.securityPermissions','shell.passwordPolicy','shell.functionAccess','shell.users','shell.createLogin','shell.inviteUser',
+   'shell.securityPermissions','shell.passwordPolicy','shell.users','shell.functionAccess','shell.createLogin','shell.inviteUser',
   ]);
   expect(app.declarations.find(row=>row.id==='shell.contractPersonnelPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:contractPersonnelPostings',declaredHref:'/lifecycle/contracts/postings'});
   expect(app.declarations.find(row=>row.id==='shell.offboardingPostings')).toMatchObject({sourceOwner:'lib/navigation/shell-inventory.ts',sourceKey:'shell-slot:offboardingPostings',declaredHref:'/lifecycle/offboarding/postings'});

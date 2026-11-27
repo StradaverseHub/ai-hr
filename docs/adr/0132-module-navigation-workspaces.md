@@ -68,6 +68,26 @@ page guards, capabilities and audiences are unchanged; each viewer sees the same
 destinations as before less the duplicate overview row. Its coverage binding
 `shell.securityCenter` is retired with the row.
 
+### Amendment — 2026-11-27: two module rows with fly-outs, not sections (board 8fa0a31d revision 2)
+
+The reporter rejected the two section headings above. System Configuration (gear)
+and Security Center (shield) are now two ordinary module rows, in one unlabelled
+group pinned to the end of the rail under the selected workspace's modules (Ops or
+Strat alike). Each is a single trigger that opens its own fly-out panel exactly as
+Payroll does in that theme: Atelier and Classic (expanded and the collapsed icon
+rail) open the shared fly-out panel, one at a time, with its close button and
+Escape; Monolith lists the pages inline as it does Payroll's; the phone drawers use
+the same rows. Neither row has a module landing link, so the trigger is never split
+into a link and a toggle, and each stays a module even with one visible page; a row
+with no visible page is omitted. There is no section heading named System
+Configuration or Security Center. Security Center's fly-out order is Security &
+Permissions, Password Policy, Users, Function Access, Create a Login Manually,
+Invite a User (`SECURITY_MENU_ORDER`); System Configuration keeps its existing
+order. The overview's breadcrumb landing and "Go to" entry move from the section to
+the module row's breadcrumb-only `landingHref`, with the same admission. Placement,
+guards, capabilities, audiences and coverage ids are unchanged; each viewer sees
+the same destinations as before this revision.
+
 ## Verification boundary
 
 Source work, authored regressions and a clean diff do not prove the rendered

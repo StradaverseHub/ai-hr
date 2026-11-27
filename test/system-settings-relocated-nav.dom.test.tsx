@@ -38,9 +38,8 @@ function mount({admin = true, operator = false, manager = false, collapsed = fal
   </NextIntlClientProvider>);
   return view;
 }
-// Board 8fa0a31d — System Configuration is a section of its own: expanded, its heading controls the section, which is
-// a navigation landmark named by that heading; in the collapsed icon rail the section is one flyout trigger. There is
-// no second System Configuration dropdown inside the section, so exactly one control carries the name.
+// Board 8fa0a31d (revision 2) — System Configuration is one module trigger, expanded and in the collapsed icon rail,
+// that opens its own fly-out panel as Payroll does. Exactly one control carries the name.
 function settingsTrigger(label = en.nav.systemConfiguration) {
   const triggers = screen.getAllByRole('button', {name: label});
   expect(triggers).toHaveLength(1);
@@ -51,8 +50,9 @@ function openSettings(label = en.nav.systemConfiguration) {
   if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
   const panel = document.getElementById(trigger.getAttribute('aria-controls')!);
   expect(panel).not.toBeNull();
-  const name = panel!.getAttribute('aria-label') ?? document.getElementById(panel!.getAttribute('aria-labelledby') ?? '')?.textContent;
-  expect(name).toBe(label);
+  // The module's own panel in each theme: Classic's and Atelier's fly-out, or Monolith's inline list (as Payroll's).
+  expect(trigger.getAttribute('aria-controls')).toMatch(/^(nav-flyout|atelier-flyout|rail-kids)-systemConfiguration$/);
+  expect(panel).toHaveAttribute('aria-label', label);
   return panel!;
 }
 
@@ -66,6 +66,8 @@ describe('existing admin destinations relocated into System Configuration', () =
   it.each(Object.keys(catalogues) as (keyof typeof catalogues)[])('renders the existing labels and routes under one parent in %s', locale => {
     mount({locale});
     const nav = catalogues[locale].nav;
+    // No relocated destination is a flat rail link before the module's fly-out opens.
+    for (const [, key] of relocated) expect(screen.queryByRole('link', {name: nav[key]})).toBeNull();
     const panel = openSettings(nav.systemConfiguration);
     for (const [href, key] of relocated) {
       expect(within(panel).getByRole('link', {name: nav[key]})).toHaveAttribute('href', href);
