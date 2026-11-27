@@ -24,11 +24,10 @@ const wrap=(node:React.ReactNode)=>render(<NextIntlClientProvider locale="en" me
 const page=async(query={})=>wrap(await Page({searchParams:Promise.resolve(query)}));
 const sidebar=(admin:boolean,operator=false,preview=admin)=>wrap(<Sidebar isAdmin={admin} canApprove={false} canPreviewIdentityEmail={preview} canConfigureIdentityEmail={operator} enabledModules={[]} defaultCollapsed={false}/>);
 function openSystemSettings() {
- // Board 8fa0a31d — the System Configuration section heading is the only control with that name; it opens the
- // section, a navigation landmark listing the pages directly.
+ // Board 8fa0a31d (revision 2) — System Configuration is one module trigger, as Payroll is; it opens its own fly-out.
  const triggers=screen.getAllByRole('button',{name:messages.nav.systemConfiguration});
  expect(triggers).toHaveLength(1);const trigger=triggers[0];
- expect(trigger).toHaveAttribute('aria-controls','nav-section-systemConfiguration');
+ expect(trigger).toHaveAttribute('aria-controls','nav-flyout-systemConfiguration');
  if(trigger.getAttribute('aria-expanded')!=='true')fireEvent.click(trigger);
  return screen.getByRole('navigation',{name:messages.nav.systemConfiguration});
 }

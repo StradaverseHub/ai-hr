@@ -30,51 +30,68 @@ function mount(messages:typeof en|typeof ta=en,defaultCollapsed=false,security=f
  </NextIntlClientProvider>);
 }
 describe('Atelier navigation remains reachable in actual compact CSS',()=>{
- // Board 8fa0a31d — System Configuration and Security Center are two sections, each with its own icon, listing their
- // pages directly. The Security Center overview is no longer a row (it stays the section's breadcrumb landing).
- const securityHrefs=(passwordPolicy:boolean)=>['/admin/users/access',...(passwordPolicy?['/admin/security-center/password-policy']:[]),'/admin/users/function-access','/admin/users','/admin/users/create','/admin/users/invite'];
+ // Board 8fa0a31d (revision 2) — System Configuration (gear) and Security Center (shield) are two ordinary module rows
+ // that open their own fly-outs exactly as People and Payroll do. The Security Center overview is no row (it stays the
+ // module's breadcrumb landing).
+ const securityHrefs=(passwordPolicy:boolean)=>['/admin/users/access',...(passwordPolicy?['/admin/security-center/password-policy']:[]),'/admin/users','/admin/users/function-access','/admin/users/create','/admin/users/invite'];
  it.each([false,true].flatMap(dark=>[320,390,768,1280].flatMap(width=>[false,true].map(passwordPolicy=>({dark,width,passwordPolicy})))))(
-  'opens the Security Center section with its pages without moving the page at $width px (dark=$dark, policy=$passwordPolicy)',async({dark,width,passwordPolicy})=>{
+  'opens the Security Center fly-out with its pages without moving the page at $width px (dark=$dark, policy=$passwordPolicy)',async({dark,width,passwordPolicy})=>{
   await page.viewport(width,900);document.documentElement.classList.toggle('dark',dark);mount(en,false,true,passwordPolicy);
   if(width<640)fireEvent.click(screen.getByRole('button',{name:en.nav.workspaceSwitch}));
   const system=screen.getByRole('button',{name:en.nav.systemConfiguration,expanded:false});
-  const heading=screen.getByRole('button',{name:en.nav.securityCenter,expanded:false});
-  // Exactly one control per name: no dropdown inside a section repeats the section's name.
+  const security=screen.getByRole('button',{name:en.nav.securityCenter,expanded:false});
+  // Exactly one control per name, and no section heading carries either name.
   expect(screen.getAllByRole('button',{name:en.nav.systemConfiguration})).toEqual([system]);
-  expect(screen.getAllByRole('button',{name:en.nav.securityCenter})).toEqual([heading]);
-  // Each heading draws its own section icon beside the label, plus the open/closed chevron.
-  expect(system.querySelectorAll('svg')).toHaveLength(2);expect(heading.querySelectorAll('svg')).toHaveLength(2);
-  heading.scrollIntoView({block:'nearest'});
-  const label=within(heading).getByText(en.nav.securityCenter),railNav=heading.closest('[data-atelier-navigation] nav')!;
-  expect(box(heading).top).toBeGreaterThanOrEqual(box(railNav).top-.5);expect(box(heading).bottom).toBeLessThanOrEqual(box(railNav).bottom+.5);
-  expect(box(label).width).toBeGreaterThan(60);expect(box(heading).left).toBeGreaterThanOrEqual(0);expect(box(heading).right).toBeLessThanOrEqual(width+.5);
+  expect(screen.getAllByRole('button',{name:en.nav.securityCenter})).toEqual([security]);
+  for(const key of ['systemConfiguration','securityCenter'])expect(document.getElementById(`nav-section-${key}`)).toBeNull();
+  // Each looks exactly like the People module row: the same row, its own icon (gear, shield), the name and the chevron.
+  const people=screen.getByRole('button',{name:en.nav.modulePeople});
+  for(const [trigger,icon] of [[system,'svg.lucide-settings-2'],[security,'svg.lucide-shield-check']] as const){
+   expect(trigger.className).toBe(people.className);
+   expect(trigger.querySelectorAll('svg')).toHaveLength(people.querySelectorAll('svg').length);
+   expect(trigger.querySelector(icon)).not.toBeNull();expect(trigger.querySelector('.atelier-chevron')).not.toBeNull();
+   expect(getComputedStyle(trigger).height).toBe(getComputedStyle(people).height);
+  }
+  security.scrollIntoView({block:'nearest'});
+  const label=within(security).getByText(en.nav.securityCenter),railNav=security.closest('[data-atelier-navigation] nav')!;
+  expect(box(security).top).toBeGreaterThanOrEqual(box(railNav).top-.5);expect(box(security).bottom).toBeLessThanOrEqual(box(railNav).bottom+.5);
+  expect(box(label).width).toBeGreaterThan(60);expect(box(security).left).toBeGreaterThanOrEqual(0);expect(box(security).right).toBeLessThanOrEqual(width+.5);
   const content=screen.getByTestId('working-page'),before=box(content);
   fireEvent.click(label);
-  expect(heading.getAttribute('aria-expanded')).toBe('true');
-  const section=screen.getByRole('navigation',{name:en.nav.securityCenter});
-  expect(section.id).toBe('nav-section-securityCenter');
-  expect(within(section).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(securityHrefs(passwordPolicy));
+  expect(security.getAttribute('aria-expanded')).toBe('true');
+  const panel=screen.getByRole('navigation',{name:en.nav.securityCenter});
+  expect(panel.parentElement!.id).toBe('atelier-flyout-securityCenter');
+  expect(within(panel).getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(securityHrefs(passwordPolicy));
   expect(document.querySelector('a[href="/admin/security-center"]')).toBeNull();
   const after=box(content);expect([after.left,after.top,after.width,after.height]).toEqual([before.left,before.top,before.width,before.height]);
   expect(document.documentElement.scrollWidth).toBeLessThanOrEqual(width);
-  const users=within(section).getByRole('link',{name:en.nav.users});users.scrollIntoView({block:'nearest'});
+  const users=within(panel).getByRole('link',{name:en.nav.users});users.scrollIntoView({block:'nearest'});
   expect(box(users).left).toBeGreaterThanOrEqual(0);expect(box(users).right).toBeLessThanOrEqual(width+.5);
-  heading.focus();await userEvent.keyboard('{Enter}');
-  await waitFor(()=>expect(heading.getAttribute('aria-expanded')).toBe('false'));
-  expect(within(screen.getByRole('navigation',{name:en.nav.securityCenter})).queryAllByRole('link')).toHaveLength(0);
+  // Escape closes the fly-out and returns focus to its trigger; Enter on the trigger reopens it.
+  fireEvent.keyDown(document,{key:'Escape'});
+  await waitFor(()=>expect(document.activeElement).toBe(security));
+  expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
   await userEvent.keyboard('{Enter}');
-  await waitFor(()=>expect(heading.getAttribute('aria-expanded')).toBe('true'));
+  await waitFor(()=>expect(security.getAttribute('aria-expanded')).toBe('true'));
+  // One panel at a time: the gear swaps Security Center's fly-out for its own.
+  fireEvent.click(system);
+  expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
+  expect(within(screen.getByRole('navigation',{name:en.nav.systemConfiguration})).getAllByRole('link').length).toBeGreaterThan(0);
+  fireEvent.click(security);
   fireEvent.click(within(screen.getByRole('navigation',{name:en.nav.securityCenter})).getByRole('link',{name:en.nav.users}));
+  expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();
   if(width<640)expect(screen.getByRole('button',{name:en.nav.workspaceSwitch}).getAttribute('aria-expanded')).toBe('false');
  });
- it('shows each icon section as one trigger in the collapsed rail; it opens on click, not hover, and dismisses outside',async()=>{
+ it('shows the gear and the shield as single icon triggers in the collapsed rail; they open on click, not hover, and dismiss outside',async()=>{
   await page.viewport(1280,900);mount(en,true,true);
-  for(const key of ['systemConfiguration','securityCenter'] as const){
-   const section=document.querySelector<HTMLElement>(`[data-nav-section="${key}"]`)!;
-   const triggers=within(section).getAllByRole('button');expect(triggers).toEqual([within(section).getByRole('button',{name:en.nav[key]})]);
-   expect(triggers[0].getAttribute('title')).toBe(en.nav[key]);
-   expect(box(triggers[0]).width).toBeLessThanOrEqual(64);
-   expect(within(section).queryAllByRole('link')).toHaveLength(0);
+  const pinned=document.querySelector<HTMLElement>('[data-nav-pinned]')!;
+  expect(within(pinned).getAllByRole('button').map(button=>button.closest('[data-atelier-module]')?.getAttribute('data-atelier-module'))).toEqual(['systemConfiguration','securityCenter']);
+  expect(within(pinned).queryAllByRole('link')).toHaveLength(0);
+  for(const [key,icon] of [['systemConfiguration','svg.lucide-settings-2'],['securityCenter','svg.lucide-shield-check']] as const){
+   const trigger=within(pinned).getByRole('button',{name:en.nav[key]});
+   expect(trigger.getAttribute('title')).toBe(en.nav[key]);
+   expect(box(trigger).width).toBeLessThanOrEqual(64);
+   expect(trigger.querySelector(icon)).not.toBeNull();
   }
   const module=document.querySelector<HTMLElement>('[data-atelier-module="securityCenter"]')!;
   const trigger=within(module).getByRole('button',{name:en.nav.securityCenter});
@@ -86,7 +103,10 @@ describe('Atelier navigation remains reachable in actual compact CSS',()=>{
   await waitFor(()=>expect(document.activeElement).toBe(within(panel).getAllByRole('link')[0]));
   fireEvent.keyDown(document,{key:'Escape'});
   await waitFor(()=>expect(document.activeElement).toBe(trigger));
+  fireEvent.click(within(pinned).getByRole('button',{name:en.nav.systemConfiguration}));
+  expect(screen.getByRole('navigation',{name:en.nav.systemConfiguration})).toBeTruthy();
   fireEvent.click(trigger);
+  expect(screen.queryByRole('navigation',{name:en.nav.systemConfiguration})).toBeNull();
   const reopened=screen.getByRole('navigation',{name:en.nav.securityCenter});
   const backdrop=reopened.parentElement!.previousElementSibling;
   expect(backdrop).not.toBeNull();fireEvent.click(backdrop!);

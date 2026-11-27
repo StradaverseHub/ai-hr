@@ -25,6 +25,19 @@ describe('workspace navigation keeps controls reachable',()=>{
   expect(source).toContain('setRailKids({})');
   expect(source).not.toContain('disabled={group.labelKey === activeSectionKey}');
  });
+ it('pins System Configuration and Security Center as two module rows with their own fly-outs (board 8fa0a31d r2)',()=>{
+  const start=source.indexOf('const administrationRows: CollapsibleGroupItem[] = [');
+  expect(start).toBeGreaterThan(-1);
+  const block=source.slice(start,source.indexOf('];',start));
+  expect(block).toContain("labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows");
+  expect(block).toContain("labelKey:'securityCenter',icon:ShieldCheck");
+  expect(block.indexOf("'systemConfiguration'")).toBeLessThan(block.indexOf("'securityCenter'"));
+  // A single trigger like Payroll: no landing link splitting the row; the overview is breadcrumb-only.
+  expect(block).not.toContain('defaultHref');expect(block).toContain('landingHref:securityLanding');
+  expect(source).toContain('...(administrationRows.length ? [{pinEnd:true,items:administrationRows}] : [])');
+  expect(source.match(/gi===firstPinnedGroup&&'mt-auto'/g)).toHaveLength(2);
+  expect(source).not.toMatch(/\bsectionNode\b|SectionBody|nav-section-heading|icon:Settings2,pinEnd/);
+ });
  it('renders named module triggers in the icon rail and restores keyboard focus from flyouts',()=>{
   expect(source).toContain('collapsed={collapsed}');
   expect(source).toContain('triggerRefs.current[openNode.labelKey]?.focus()');

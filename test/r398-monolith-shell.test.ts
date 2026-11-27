@@ -114,11 +114,16 @@ describe('Monolith shell wiring', () => {
   });
 
   it('the Monolith rail keeps every module inline and opens no flyout, without collapse', () => {
-    // Board 8fa0a31d: Security Center is its own section listing its pages inline, so the former Security Center
-    // flyout exception (and its hover opening) is gone in every theme.
+    // Board 8fa0a31d (revision 2): System Configuration and Security Center are ordinary modules, so Monolith lists
+    // their pages inline exactly as Payroll's; the former Security Center flyout exception (and its hover opening) and
+    // the revision-1 icon sections are gone in every theme.
     expect(SIDEBAR).toContain('const openNode = openKey && !monolith');
     expect(SIDEBAR).not.toMatch(/labelKey === 'securityCenter'/);
     expect(SIDEBAR).not.toContain('gi===2');
+    expect(SIDEBAR).not.toMatch(/sectionNode|SectionBody|nav-section-heading/);
+    expect(SIDEBAR).toMatch(/labelKey:'systemConfiguration',icon:Settings2,children:otherSystemRows\}/);
+    expect(SIDEBAR).toMatch(/labelKey:'securityCenter',icon:ShieldCheck,/);
+    expect(SIDEBAR).toContain('if (isCollapsible(item)) return monolithModule(item);');
     expect(SIDEBAR).toContain('const kidsId = `rail-kids-${item.labelKey}`;');
     // Monolith never collapses; Classic follows the preference, except in the D-P1-28 phone drawer (labels shown).
     expect(SIDEBAR).toContain('const collapsed = monolith ? false : collapsedPref && !(mobileNavigationOpen && !atelier);');
