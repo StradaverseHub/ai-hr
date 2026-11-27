@@ -1,6 +1,6 @@
 /** Narrow read seam for audited tax-input corrections. Does not import payroll or the country registry. */
 import {importedTaxSettingsTx,importedTaxRulesStatesTx,importedTaxSettingEvidence} from './payroll-import-tax-source';
-import {createNonCashOwnershipReplay,readPcbNonCash} from '../localization/noncash-benefits';
+import {createNonCashOwnershipReplay,readPcbNonCash,pcbBaseWithNonCash} from '../localization/noncash-benefits';
 import {createHash} from 'node:crypto';
 import {sql} from 'drizzle-orm';
 import type {SessionContext,Tx} from '../db/client';
@@ -131,9 +131,16 @@ export type ReprocessTaxBasisRead =
  | {kind:'history';replay:(sources:readonly TaxBasisSource[],changed:readonly TaxBasisSource[],effective:ReadonlyMap<string,EffectiveTaxBasis>)=>Promise<ReadonlyMap<string,TaxBasisValue>>};
 type EffectiveReadOptions={includeImported?:boolean;sameMonth?:boolean;reprocess?:ReprocessTaxBasisRead};
 
+/** Board d9ded29c — the PCB base a saved basis is read as: its saved cash `pcb` (normal + additional, version 1) plus the
+ * cumulative taxable BIK/VOLA of the noncash snapshot it is read with, the composition live payroll stamps as
+ * `bases.pcb`. The saved basis itself is returned unchanged (its bytes are the correction or import record). */
+export function effectiveTaxBasisPcb(basis:{pcb:number;pcbNonCash?:unknown}):number{
+ if(basis.pcbNonCash!==undefined&&!readPcbNonCash(basis.pcbNonCash))throw new PayrollTaxBasisError('Saved noncash tax inputs are malformed.');
+ return pcbBaseWithNonCash(basis.pcb,basis.pcbNonCash);
+}
 function overlayTaxBasis(original:Record<string,unknown>,basis:TaxBasisValue,correction:TaxBasisCorrectionRef|null){
  return {...original,...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{}),
-  bases:{...(object(original.bases)?original.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},
+  bases:{...(object(original.bases)?original.bases:{}),pcb:effectiveTaxBasisPcb(basis)},exemptionUsed:{...basis.exemptionUsed},
   ...(basis.lp!==undefined?{lp:basis.lp}:{}),...(correction?{taxBasisCorrection:correction}:{})};
 }
 function assertAllTaxBasisSources(sources:readonly TaxBasisSource[],requestedIds:ReadonlySet<string>){
@@ -278,7 +285,8 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
    const basis=validatedTaxBasis(stamp.basis);
    if(!object(statutory.bases)||statutory.bases.pcb!==basis.pcb)unavailable();
    const replacedCorrections=supersededBySource.get(source.id);
-   out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:basis.pcb},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})},...(replacedCorrections?.length?{supersededCorrections:replacedCorrections}:{})});
+   // d9ded29c — the raw check above binds the saved cash base; the effective base adds the taxable benefits.
+   out.set(source.id,{correction:null,basis,statutory:{...statutory,bases:{...(object(statutory.bases)?statutory.bases:{}),pcb:effectiveTaxBasisPcb(basis)},exemptionUsed:{...basis.exemptionUsed},...(basis.lp!==undefined?{lp:basis.lp}:{}),...(basis.pcbNonCash?{pcbNonCash:basis.pcbNonCash}:{})},...(replacedCorrections?.length?{supersededCorrections:replacedCorrections}:{})});
   }catch(error){capture(source.employmentId,source.period,error);}
  }
  if(options.includeImported){
@@ -299,7 +307,10 @@ async function effectiveTaxBasesForSourcesTx(tx:Tx,ctx:SessionContext,payslipIds
     const builder=builders.get(key)??createNonCashOwnershipReplay(false);builders.set(key,builder);
     let rebuilt:ReturnType<typeof builder>;
     try{rebuilt=builder({period:source.period,cashNormal:typeof effective?.basis.normal==='number'?effective.basis.normal:saved?.cashNormal??0,owned:saved?.ownedEntries??[],ownedEa:saved?.ownedEaEntries??[],original:saved,completeSource:saved!==null||object(stat.importedTaxBasis)});}catch{throw new PayrollTaxBasisError('Original month noncash source ownership is incomplete or duplicated. Review the complete month prefix.');}
-    if(effective&&(saved||rebuilt.eaEntries.length))out.set(source.id,{...effective,basis:{...effective.basis,pcbNonCash:rebuilt},statutory:{...effective.statutory,pcbNonCash:rebuilt}});
+    // d9ded29c — the effective base follows the recomposed month: saved cash plus the REBUILT cumulative benefits, so the
+    // fold's Y = base - (cumulative - owned) adds exactly this record's own benefits, once.
+    if(effective&&(saved||rebuilt.eaEntries.length))out.set(source.id,{...effective,basis:{...effective.basis,pcbNonCash:rebuilt},statutory:{...effective.statutory,pcbNonCash:rebuilt,
+     bases:{...(object(effective.statutory.bases)?effective.statutory.bases:{}),pcb:pcbBaseWithNonCash(effective.basis.pcb,rebuilt)}}});
    }catch(error){capture(source.employmentId,source.period,error);}
   }
  }

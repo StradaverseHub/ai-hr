@@ -34,7 +34,9 @@ specification requires it.
    Additional; a month with only Normal benefits is still written as version 1, byte for byte as before. A version 1
    snapshot is always read as all Normal (Y1) and is never re-derived from today's pay item setting. The snapshot
    totals (`owned`, `cumulative`, `before`, `current`) stay totals across both streams, so `bases.pcb` and the
-   accumulated Σ(Y − K) fold are unchanged.
+   accumulated Σ(Y − K) fold are unchanged. `bases.pcb` means cash remuneration plus the month's cumulative taxable
+   BIK/VOLA of both streams; a saved historical tax basis (version 1, cash-only `pcb`) is read with that same meaning by
+   adding its own snapshot's cumulative taxable benefits (board d9ded29c, 27 November 2026, ADR-0167 amendment).
 4. In a month with several runs, an Additional benefit sits only on the side of the delta of the run that owns it. A
    later run carries an earlier run's Additional benefit on both sides as Yt; it is never re-folded as normal
    remuneration. A recurring benefit carried from the saved regular run keeps the stream that run saved.

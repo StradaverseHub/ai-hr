@@ -1,3 +1,19 @@
+# Board d9ded29c: group tax opening counts a saved basis's taxable benefits, 27 November 2026
+
+Reserve `7590_payroll_group_tax_opening_noncash_base`, journal index `10990`, timestamp `1795495007590`, SQL SHA-256
+`19f3b55593a3d14a05c8f4bfeead2bea07ae273c5b8e00790b250b332b2fad85`. Assigned by the board batch coordinator (slots 7590-7620 for the 27 November board batch; `7580` is reserved
+ahead of it by `claude/prod-slow-pages`). Built on main 240adad5c, whose journal ends at `7570` (index `10970`). Recheck both
+installations' watermarks and any competing reservation at admission: an applied 7580 or later number does not block
+this entry, but a lower-numbered entry arriving after 7590 is applied would be skipped.
+
+Replaces only the body of the SECURITY DEFINER `app.payroll_group_tax_opening(uuid,text,uuid[])` (7550), guarded by the
+md5 of the 7550 body: a saved correction or accepted import basis (version 1, cash-only `pcb`) with its own noncash
+snapshot adds that snapshot's cumulative taxable BIK + VOLA to its base, so the month's Y carries its own taxable
+benefits once; `noncash_complete` is true for a month read through such a saved basis without a snapshot. Signature,
+returned columns, volatility, owner, search_path, the payroll-administration gate, the 2,000 bound and the grants
+(EXECUTE to `ai_hr_app` only, restated identically) are unchanged. No table, column, policy, constraint or stored row
+changes. Depends on 7550. This entry carries no deployment authority.
+
 # Board 5084d02e: Form TP3 Excel import job and Import Log, 26 November 2026
 
 Reserve `7570_tp3_import_job`, journal index `10970`, timestamp `1795495007570`, SQL SHA-256

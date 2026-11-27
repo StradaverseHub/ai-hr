@@ -5663,7 +5663,10 @@ async function generatePayslipsTx(tx: Tx, ctx: SessionContext, p: GeneratePaysli
     for(const r of priorSlips){
       const cur=accumulatedNonCashByEmp.get(r.employmentId); if(!cur)continue;
       const saved=readPcbNonCash((r.statutory as {pcbNonCash?:unknown}|null)?.pcbNonCash);
-      if(!saved){cur.complete=false;continue;}
+      // d9ded29c — an imported or reviewed month read through its accepted projection or Income Tax Correction states its
+      // benefits completely: no snapshot there means it had none (an imported bonus-only month), a known zero. Only a
+      // native slip written before the snapshot existed leaves the accumulation unknown.
+      if(!saved){if(!correctedPriorBases.has(r.id))cur.complete=false;continue;}
       cur.bik=round2(cur.bik+saved.owned.bik);cur.vola=round2(cur.vola+saved.owned.vola);
     }
     // 4ce2c481 — the group months' own BIK/VOLA accumulate the same way; a month that saved no non-cash snapshot is as

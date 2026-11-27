@@ -511,6 +511,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10960,when:1795495007560,tag:'7560_payroll_recalc_pending'},
  // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
  {idx:10970,when:1795495007570,tag:'7570_tp3_import_job'},
+ // Board d9ded29c — the group tax opening counts a saved basis's own taxable benefits in its base (replaces 7550's body).
+ {idx:10990,when:1795495007590,tag:'7590_payroll_group_tax_opening_noncash_base'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -547,6 +549,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7550_payroll_group_tax_opening':'a1b8c2d3e074f5a67943c13b0d999f285ba42377bbcc5e5245897dba5409d491',
  '7560_payroll_recalc_pending':'2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f',
  '7570_tp3_import_job':'3a1388043be5589123fd925c5bae120d933a7dd23e3f8d0747cd4b083692ef79',
+ '7590_payroll_group_tax_opening_noncash_base':'19f3b55593a3d14a05c8f4bfeead2bea07ae273c5b8e00790b250b332b2fad85',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',
  '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',

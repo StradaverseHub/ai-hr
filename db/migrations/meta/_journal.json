@@ -8184,6 +8184,13 @@
       "when": 1795495007570,
       "tag": "7570_tp3_import_job",
       "breakpoints": true
+    },
+    {
+      "idx": 10990,
+      "version": "7",
+      "when": 1795495007590,
+      "tag": "7590_payroll_group_tax_opening_noncash_base",
+      "breakpoints": true
     }
   ]
 }

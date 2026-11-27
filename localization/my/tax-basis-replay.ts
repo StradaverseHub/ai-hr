@@ -1,5 +1,5 @@
 /** Explicit historical tax-input replay. Never executes compensation rules or computes a PCB deduction. */
-import {classifyNonCashBenefit,nonCashBenefitStream,createNonCashOwnershipReplay,readPcbNonCash,NonCashBenefitConfigurationError,type NonCashEntry,type NonCashEaEntry,type PcbNonCashSnapshot} from '../noncash-benefits';
+import {classifyNonCashBenefit,nonCashBenefitStream,createNonCashOwnershipReplay,readPcbNonCash,ownedTaxableNonCash,NonCashBenefitConfigurationError,type NonCashEntry,type NonCashEaEntry,type PcbNonCashSnapshot} from '../noncash-benefits';
 import type {TaxBasisItem,TaxBasisValue,TaxBasisLedgerEntry,TaxBasisBounds} from '../../lib/payroll-tax-basis';
 import type {StatutoryRuleset} from './statutory-tables';
 export class TaxBasisReplayError extends Error {constructor(message:string){super(message);this.name='TaxBasisReplayError';}}
@@ -98,6 +98,9 @@ export function replayMyTaxBasis(input:TaxBasisReplayInput):TaxBasisReplayRow[]{
   try{nonCash=nonCashReplay({period:slip.period,cashNormal:normal,owned:nonCashEntries,ownedEa:nonCashEaEntries,original:savedNonCash,completeSource:slip.sourceKind==='import'||savedNonCash!==null});}
   catch(error){fail(`${slip.period}: ${error instanceof NonCashBenefitConfigurationError?error.componentCode:'Noncash'} original month source ownership is incomplete or duplicated.`);}
 
+  // `pcb` stays the saved cash base (normal + additional; the version 1 contract, enforced by the revision table's CHECK).
+  // Its taxable benefits ride in `pcbNonCash`; every reader takes the PCB base as pcb + cumulative taxable benefits
+  // (board d9ded29c, localization/noncash-benefits.ts pcbBaseWithNonCash), as live payroll stamps bases.pcb.
   const basis:TaxBasisValue={version:1,period:slip.period,pcb:round(normal+additional),normal,additional,exempt,lp:round(preservedLp+declaredLp),exemptionUsed,items,rulesHash:resolution.hash,...((nonCash.eaEntries.length||savedNonCash)?{pcbNonCash:nonCash}:{}),...(input.ledger?{exemptionLedger:{version:1,entries:ledger}}:{})};
   return {payslipId:slip.id,period:slip.period,basis};
  });
@@ -114,7 +117,8 @@ export function boundMyTaxBasis(input:Omit<TaxBasisReplayInput,'openingExemption
   const entries=(row.basis.exemptionLedger as {entries:TaxBasisLedgerEntry[]}).entries;
   for(const entry of entries){const code=codes.get(entry.code)??{code:entry.code,cap:entry.cap,eligible:0,exemptMax:0,certainExcess:0};code.eligible=round(code.eligible+entry.eligible);code.exemptMax=round(code.exemptMax+entry.exempt);code.certainExcess=round(code.certainExcess+entry.excess);codes.set(entry.code,code);}
   const capped=new Set(entries.map(entry=>entry.itemCode));
-  return {payslipId:row.payslipId,period:row.period,taxableMin:row.basis.pcb,exemptMax:Number(row.basis.exempt),
+  // d9ded29c — a month's taxable income includes the taxable benefits it owns, as the confirmable preview shows it.
+  return {payslipId:row.payslipId,period:row.period,taxableMin:round(row.basis.pcb+ownedTaxableNonCash(row.basis.pcbNonCash)),exemptMax:Number(row.basis.exempt),
    items:row.basis.items.map(item=>({code:item.code,name:item.name,amount:item.amount,exemptionCode:settings.get(item.code.trim().toUpperCase())?.pcbExemptionCode??null,exact:!capped.has(item.code),exemptMax:item.exempt,taxableMin:item.taxable}))};
  });
  return {codes:[...codes.values()].sort((a,b)=>a.code.localeCompare(b.code)),months};
