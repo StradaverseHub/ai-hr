@@ -46,22 +46,23 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 import {isIdentityStatement,observeStatements,type Captured} from './helpers/statement-observer';
 
 /** Ceilings per statement kind (ms on the CI runner, EXPLAIN ANALYZE overhead included; shared buffers of the whole
- * statement, the policy's EXISTS over employee_draft and its access functions included). FIRST ESTIMATES, not yet
- * measured: generous but finite, to be tightened from the first alpha-focused-checks run's POLICY_TIMING_7610 lines. */
+ * statement, the policy's EXISTS over employee_draft and its access functions included). Measured on the CI runner
+ * (alpha-focused-checks run 46039471006, 71 stored rows): read 1.5 ms / 0.2 ms planning / 78 buffers; upsert 3.7 ms /
+ * 0.4 ms / 129 buffers, every policy node looping once. Time ceilings leave room for runner variance. */
 const PLAN_LIMITS={
- read:{executionMs:200,planningMs:300,buffers:5000},
- upsert:{executionMs:400,planningMs:400,buffers:10000},
+ read:{executionMs:60,planningMs:100,buffers:400},
+ upsert:{executionMs:100,planningMs:100,buffers:600},
 } as const;
 type Kind=keyof typeof PLAN_LIMITS;
 
 type Action='uploadDraftPhotoAction'|'removeDraftPhotoAction';
 /** Recorded budgets per action: the largest (transactions, statements) measured over every persona below. FIRST
  * ESTIMATES, not yet measured: each action is one transaction by construction (core/employee-draft-photo.ts), and the
- * statement ceilings are generous; tighten both from the first CI run's ACTION_BUDGET_7610 lines. Budgets only go
+ * measured value on the CI runner (run 46039471006) was 1 transaction and 7 statements for both actions and every persona. Budgets only go
  * down; raising one needs an ADR note (docs/adr/0181-database-read-cost-architecture.md). */
 const BUDGETS:Record<Action,{transactions:number;statements:number}>={
- uploadDraftPhotoAction:{transactions:2,statements:30},
- removeDraftPhotoAction:{transactions:2,statements:30},
+ uploadDraftPhotoAction:{transactions:1,statements:7},
+ removeDraftPhotoAction:{transactions:1,statements:7},
 };
 
 /** Scale-fixture cases. No CI duration measured yet (first run): 120 s is a generous first ceiling (rule 15), to be set

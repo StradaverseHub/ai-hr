@@ -139,7 +139,8 @@ describe('§1 both fields render in all six locales, with zero missing messages'
       // "How This Employee Is Paid" card (sections.payMethodGroup) would have been empty and is gone.
       expect(panel.queryByText(m.people.detail.payMethodGroup), `${loc} no separate payment method card`).toBeNull();
       const compensationCard = shownPanel().querySelector('[data-compensation-card]');
-      expect(within(compensationCard as HTMLElement).getByText(m.people.wizard.sections.compensation)).toBeTruthy();
+      // The card's own heading (in th/vi the Basic Salary caption reads the same words as the heading).
+      expect(compensationCard?.querySelector('[data-ui-section-header]')?.textContent?.trim()).toBe(m.people.wizard.sections.compensation);
       expect(paymentSelect()!.closest('[data-payment-method]'), `${loc} payment method present`).toBeTruthy();
       expect(compensationCard?.contains(paymentSelect()!), `${loc} payment method sits in Basic Salary`).toBe(true);
       expect(paymentSelect()!.getAttribute('aria-required'), `${loc} marked required`).toBe('true');

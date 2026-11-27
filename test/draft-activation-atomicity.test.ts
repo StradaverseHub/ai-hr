@@ -272,7 +272,7 @@ describe('atomic Draft activation', () => {
     const table={department:schema.department,position:schema.position,cost_center:schema.costCenter,grade:schema.jobGrade}[kind];
     await owner.db.update(table).set({archivedAt:new Date()}).where(eq(table.id,referenceId));
     const failure=await rejectedWithoutChanges(ctx,id,'reference_invalid');
-    expect(draftActivationValidation(failure)?.fields).toEqual([{tab:'job',field:kind==='cost_center'?'costCenter':kind}]);
+    expect(draftActivationValidation(failure)?.fields).toEqual([{tab:'job',field:kind==='cost_center'?'costAllocation':kind}]);
   });
 
   it('refuses a selected Department moved outside the company eligibility rule', async () => {

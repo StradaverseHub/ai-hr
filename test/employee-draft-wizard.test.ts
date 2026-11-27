@@ -354,9 +354,9 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       // 759dfc7d work item 2 — the five-step form is gone and so are its step labels. Left behind they
       // would be five orphan strings per locale that read as the screen's vocabulary and are not.
       expect(msgs.people?.wizard?.steps, `${loc} wizard.steps`).toBeUndefined();
-      // Back / Next went with the wizard: a tabbed record has no sequence to move along.
+      // Back went with the wizard. Board 2c1b2fba brought Next back as a navigation-only guide along the tabs.
       expect(msgs.people?.wizard?.back, `${loc} wizard.back`).toBeUndefined();
-      expect(msgs.people?.wizard?.next, `${loc} wizard.next`).toBeUndefined();
+      expect(String(msgs.people?.wizard?.next ?? '').trim(), `${loc} wizard.next`).not.toBe('');
     }
   });
 

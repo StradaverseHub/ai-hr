@@ -20,7 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, asc, eq, inArray, isNull } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import type { SessionContext } from '../db/client';
+import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import {
   completeEmployeeDraft, createEmployeeDraftWithReservedCode, draftActivationValidation, getEmployeeDraft,
@@ -81,7 +81,8 @@ beforeAll(async () => {
   housingId = components.find((c) => c.code === 'HOUSING')!.id;
   colaId = components.find((c) => c.code === 'COLA')!.id;
   expect([allowanceId, housingId, colaId].every(Boolean)).toBe(true);
-  await owner.db.update(schema.payComponent).set({ appliedCompanyIds: [otherCompanyId] }).where(eq(schema.payComponent.id, colaId));
+  // As the administrator (the applicability guard requires administration of every selected company).
+  await withTenant(a, (tx) => tx.update(schema.payComponent).set({ appliedCompanyIds: [otherCompanyId] }).where(eq(schema.payComponent.id, colaId)));
 }, 120_000);
 afterAll(closeAll);
 

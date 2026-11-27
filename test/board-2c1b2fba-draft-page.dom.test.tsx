@@ -212,7 +212,8 @@ describe('§4 a legacy single cost centre reads as one allocation row at 100%', 
     expect(savedData().costAllocations).toBeUndefined();
     expect(savedData().employment?.costCenterId).toBe('cc-1');
     // Changed: the whole list is written, and the legacy key is left alone (the server derives the assignment).
-    const pct = rows[0].querySelector('input') as HTMLInputElement;
+    // Re-read the rows: the save re-renders the card.
+    const pct = card.ownerDocument.querySelector('[data-draft-cost-allocations] [data-allocation-row] input') as HTMLInputElement;
     await userEvent.clear(pct);
     await userEvent.type(pct, '60');
     await userEvent.click(within(card).getByRole('button', { name: en.costAllocations.add }));
@@ -296,7 +297,8 @@ describe('§6 the Qualification tab keeps at most one Highest', () => {
     };
     await add('Diploma', 'Politeknik');
     await add('Degree', 'Universiti Malaya');
-    expect(within(card()).getAllByText(detail.qualification.highestBadge)).toHaveLength(1);
+    // The badge on the record row (the table's column heading reads the same word).
+    expect(within(card()).getAllByText(detail.qualification.highestBadge).filter((el) => el.tagName !== 'TH')).toHaveLength(1);
     await save();
     expect(savedData().qualifications?.map((q) => [q.qualification, q.institute, q.isHighest])).toEqual([
       ['Diploma', 'Politeknik', false],
