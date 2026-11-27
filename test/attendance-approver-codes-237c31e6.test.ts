@@ -4,7 +4,7 @@
 import {randomUUID} from 'node:crypto';
 import {afterAll,beforeAll,beforeEach,describe,expect,it} from 'vitest';
 import {and,eq,isNull,sql} from 'drizzle-orm';
-import {withTenant,type SessionContext} from '../db/client';
+import {client,withTenant,type SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {hireEmployee,setReportingLine} from '../core/org';
 import {checkIn,checkOut,requestAttendanceCorrection,decideAttendanceCorrection,listAttendanceCorrections,myAttendanceCorrections} from '../core/attendance';
@@ -12,7 +12,8 @@ import {saveAttendanceWorkflow,setAttendanceWorkflowEnabled,ownAttendanceSubmiss
 import {attendanceSubmissionRouteOnBehalf} from '../core/attendance-on-behalf';
 import type {AttendanceV4WorkflowInput,AttendanceV4Level} from '../lib/attendance-workflow-v4';
 import {todayInKualaLumpur} from '../lib/hr-date';
-import {observeNativeRead} from './helpers/native-read-observer';
+import {observeNativeRead,type NativeReadQuery} from './helpers/native-read-observer';
+import {isIdentityStatement,observeStatements} from './helpers/statement-observer';
 import {adminCtx,createAppUser,owner,closeAll,migrateTestDb,resetDb,seedBase,type Base} from './harness';
 
 let base:Base;
@@ -146,6 +147,26 @@ describe('app.attendance_workflow_route_approver_codes (before Submit)',()=>{
  });
 });
 
+/** Shared buffers of one captured read, replayed with EXPLAIN (ANALYZE, BUFFERS) under the reader's own identity
+ * statement, rolled back. Buffers are deterministic for a fixture; a runner stall cannot change them. */
+async function readBuffers(ctx:SessionContext,query:NativeReadQuery):Promise<number>{
+ const observed=await observeStatements(()=>withTenant(ctx,tx=>tx.execute(sql`select 1`)));
+ const identity=observed.statements.find(s=>isIdentityStatement(s.sql))!;
+ let buffers=-1;
+ await client.begin(async tx=>{
+  await tx.unsafe(identity.sql,identity.params as never[]);
+  const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${query.sql}`,query.params as never[]);
+  const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number}}];
+  buffers=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
+  throw ROLLBACK;
+ }).catch(error=>{if(error!==ROLLBACK)throw error;});
+ return buffers;
+}
+const ROLLBACK=new Error('rolled back on purpose');
+/** The most shared buffers one page of codes may read at this fixture's group shape, per reader: about twice the
+ * measured value (focused run 45930609944: 110, 110, 998 and 564 buffers; 4 to 20 ms). */
+const PAGE_BUFFER_LIMIT:Record<string,number>={'All companies HR':250,'one-company HR':250,'another company HR':2000,'subject':1200};
+
 describe('group-shaped reads (70 companies, 1,000 employments)',()=>{
  it('reads one page of codes in one statement under All companies and under one company',async()=>{
   // Direct fixture rows (fictional) keep this a read-shape test; ~1,000 hires through the service would dominate it.
@@ -166,7 +187,13 @@ describe('group-shaped reads (70 companies, 1,000 employments)',()=>{
    expect(codes!,label).toEqual(expected);
    const calls=probe.queries.filter(query=>query.sql.includes('attendance_workflow_approver_codes'));
    expect(calls,label).toHaveLength(1);
-   expect(performance.now()-started,label).toBeLessThan(10_000);
+   // Primary bound: the one statement's shared buffers (deterministic). Wall-clock is only a ceiling against a hang:
+   // a single shared-runner stall took one read to 64.6 s (gate 45927124522) while the same read takes 1-2 s alone.
+   const elapsedMs=performance.now()-started,buffers=await readBuffers(who.ctx,calls[0]);
+   console.log('APPROVER_CODES_PAGE '+JSON.stringify({label,buffers,elapsedMs:Math.round(elapsedMs)}));
+   expect(buffers,label).toBeGreaterThan(0);
+   expect(buffers,label).toBeLessThanOrEqual(PAGE_BUFFER_LIMIT[label]);
+   expect(elapsedMs,label).toBeLessThan(120_000);
   }
   // The HR list page reads the codes once for the whole page, whatever its row count.
   const probe=observeNativeRead();
