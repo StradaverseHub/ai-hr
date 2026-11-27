@@ -290,7 +290,7 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10960,version:'7',when:1795495007560,tag:'7560_payroll_recalc_pending',breakpoints:true},
  // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
  {idx:10970,version:'7',when:1795495007570,tag:'7570_tp3_import_job',breakpoints:true},
- {idx:10980,version:'7',when:1795495007580,tag:'7580_domain_event_actor_index',breakpoints:true},
+ {idx:10980,version:'7',when:1795495007580,tag:'7580_slow_page_indexes',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{

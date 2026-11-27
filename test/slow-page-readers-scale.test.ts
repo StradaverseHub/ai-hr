@@ -12,6 +12,7 @@ import * as schema from '../db/schema';
 import {listBatches} from '../core/payroll';
 import {payrollRunOutstandingCounts} from '../core/payroll-view';
 import {recordReadiness} from '../core/record-readiness';
+import {employmentPaymentMethodOnSql} from '../core/employment-payment-method';
 import {auditActors,auditAggregateTypes,auditCompanyScope} from '../core/read';
 import {MAPPED_AGGREGATE_TYPES,MODULE_KEYS,aggregateTypesForModule,type ModuleKey} from '../lib/audit-format';
 import {withTenant} from '../db/client';
@@ -48,6 +49,21 @@ beforeAll(async()=>{
   await owner.client`insert into payroll_run_outstanding(batch_id,tenant_id,employment_ids,refreshed_at)
    select ${run.id}::uuid,${b.tenantId}::uuid,(select jsonb_agg(e.id::text) from (select id from employment where company_id=${companyId}::uuid order by id desc limit 50) e),now()`;
  }
+ // Payment method history as a populated installation holds it: a current row for a third of the large companies'
+ // employments, a superseded earlier row for half of those, and a superseded-only history for a few.
+ await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source,superseded_at)
+  select ${b.tenantId}::uuid,e.id,'2025-01-01',(array['bank_transfer','cheque','cash'])[1+(row_number() over(order by e.id))::int%3],'fixture',null
+  from employment e where e.company_id=any(${big}::uuid[]) and (('x'||substr(e.id::text,1,8))::bit(32)::int)%3=0`;
+ await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source,superseded_at)
+  select h.tenant_id,h.employment_id,'2024-01-01','cash','fixture',now() from employment_payment_method_history h
+  where h.source='fixture' and (('x'||substr(h.employment_id::text,1,8))::bit(32)::int)%2=0`;
+ await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source,superseded_at)
+  select ${b.tenantId}::uuid,e.id,'2024-06-01','cheque','fixture',now() from employment e
+  where e.company_id=any(${big}::uuid[]) and (('x'||substr(e.id::text,1,8))::bit(32)::int)%97=1`;
+ // Statutory records for every large-company person.
+ await owner.client`insert into employee_statutory_my(tenant_id,person_id,ic_number,tax_number,epf_number,socso_number,bank_account_no)
+  select ${b.tenantId}::uuid,e.person_id,'90010'||lpad((row_number() over())::text,7,'0'),'SG'||(row_number() over()),'EPF'||(row_number() over()),'SOC'||(row_number() over()),'5140'||(row_number() over())
+  from employment e where e.company_id=any(${big}::uuid[]) and not exists(select 1 from employee_statutory_my s where s.person_id=e.person_id)`;
  await owner.client`analyze`;
 },900_000);
 afterAll(closeAll);
@@ -113,6 +129,16 @@ describe('slow-page readers at large-group scale',()=>{
    expect(outstanding.size,name).toBe(name==='group'?32:8);
    for(const [id,v] of outstanding)expect(v,`${name} ${id}`).toMatchObject({count:expected.get(id),held:0,known:true,marked:true});
    expect(await timed(`${name} readiness`,ctx,()=>recordReadiness(ctx))).toBeTruthy();
+   // The payment method projection (7580) against the two-probe form it replaces, for every visible employment.
+   const methods=await withTenant(ctx,tx=>tx.execute<{id:string;now:string|null;before:string|null}>(sql`
+    select e.id::text as id,${employmentPaymentMethodOnSql(sql`e.id`,'2026-11-27',sql`e.payment_method::text`)} as now,
+     case when exists(select 1 from employment_payment_method_history h where h.employment_id=e.id and h.tenant_id=app.current_tenant_id()) then
+      (select h.payment_method from employment_payment_method_history h where h.employment_id=e.id and h.tenant_id=app.current_tenant_id()
+       and h.superseded_at is null and h.effective_on<='2026-11-27'::date order by h.effective_on desc limit 1)
+     else e.payment_method::text end as before
+    from employment e`));
+   expect(methods.length,name).toBeGreaterThan(0);
+   expect(methods.filter(m=>m.now!==m.before),`${name} payment method projection`).toEqual([]);
    // The filter lists against the select-distinct queries they replace (7580), for every area.
    const types=await timed(`${name} audit types`,ctx,()=>auditAggregateTypes(ctx)) as {aggregateType:string}[];
    const legacyTypes=await withTenant(ctx,tx=>tx.selectDistinct({aggregateType:schema.domainEvent.aggregateType}).from(schema.domainEvent)
