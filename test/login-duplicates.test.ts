@@ -57,6 +57,7 @@ describe('board 0735d1b7: duplicate login groups',()=>{
   // A person without a login who shares the IC never counts.
   const [stranger]=await owner.db.insert(schema.person).values({tenantId:base.tenantId,fullName:'Fictional No Login',primaryEmail:'nologin@example.test'}).returning({id:schema.person.id});
   await owner.db.insert(schema.employeeStatutoryMy).values({tenantId:base.tenantId,personId:stranger.id,icNumber:'900101145555'});
+  // The database stores an IC as its 12 digits (app.normalize_people_nric, 0594), so '900101-14-5555' reads back plain.
   const read=await readLoginDuplicates(ctx,'identity',first());
   expect(members(read.groups)).toEqual([{basis:'ic',ids:sorted(a.appUserId,b.appUserId)},{basis:'passport',ids:sorted(d.appUserId,e.appUserId)}]);
   expect(read.total).toEqual({count:2,capped:false});
@@ -65,7 +66,7 @@ describe('board 0735d1b7: duplicate login groups',()=>{
   expect(ic.digest).not.toContain('900101145555');
   expect(ic.differentProfiles).toBe(true);
   expect(Object.fromEntries(ic.accounts.map(x=>[x.appUserId,x.userType]))).toEqual({[a.appUserId]:'internal',[b.appUserId]:'external'});
-  expect(ic.accounts.find(x=>x.appUserId===a.appUserId)).toMatchObject({icNumber:'900101-14-5555',status:'active',inactiveCause:null});
+  expect(ic.accounts.find(x=>x.appUserId===a.appUserId)).toMatchObject({icNumber:'900101145555',status:'active',inactiveCause:null});
   expect(await countLoginDuplicateGroups(ctx)).toEqual({identity:2,email:0});
   expect((await readLoginDuplicates(ctx,'email',first())).groups).toEqual([]);
  });

@@ -53,17 +53,18 @@ import {observeStatements} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 
 type Budgeted='identityPage'|'emailPage'|'mergePage'|'mergeLoginsAction'|'undoLoginMergeAction';
-/** Recorded budgets: the largest (transactions, statements) over both scopes. Budgets only go down; raising one needs an
- * ADR note (docs/adr/0181-database-read-cost-architecture.md). First recorded from the design: each page is the session
- * read, the tab bar's capped counts (one statement), one page read of the groups plus their accounts in one tenant
- * transaction and the batched last sign-ins; the confirmation adds the carry offer; each save is one tenant
- * transaction. Tighten to the CI measurement printed as ACTION_BUDGET. */
+/** Recorded budgets: the largest (transactions, statements) over both scopes, from focused run 46039979962 (27 Nov 2026).
+ * Each page is the tab bar's capped counts, one page read of the groups plus their accounts in one tenant transaction and
+ * the batched last sign-ins; the confirmation adds the carry offer. Each save is one tenant transaction; the merge here
+ * switches off one login of a two-login group (its statements grow with the merged logins, at most MERGE_MAX_ACCOUNTS
+ * per merge, inside the one command). Budgets only go down; raising one needs an ADR note
+ * (docs/adr/0181-database-read-cost-architecture.md). */
 const BUDGETS:Record<Budgeted,{transactions:number;statements:number}>={
- identityPage:{transactions:5,statements:24},
- emailPage:{transactions:5,statements:24},
- mergePage:{transactions:5,statements:24},
- mergeLoginsAction:{transactions:2,statements:40},
- undoLoginMergeAction:{transactions:2,statements:24},
+ identityPage:{transactions:3,statements:7},
+ emailPage:{transactions:3,statements:7},
+ mergePage:{transactions:3,statements:8},
+ mergeLoginsAction:{transactions:1,statements:14},
+ undoLoginMergeAction:{transactions:1,statements:9},
 };
 type Scope='all'|'one';
 let b:Base,fixture:ScaleFixture;
