@@ -46,12 +46,12 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
   it('preserves independent security capabilities and the existing outer admin-group boundary', () => {
     const security = (facts:Partial<ShellNavigationFacts>) => hrefs(facts).filter(href => href.startsWith('/admin/users') || href.startsWith('/admin/security-center'));
     const landing = (facts:Partial<ShellNavigationFacts>) => resolve(facts).securityLanding;
-    // Board 8fa0a31d: the overview is no menu row; rows follow the Security Center menu order. The overview is the
-    // section's landing exactly when the former row's predicate admitted it.
+    // Board 8fa0a31d: the overview is no menu row; rows follow the Security Center menu order (revision 2: Users before
+    // Function Access). The overview is the module's landing exactly when the former row's predicate admitted it.
     expect(security({isAdmin:true})).toEqual([]);expect(landing({isAdmin:true})).toBeNull();
     expect(security({canConfigureAccess:true})).toEqual(['/admin/users/access']);
     expect(landing({canConfigureAccess:true})).toBe('/admin/security-center');
-    expect(security({isAdmin:true,canAdministerSecurity:true})).toEqual(['/admin/users/function-access','/admin/users']);
+    expect(security({isAdmin:true,canAdministerSecurity:true})).toEqual(['/admin/users','/admin/users/function-access']);
     expect(landing({isAdmin:true,canAdministerSecurity:true})).toBe('/admin/security-center');
     expect(security({isAdmin:true,canProvisionUsers:true})).toEqual(['/admin/users/create','/admin/users/invite']);
     expect(landing({isAdmin:true,canProvisionUsers:true})).toBeNull();
@@ -65,7 +65,7 @@ describe('shared shell policy preserves the pre-extraction visibility contract',
       '/admin/users/access','/admin/security-center/password-policy','/admin/users/create','/admin/users/invite',
     ]);
     expect(security({isAdmin:true,canAdministerSecurity:true,canConfigureAccess:true,canProvisionUsers:true,canConfigurePasswordPolicy:true})).toEqual([
-      '/admin/users/access','/admin/security-center/password-policy','/admin/users/function-access','/admin/users','/admin/users/create','/admin/users/invite',
+      '/admin/users/access','/admin/security-center/password-policy','/admin/users','/admin/users/function-access','/admin/users/create','/admin/users/invite',
     ]);
   });
 

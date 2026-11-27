@@ -37,6 +37,7 @@
  * carries references + dates only — never the cleartext CP38 amount, which lives on the aggregate row and,
  * for corrections, on the row-secured revision.
  */
+import { randomUUID } from 'node:crypto';
 import { and, desc, eq, gt, inArray, isNull, lte, or, sql } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 import { withPayrollHistoryTenant as withTenant } from './payroll-history-lock';
@@ -563,27 +564,20 @@ export type Cp38ListRow = Cp38Row & {
   status: Cp38Status;
 };
 
+/** The filters the CP38 Deduction page's list (and its export) select by. */
+export type Cp38ListFilter = {
+  companyIds: readonly string[];
+  employmentId?: string | null;
+  status?: Cp38Status | null;
+  today?: string;
+};
+
 /**
- * 038c304b — every current CP38 record of the given companies, for the Payroll > Transaction Entry > CP38 Deduction
- * page. One set-based read per concern (rows, then a bounded count), whatever the number of companies:
- *  - population: current (not deleted) records of non-voided employments whose company is in `companyIds` (one
- *    uuid[] parameter) AND administered for payroll by the session (the company semi-join evaluates
- *    app.can_admin_payroll_for once per company, never per row), under the session's own row security; leavers
- *    included (038c304b: history stays visible), optionally one employment and one status against this month;
- *  - order and keyset: (company name, employee code, Effective from, id), continuing after or before an anchor
- *    record read with the same key; an anchor no longer in the list serves the first page;
- *  - count: exact up to the list cap, then "1,000+" (cappedTotal), exact on request.
+ * The list's population as one SQL fragment (`from … where …`), shared by `listCp38Across` and `readCp38Export` so the
+ * export can never select a different set of records from the list it was asked from. Aliases: r (employee_cp38),
+ * e (employment), pe (person), c (company).
  */
-export async function listCp38Across(
-  ctx: SessionContext,
-  p: {
-    companyIds: readonly string[];
-    employmentId?: string | null;
-    status?: Cp38Status | null;
-    today?: string;
-    page: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>;
-  },
-): Promise<{ rows: Cp38ListRow[] } & KeysetRead> {
+function cp38ListPopulation(p: Cp38ListFilter) {
   const thisMonth = monthStart(p.today ?? todayInKualaLumpur());
   const companies = uuidArrayParam(p.companyIds);
   const employmentId = p.employmentId && UUID.test(p.employmentId) ? p.employmentId : null;
@@ -604,11 +598,43 @@ export async function listCp38Across(
       and e.company_id in (select pc.id from company pc where pc.id = any(${companies}) and app.can_admin_payroll_for(pc.id))
       ${employmentId ? sql`and r.employment_id = ${employmentId}::uuid` : sql``}
       ${statusSql}`;
-  const key = sql`(c.legal_name, coalesce(e.employee_code, ''), r.valid_from, r.id)`;
+  return { thisMonth, population };
+}
+/** The list's order and keyset key: company name, employee code, Start Date, id. */
+const CP38_LIST_KEY = sql`(c.legal_name, coalesce(e.employee_code, ''), r.valid_from, r.id)`;
+const CP38_LIST_SELECT = sql`select r.id, r.employment_id as "employmentId", r.cp38_ref as "cp38Ref",
+  r.amount::text as amount, r.last_month_amount::text as "lastMonthAmount", r.valid_from::text as "validFrom",
+  r.valid_to::text as "validTo", r.remarks, r.superseded_at as "supersededAt",
+  e.employee_code as "employeeCode", pe.full_name as "employeeName", c.id as "companyId", c.legal_name as company`;
+type Cp38ListFetched = StoredRow & { employeeCode: string | null; employeeName: string; companyId: string; company: string };
+function toListRow(r: Cp38ListFetched, thisMonth: string): Cp38ListRow {
+  const row = toRow(r);
+  return { ...row, employeeCode: r.employeeCode, employeeName: r.employeeName, companyId: r.companyId, company: r.company, status: cp38StatusOf(row, thisMonth) };
+}
+
+/**
+ * 038c304b — every current CP38 record of the given companies, for the Payroll > Transaction Entry > CP38 Deduction
+ * page. One set-based read per concern (rows, then a bounded count), whatever the number of companies:
+ *  - population: current (not deleted) records of non-voided employments whose company is in `companyIds` (one
+ *    uuid[] parameter) AND administered for payroll by the session (the company semi-join evaluates
+ *    app.can_admin_payroll_for once per company, never per row), under the session's own row security; leavers
+ *    included (038c304b: history stays visible), optionally one employment and one status against this month;
+ *  - order and keyset: (company name, employee code, Effective from, id), continuing after or before an anchor
+ *    record read with the same key; an anchor no longer in the list serves the first page;
+ *  - count: exact up to the list cap, then "1,000+" (cappedTotal), exact on request.
+ */
+export async function listCp38Across(
+  ctx: SessionContext,
+  p: Cp38ListFilter & {
+    page: Pick<KeysetPageQuery, 'limit' | 'after' | 'before' | 'last' | 'exactCount' | 'size'>;
+  },
+): Promise<{ rows: Cp38ListRow[] } & KeysetRead> {
+  const { thisMonth, population } = cp38ListPopulation(p);
+  const key = CP38_LIST_KEY;
   const anchor = (id: string) => sql`(select ac.legal_name, coalesce(ae.employee_code, ''), ar.valid_from, ar.id
     from employee_cp38 ar join employment ae on ae.id = ar.employment_id join company ac on ac.id = ae.company_id
     where ar.id = ${id}::uuid and ar.superseded_at is null)`;
-  type Fetched = StoredRow & { employeeCode: string | null; employeeName: string; companyId: string; company: string };
+  type Fetched = Cp38ListFetched;
   return withTenant(
     ctx,
     async (tx) => {
@@ -619,11 +645,7 @@ export async function listCp38Across(
           ? sql`c.legal_name desc, coalesce(e.employee_code, '') desc, r.valid_from desc, r.id desc`
           : sql`c.legal_name, coalesce(e.employee_code, ''), r.valid_from, r.id`;
         return Array.from(
-          await tx.execute<Fetched>(sql`select r.id, r.employment_id as "employmentId", r.cp38_ref as "cp38Ref",
-              r.amount::text as amount, r.last_month_amount::text as "lastMonthAmount", r.valid_from::text as "validFrom",
-              r.valid_to::text as "validTo", r.remarks, r.superseded_at as "supersededAt",
-              e.employee_code as "employeeCode", pe.full_name as "employeeName", c.id as "companyId", c.legal_name as company
-            ${population} ${seek} order by ${order} limit ${keysetReadLimit(p.page)}`),
+          await tx.execute<Fetched>(sql`${CP38_LIST_SELECT} ${population} ${seek} order by ${order} limit ${keysetReadLimit(p.page)}`),
         );
       };
       const cursor = { after: p.page.after, before: p.page.before, last: p.page.last };
@@ -640,14 +662,85 @@ export async function listCp38Across(
           ? sql`select count(*)::int as n ${population}`
           : sql`select count(*)::int as n from (select 1 ${population} limit ${cap + 1}) bounded`,
       );
-      const rows = page.rows.map((r): Cp38ListRow => {
-        const row = toRow(r);
-        return { ...row, employeeCode: r.employeeCode, employeeName: r.employeeName, companyId: r.companyId, company: r.company, status: cp38StatusOf(row, thisMonth) };
-      });
+      const rows = page.rows.map((r) => toListRow(r, thisMonth));
       return { rows, total: cappedTotal(Number(counted?.n ?? 0), cap, p.page.exactCount), hasPrev: page.hasPrev, hasNext: page.hasNext, anchorFound };
     },
     { readOnlySnapshot: true },
   );
+}
+
+/** Rows one export batch reads (keyset): bounded memory whatever the number of records. */
+export const CP38_EXPORT_BATCH = 500;
+
+/**
+ * 038c304b rev 2 — the CP38 Deduction page's "Export to Excel": EVERY record the list's filters select (all pages, not
+ * the page shown), in the list's order, for `consume` to stream into the workbook. One read-only snapshot: an exact
+ * count of the same population first (the workbook needs it up front), then keyset batches of CP38_EXPORT_BATCH by
+ * the list's own key — never one statement per row or per company, never every row in memory. Status is the list's
+ * rule (cp38StatusOf); `validTo` is the inclusive last month, as on the screen. Who can export what is the list's
+ * population: only companies the session administers for payroll, and only those in `companyIds`.
+ */
+export function readCp38Export<T>(
+  ctx: SessionContext,
+  p: Cp38ListFilter,
+  consume: (total: number, rows: AsyncIterable<Cp38ListRow>) => Promise<T>,
+): Promise<T> {
+  const { thisMonth, population } = cp38ListPopulation(p);
+  return withTenant(
+    ctx,
+    async (tx) => {
+      const [counted] = await tx.execute<{ n: number }>(sql`select count(*)::int as n ${population}`);
+      const total = Number(counted?.n ?? 0);
+      if (!Number.isSafeInteger(total) || total < 0) throw new Error('The CP38 export count is unavailable.');
+      async function* rows(): AsyncGenerator<Cp38ListRow> {
+        let last: Cp38ListFetched | undefined;
+        for (let remaining = total; remaining > 0; ) {
+          const seek = last
+            ? sql`and ${CP38_LIST_KEY} > (${last.company}::text, ${last.employeeCode ?? ''}::text, ${last.validFrom}::date, ${last.id}::uuid)`
+            : sql``;
+          const batch = Array.from(
+            await tx.execute<Cp38ListFetched>(sql`${CP38_LIST_SELECT} ${population} ${seek}
+              order by c.legal_name, coalesce(e.employee_code, ''), r.valid_from, r.id limit ${CP38_EXPORT_BATCH}`),
+          );
+          if (batch.length === 0) break;
+          for (const r of batch) yield toListRow(r, thisMonth);
+          remaining -= batch.length;
+          last = batch.at(-1);
+        }
+      }
+      return consume(total, rows());
+    },
+    { readOnlySnapshot: true },
+  );
+}
+
+/** The domain event each CP38 export appends (an audit of data egress). */
+export const CP38_EXPORTED_EVENT = 'cp38.exported';
+
+/**
+ * Append one `cp38.exported` event for a finished export: who, which companies, which filters and how many rows —
+ * never a row's values (ADR-0030 Layer 0). The aggregate is virtual (no report row), so its id is fresh, as for
+ * `zakat.history.exported`. Its own short transaction after the read, so no write is held open during the read.
+ */
+export function recordCp38Export(
+  ctx: SessionContext,
+  p: { companyIds: readonly string[]; employmentId: string | null; status: Cp38Status | null; company: string | null; rowCount: number },
+): Promise<void> {
+  return withTenant(ctx, async (tx) => {
+    await appendEvent(tx, {
+      tenantId: ctx.tenantId,
+      aggregateType: 'payroll-report',
+      aggregateId: randomUUID(),
+      eventType: CP38_EXPORTED_EVENT,
+      actor: actorOf(ctx),
+      payload: {
+        report: 'cp38-deductions',
+        companyIds: [...p.companyIds],
+        filters: { company: p.company, status: p.status, employmentId: p.employmentId },
+        rowCount: p.rowCount,
+      },
+    });
+  });
 }
 
 export type Cp38Revision = {

@@ -84,7 +84,7 @@ export type ShellNavigationResolution = {
   canSeeChild: (row: ChildItem) => boolean;
   /**
    * Board 8fa0a31d — the Security Center overview when this viewer may open it and sees at least one Security Center
-   * page; otherwise null. It is the section's breadcrumb landing, not a menu row. Same predicate as the former hub row:
+   * page; otherwise null. It is the Security Center module's breadcrumb landing, not a menu row. Same predicate as the former hub row:
    * a visible security page implies the outer administration boundary passed.
    */
   securityLanding: string | null;

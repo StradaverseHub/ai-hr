@@ -6,6 +6,7 @@ import { authenticatorSetupUri } from '@/lib/authenticator-setup';
 import { useRouter } from 'next/navigation';
 import { rememberedMfaCopy } from '@/lib/remembered-mfa-copy';
 import { activationLoginHref } from '@/lib/internal-auth/login-navigation';
+import { rememberedWorkspace, rememberWorkspace } from '@/lib/internal-auth/remembered-workspace';
 import { Eye, EyeOff } from 'lucide-react';
 import { LoginShell } from './login-shell';
 import { useMicrosoftLogin } from '@/lib/entra/use-microsoft-login';
@@ -15,8 +16,10 @@ import { LoginWorkspaceStep } from './workspace-step';
 import { LoginEditorialMessages } from './editorial-messages';
 
 type Reply = { step: string; organization?: string; challenge?: string; secret?: string; qr?: string; account?: string; recoveryCodes?: string[]; rememberDays?: number; error?: string };
-function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
-  presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
+function InternalAuthFields({ organization = '', organizationFromLink = false, returnTo = '/', mode = 'login', invitation = '', presentation, entraError = false, idleSignedOut = false }: {
+  presentation?: LoginPresentation; entraError?:boolean; idleSignedOut?:boolean; organization?: string;
+  /** True when `organization` came from an explicit link; it then wins over this browser's remembered workspace. */
+  organizationFromLink?: boolean; returnTo?: string; mode?: 'login' | 'recovery' | 'invite' | 'accept'; invitation?: string;
 }) {
   const t = useTranslations('internalAuth'),locale=useLocale();
   const [microsoftOrganization,setMicrosoftOrganization]=useState(organization);
@@ -34,6 +37,12 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
   const [resetToken, setResetToken] = useState('');
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
   useEffect(() => { if (workspaceReady) heading.current?.focus({ preventScroll: true }); }, [workspaceReady, state.step]);
+  // The workspace this browser last signed in with replaces the installation default, never an explicit link.
+  useEffect(() => {
+    if (organizationFromLink || (mode !== 'login' && mode !== 'recovery')) return;
+    const remembered = rememberedWorkspace();
+    if (remembered) setMicrosoftOrganization(remembered);
+  }, [organizationFromLink, mode]);
   useEffect(() => {
     if (mode !== 'recovery') return;
     const token = new URLSearchParams(window.location.hash.slice(1)).get('token');
@@ -65,6 +74,7 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
       // next page loaded, so the terminal steps show a status with no form instead.
       const terminal = (reply.step === 'complete' || reply.step === 'activated') && !reply.recoveryCodes?.length;
       setState(terminal ? { step: 'signing-in' } : reply);
+      if (reply.step === 'complete') rememberWorkspace(microsoftOrganization);
       if (reply.step === 'activated' && !reply.recoveryCodes?.length) router.replace(activationLoginHref(reply.organization));
       // The submit button opts out of the shared leave guard (guardNavigation={false}): this assign runs while
       // `busy` is still true, so the guard would show "Leave site?" on every successful sign-in. Nothing typed
@@ -136,7 +146,7 @@ function InternalAuthFields({ organization = '', returnTo = '/', mode = 'login',
         {state.step === 'invite' && <a href={`/login?returnTo=${encodeURIComponent(`/invite/${invitation}/activate`)}`} className="block text-center text-sm underline">{t('existingLogin')}</a>}
         {!['login','invite','accept'].includes(state.step) && <a href="/login" className="block text-center text-sm underline">{t('back')}</a>}
       </form>}
-      {state.step==='login'&&microsoftEnabled&&<form action="/login/entra/start" method="get" className="login-microsoft-form"><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><ActionButton aria-busy={busy} className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</ActionButton></form>}
+      {state.step==='login'&&microsoftEnabled&&<form action="/login/entra/start" method="get" className="login-microsoft-form" onSubmit={() => rememberWorkspace(microsoftOrganization)}><input type="hidden" name="organization" value={microsoftOrganization}/><input type="hidden" name="returnTo" value={returnTo}/><ActionButton aria-busy={busy} className="login-microsoft" disabled={busy||!microsoftOrganization.trim()}><svg aria-hidden viewBox="0 0 20 20" width={18} height={18}><path fill="#f25022" d="M1 1h8v8H1z"/><path fill="#7fba00" d="M11 1h8v8h-8z"/><path fill="#00a4ef" d="M1 11h8v8H1z"/><path fill="#ffb900" d="M11 11h8v8h-8z"/></svg>{t('microsoft')}</ActionButton></form>}
     </section>
   </LoginShell>;
 }

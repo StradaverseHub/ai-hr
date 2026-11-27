@@ -19,7 +19,11 @@
  *  - wall time: each route rendered in interleaved rounds in every mode, printed as `ROUTE_WALL {json}` (median and
  *    spread of `ms` per mode), to compare the pool sizes against the join off. The audit log (/admin/audit) and a
  *    processed payroll run of the work-holding company (/payroll/[batchId]) are measured the same way for a group
- *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3.
+ *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3 and
+ *    on the default join, and against their recorded budgets (WALL_BUDGETS).
+ *  - the CP38 Deduction Export to Excel route handler (app/payroll/transactions/cp38/export/route.ts, 038c304b rev 2),
+ *    called as the browser calls it, last in the file with CP38 records on ~400 employments: its recorded budget
+ *    (EXPORT_BUDGET), no more for 71 companies than for one, and every record of the scope in the file.
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {createElement,type ReactNode} from 'react';
@@ -64,6 +68,7 @@ import PersonnelPage from '../app/personnel/page';
 import AuditPage from '../app/admin/audit/page';
 import PayrollLayout from '../app/payroll/layout';
 import PayrollRunPage from '../app/payroll/[batchId]/page';
+import {GET as exportCp38} from '../app/payroll/transactions/cp38/export/route';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
@@ -90,8 +95,15 @@ const BUDGETS:Record<BudgetRoute,Partial<Record<'group'|'multi'|'single'|'manage
 };
 
 type BudgetRoute='frame'|'home'|'approvals'|'personnel';
-/** Measured for wall time and equivalence only (their budgets are not recorded yet: test/read-cost-ratchets). */
+/** Measured for a group administrator only, in the last describe (the run is opened for them). */
 type WallRoute='audit'|'payrollRun';
+/** Recorded budgets (transactions, statements) for the group administrator at "All companies", default join on: the
+ * audit log, and the processed 2026-11 run of the work-holding company (its payslips) that the last describe opens.
+ * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
+const WALL_BUDGETS:Record<WallRoute,{transactions:number;statements:number}>={
+ audit:{transactions:4,statements:31},
+ payrollRun:{transactions:18,statements:60},
+};
 type Route=BudgetRoute|WallRoute;
 /** The processed payroll run /payroll/[batchId] shows (opened in the wall-time describe below). */
 let payrollRunId='';
@@ -330,21 +342,30 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   await owner.db.execute(sql`insert into compensation (tenant_id,employment_id,basic_salary,valid_from)
    select e.tenant_id,e.id,3200,'2024-01-01' from employment e where e.company_id=${workCompanyId}::uuid and e.terminated_on is null
     and not exists (select 1 from compensation c where c.employment_id=e.id and c.valid_to is null)`);
-  try{
-   const run=await createBatch(admin,{companyId:workCompanyId,payPeriod:'2026-11'});
-   await generatePayslips(admin,{batchId:run.batchId});
-   payrollRunId=run.batchId;
-  }catch(error){
-   // Still a real run screen, of the latest run (a draft 2026-11 if it was opened, else a fixture month without
-   // payslips): the setup lines say which.
+  // The fixture writes no employer-scoped PCB selection, and processing refuses an employee whose selection is missing
+  // or awaits confirmation ("PCB selected category: confirmation_required", localization/my/tax-selection.ts). Each of
+  // these employments gets the confirmed ordinary resident selection HR would record, at its person's current tax
+  // applicability epoch, the same row an explicit Personnel selection writes.
+  await owner.db.execute(sql`insert into employment_tax_selection_my (tenant_id,employment_id,company_id,scheme,transition_state,tax_applicability_epoch,source,provenance,updated_by_user_id)
+   select e.tenant_id,e.id,e.company_id,'resident','resolved',coalesce(s.tax_applicability_epoch,0),'explicit',
+    ${JSON.stringify({reason:'route_read_budget_fixture',declarationIds:[]})}::jsonb,${b.adminUserId}::uuid
+   from employment e left join employee_statutory_my s on s.person_id=e.person_id and s.tenant_id=e.tenant_id
+   where e.company_id=${workCompanyId}::uuid and e.terminated_on is null
+   on conflict (tenant_id,employment_id,company_id) do nothing`);
+  // The page budgets below are a processed run's, so a run that does not process fails here instead of measuring a
+  // draft.
+  const run=await createBatch(admin,{companyId:workCompanyId,payPeriod:'2026-11'});
+  payrollRunId=run.batchId;
+  try{await generatePayslips(admin,{batchId:run.batchId});}
+  catch(error){
    console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRun:'not processed',error:String((error as Error)?.message??error).slice(0,300)}));
-   const [latest]=await owner.db.select({id:schema.payrollBatch.id}).from(schema.payrollBatch)
-    .where(sql`${schema.payrollBatch.companyId}=${workCompanyId}::uuid`).orderBy(sql`${schema.payrollBatch.payPeriod} desc`).limit(1);
-   payrollRunId=latest.id;
+   throw error;
   }
   const [row]=await owner.db.select({payslips:sql<number>`count(*)::int`}).from(schema.payslip).where(sql`${schema.payslip.batchId}=${payrollRunId}::uuid`);
-  const [run]=await owner.db.select({status:schema.payrollBatch.status,payPeriod:schema.payrollBatch.payPeriod}).from(schema.payrollBatch).where(sql`${schema.payrollBatch.id}=${payrollRunId}::uuid`);
-  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips,...run}));
+  const [processed]=await owner.db.select({status:schema.payrollBatch.status,payPeriod:schema.payrollBatch.payPeriod}).from(schema.payrollBatch).where(sql`${schema.payrollBatch.id}=${payrollRunId}::uuid`);
+  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips,...processed}));
+  expect(processed.status,'the measured run is processed').toBe('processed');
+  expect(row.payslips,'the measured run has payslips').toBeGreaterThan(0);
  },240_000);
  it.each(['audit','payrollRun'] as const)('%s renders identically at a pool of 3 and with the join off, and its wall time is measured',async route=>{
   await render(route,'group','all','pool3');
@@ -360,7 +381,68 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   // only its own transaction, never a pool carrier for itself alone: never more transactions than the join off.
   expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions);
   console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,pool3Unopened:pooled.unopened,refused:pooled.refused}));
+  // The recorded budget, on the default join (as BUDGETS above), with the same output as the join off.
+  const shared=await render(route,'group','all','default');
+  expect(firstDifference(off.output,shared.output),'without vs default').toBeNull();
+  expect(shared.transactions,`${route} group transactions`).toBeLessThanOrEqual(WALL_BUDGETS[route].transactions);
+  expect(shared.statements,`${route} group statements`).toBeLessThanOrEqual(WALL_BUDGETS[route].statements);
   await statementTime(off);await statementTime(pooled);
   await wallTime(route,'group',['without','default','pool3']);
  },300_000);
+});
+
+/** Recorded budget (transactions, statements) for the CP38 export route handler, the same for every persona and scope
+ * without filters. Measured on the CI runner (alpha-focused-checks run 45926516649, test/cp38-read-budget-038c304b.test.ts
+ * on the same fixture shape): the company scope read, one read-only snapshot for the exact count and the keyset batches,
+ * and one short transaction for the cp38.exported event. Budgets only go down; raising one needs an ADR note. */
+const EXPORT_BUDGET={transactions:3,statements:9};
+/** The CP38 Deduction page's Export to Excel (038c304b rev 2). Last in the file: the CP38 records it adds are not part of
+ * the fixture the routes above measure. */
+describe('route read budget: the CP38 export route handler',()=>{
+ beforeAll(async()=>{
+  // CP38 records on ~400 employments across the staffed companies (open, ended and upcoming; one record each).
+  const subjects=fixture.employmentIds.filter((_,i)=>i%5<2);
+  const rows=subjects.map((employmentId,i)=>({tenantId:b.tenantId,employmentId,cp38Ref:`CP38/RB/${String(i).padStart(4,'0')}`,amount:String(100+i%50),
+   validFrom:i%7===0?'2027-01-01':'2026-01-01',validTo:i%3===0&&i%7!==0?'2026-07-01':null}));
+  for(let i=0;i<rows.length;i+=500)await owner.db.insert(schema.employeeCp38).values(rows.slice(i,i+500));
+  await owner.db.execute(sql`analyze public.employee_cp38`);
+ },120_000);
+ const exportAs=async(persona:keyof typeof personas,scope:'all'|'one')=>{
+  state.session=personas[persona];state.pathname='/payroll/transactions/cp38/export';
+  state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
+  const observed=await observeStatements(()=>exportCp38(new Request('http://localhost/payroll/transactions/cp38/export')));
+  const res=observed.result;
+  expect(res.status,`${persona} ${scope} export`).toBe(200);
+  const XLSX=await import('xlsx');
+  const book=XLSX.read(Buffer.from(await res.arrayBuffer()),{type:'buffer'});
+  const rows=XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[book.SheetNames[0]],{header:1,defval:null}).slice(1);
+  const row={route:'cp38Export',persona,scope,mode:'route',transactions:observed.transactions,statements:observed.statements.length,ms:Math.round(observed.ms),rows:rows.length};
+  console.log('ROUTE_BUDGET '+JSON.stringify(row));
+  return row;
+ };
+ /** The export's population, independently: current records of non-voided employments of these companies. */
+ const expectedCount=async(companyIds:readonly string[])=>{
+  const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from employee_cp38 r join employment e on e.id=r.employment_id
+   where r.tenant_id=${b.tenantId}::uuid and r.superseded_at is null and e.voided_at is null and e.company_id=any(${'{'+companyIds.join(',')+'}'}::uuid[])`);
+  return row.n;
+ };
+ it('stays within its budget, costs no more for 71 companies than for one, and exports every record of the scope',async()=>{
+  await exportAs('group','all');
+  const all=await exportAs('group','all'),one=await exportAs('group','one');
+  const multi=await exportAs('multi','all'),single=await exportAs('base','all');
+  for(const measured of [all,one,multi,single]){
+   expect(measured.transactions,`${measured.persona} ${measured.scope} transactions`).toBeLessThanOrEqual(EXPORT_BUDGET.transactions);
+   expect(measured.statements,`${measured.persona} ${measured.scope} statements`).toBeLessThanOrEqual(EXPORT_BUDGET.statements);
+  }
+  expect(all.transactions).toBeLessThanOrEqual(one.transactions);
+  expect(all.statements).toBeLessThanOrEqual(one.statements);
+  expect(multi.transactions).toBeLessThanOrEqual(single.transactions);
+  expect(multi.statements).toBeLessThanOrEqual(single.statements);
+  const everyone=await expectedCount(fixture.companyIds),theirs=await expectedCount([workCompanyId]);
+  expect(everyone).toBeGreaterThan(300);
+  expect(all.rows).toBe(everyone);
+  expect(multi.rows).toBe(everyone);
+  expect(one.rows).toBe(theirs);
+  expect(single.rows).toBe(theirs);
+ },180_000);
 });

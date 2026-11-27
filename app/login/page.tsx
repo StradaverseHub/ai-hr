@@ -41,7 +41,8 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     const { currentInternalIdentity } = await import('@/lib/internal-auth/web-session');
     const query = await searchParams;
     if (await currentInternalIdentity()) redirect(safeReturnTo(query.returnTo));
-    return <InternalAuthForm organization={loginOrganization(query.organization, internalConfig().organization)} returnTo={safeReturnTo(query.returnTo)} presentation={await publicLoginPresentation()} entraError={query.entraError==='1'} idleSignedOut={query.reason==='idle'}/>;
+    const linked = loginOrganization(query.organization);
+    return <InternalAuthForm organization={linked || internalConfig().organization} organizationFromLink={!!linked} returnTo={safeReturnTo(query.returnTo)} presentation={await publicLoginPresentation()} entraError={query.entraError==='1'} idleSignedOut={query.reason==='idle'}/>;
   }
   const t = await getTranslations('auth');
   const tCommon = await getTranslations('common');

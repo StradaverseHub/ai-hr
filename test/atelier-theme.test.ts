@@ -115,6 +115,9 @@ describe('one navigation source', () => {
     expect(rail).toContain('{groups.map((group, gi) =>');
     expect(rail).toContain('onClick={() => toggleSection(group.labelKey!)}');
     expect(rail).toContain('item.children.filter(canSeeChild)');
+    // Board 8fa0a31d (revision 2): System Configuration and Security Center render through the same module path.
+    expect(rail).toContain('if (isCollapsible(item)) return atelierModule(item);');
+    expect(rail).not.toMatch(/sectionNode|SectionIcon/);
     expect(rail).not.toMatch(/\bGROUPS\b/);
   });
   it('the command bar lists only published destinations; it owns no nav list of its own', () => {

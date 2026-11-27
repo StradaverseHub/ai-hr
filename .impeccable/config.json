@@ -38,6 +38,15 @@
         ],
         "createdAt": "2026-11-24T09:20:04.659Z",
         "reason": "Claude: board plan sketch mirroring the app's compact Employment-tab type; the rendered PNG is already attached to board item 7da649d3"
+      },
+      {
+        "rule": "broken-image",
+        "value": "*",
+        "files": [
+          "test/remembered-workspace.dom.test.tsx"
+        ],
+        "createdAt": "2026-11-26T04:08:09.904Z",
+        "reason": "Claude: vitest mock of next/image in a DOM test, same pattern as test/editorial-login.dom.test.tsx; not shipped UI"
       }
     ]
   }

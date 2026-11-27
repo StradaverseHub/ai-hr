@@ -18,11 +18,10 @@ export type NavIndexEntry = {
   label: string;
   /** The rail section the row sits in (translated), shown beside the result and as the breadcrumb root. */
   section: string | null;
-  /** Board 8fa0a31d — the section's admitted landing page (Security Center's overview), linking the breadcrumb root. */
-  sectionHref?: string | null;
   /** The module a child row belongs to (translated), when it is a module child. */
   parent: string | null;
-  /** Explicit module landing page, or null for a grouping heading without a page. */
+  /** Explicit module landing page (`defaultHref`, or Security Center's breadcrumb-only `landingHref`), or null for a
+   *  grouping heading without a page. */
   parentHref: string | null;
 };
 
