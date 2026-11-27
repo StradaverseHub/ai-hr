@@ -148,24 +148,28 @@ describe('app.attendance_workflow_route_approver_codes (before Submit)',()=>{
 });
 
 /** Shared buffers of one captured read, replayed with EXPLAIN (ANALYZE, BUFFERS) under the reader's own identity
- * statement, rolled back. Buffers are deterministic for a fixture; a runner stall cannot change them. */
+ * statement, rolled back. The first replay warms the connection's catalog caches (a fresh pooled connection counted
+ * up to 3x the buffers in catalog reads); the second is the measure. A runner stall cannot change it. */
 async function readBuffers(ctx:SessionContext,query:NativeReadQuery):Promise<number>{
  const observed=await observeStatements(()=>withTenant(ctx,tx=>tx.execute(sql`select 1`)));
  const identity=observed.statements.find(s=>isIdentityStatement(s.sql))!;
  let buffers=-1;
  await client.begin(async tx=>{
   await tx.unsafe(identity.sql,identity.params as never[]);
-  const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${query.sql}`,query.params as never[]);
-  const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number}}];
-  buffers=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
+  for(let replay=0;replay<2;replay++){
+   const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${query.sql}`,query.params as never[]);
+   const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number}}];
+   buffers=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
+  }
   throw ROLLBACK;
  }).catch(error=>{if(error!==ROLLBACK)throw error;});
  return buffers;
 }
 const ROLLBACK=new Error('rolled back on purpose');
 /** The most shared buffers one page of codes may read at this fixture's group shape, per reader: about twice the
- * measured value (focused run 45930609944: 110, 110, 998 and 564 buffers; 4 to 20 ms). */
-const PAGE_BUFFER_LIMIT:Record<string,number>={'All companies HR':250,'one-company HR':250,'another company HR':2000,'subject':1200};
+ * larger measured value, alone and beside route-read-budget, company-referrers and cp38-read-budget in one DB unit
+ * (focused runs 45937950011 and 45937953358: 61/70, 61/70, 934/946 and 500/512 buffers). */
+const PAGE_BUFFER_LIMIT:Record<string,number>={'All companies HR':150,'one-company HR':150,'another company HR':2000,'subject':1100};
 
 describe('group-shaped reads (70 companies, 1,000 employments)',()=>{
  it('reads one page of codes in one statement under All companies and under one company',async()=>{
@@ -176,6 +180,12 @@ describe('group-shaped reads (70 companies, 1,000 employments)',()=>{
   const s=await scenario();
   const groupHr=await actor('Fictional group HR','FX-0040',{role:'hr_admin'});
   const otherCompanyHr=await actor('Fictional group company 03 HR','FX-0041',{role:'hr_admin',roleCompanyId:companies[3].id,companyId:companies[3].id,departmentId:companies[3].departmentId});
+  // Fresh statistics before any measure. resetDb truncates every table but keeps the column statistics of earlier
+  // files' data (route-read-budget's 71-company fixture), and truncated tables report reltuples -1. Co-loaded in one DB
+  // unit the another-company read then planned for absent rows: 17,740 buffers against 965 after ANALYZE; a second
+  // tenant of 5,000 employments gave 1,043 stale and 1,766 analysed (diagnostic run 45936974583). Production keeps its
+  // statistics current (autovacuum analyze).
+  await owner.client`analyze`;
   // A full page of ids: the two real requests and padding that names no request.
   const page=[s.own,s.theirs,...Array.from({length:23},()=>randomUUID())];
   const both={[s.own]:{[s.first.employmentId]:'FX-0004',[s.second.employmentId]:'FX-0002'},[s.theirs]:{[s.first.employmentId]:'FX-0004',[s.second.employmentId]:'FX-0002'}};
