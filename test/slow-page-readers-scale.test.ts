@@ -98,10 +98,18 @@ describe('slow-page readers at large-group scale',()=>{
   for(const [name,ctx] of [['group',fixture.personas.group],['single',fixture.personas.single]] as const){
    expect(await timed(`${name} listBatches`,ctx,()=>listBatches(ctx))).toBeTruthy();
    const outstanding=await timed(`${name} outstanding`,ctx,()=>payrollRunOutstandingCounts(ctx,runIds)) as Map<string,{count:number;held:number;known:boolean;marked:boolean}>;
-   // Independent answer: every marked employee has a payslip on the run (owed), every stored one has a payslip (not
-   // owed), nobody is held: 200 owed on every run the caller can see (all 32 for the group, 8 for the single company).
+   // Independent answer, as the owner: owed = marked employees with a payslip on the run, plus stored employees
+   // without one (nobody is held in this fixture). Every run the caller can see (all 32 for the group, 8 for the
+   // single company).
+   const expected=new Map((await owner.client<{id:string;owed:number}[]>`
+    select b.id::text as id,(select count(*) from (
+      select m.eid from jsonb_array_elements_text(b.recalc_employment_ids) m(eid) where exists(select 1 from payslip p where p.batch_id=b.id and p.employment_id::text=m.eid)
+      union
+      select s.eid from payroll_run_outstanding o cross join jsonb_array_elements_text(o.employment_ids) s(eid)
+       where o.batch_id=b.id and not exists(select 1 from payslip p where p.batch_id=b.id and p.employment_id::text=s.eid)) x)::int as owed
+    from payroll_batch b where b.id=any(${runIds}::uuid[])`).map(r=>[r.id,r.owed]));
    expect(outstanding.size,name).toBe(name==='group'?32:8);
-   for(const v of outstanding.values())expect(v,name).toMatchObject({count:200,held:0,known:true,marked:true});
+   for(const [id,v] of outstanding)expect(v,`${name} ${id}`).toMatchObject({count:expected.get(id),held:0,known:true,marked:true});
    expect(await timed(`${name} readiness`,ctx,()=>recordReadiness(ctx))).toBeTruthy();
    expect(await timed(`${name} audit types`,ctx,()=>auditAggregateTypes(ctx))).toBeTruthy();
    expect(await timed(`${name} audit actors`,ctx,()=>auditActors(ctx))).toBeTruthy();
