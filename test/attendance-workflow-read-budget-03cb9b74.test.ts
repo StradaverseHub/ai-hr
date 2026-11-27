@@ -70,7 +70,8 @@ const BUDGETS:Record<Key,{transactions:number;statements:number}>={
  // Measured on the CI runner (alpha-focused-checks run 46030110304), the same for every persona and scope:
  // listing 4 transactions and 8 statements (15-43 ms); Edit 3 and 13-15 (24-76 ms); the searches 2 and 5, and 2 and 4.
  listPage:{transactions:4,statements:8},
- newPage:{transactions:4,statements:22},
+ // Create 3 and 13, Copy 4 and 17 (run 46031591426).
+ newPage:{transactions:4,statements:17},
  editPage:{transactions:3,statements:15},
  viewPage:{transactions:4,statements:26},
  searchAttendanceApproversAction:{transactions:2,statements:5},
@@ -136,7 +137,7 @@ async function databaseMs(label:string,statements:readonly Captured[]){
  let total=0;
  for(const e of explained){
   if(e.executionMs!==null)total+=e.executionMs+(e.planningMs??0);
-  if(e.executionMs!==null&&e.executionMs>5)console.log('WORKFLOW_EXPLAIN '+JSON.stringify({label,sql:e.sql.slice(0,160),executionMs:e.executionMs,planningMs:e.planningMs,hotspots:e.hotspots.slice(0,3)}));
+  if(e.executionMs!==null&&e.executionMs>5)console.log('WORKFLOW_EXPLAIN '+JSON.stringify({label,sql:e.sql.slice(0,160),executionMs:e.executionMs,planningMs:e.planningMs,hotspots:e.hotspots.slice(0,6)}));
  }
  const rounded=Math.round(total*100)/100;
  console.log('WORKFLOW_BUDGET '+JSON.stringify({label,databaseMs:rounded}));
@@ -201,7 +202,7 @@ describe('03cb9b74: Create, Copy, Edit and View Workflow at group scale',()=>{
    ()=>serverTreeSnapshot(createElement(EditAttendanceWorkflowPage,{params:Promise.resolve({lineageId})})));
   state.session=personaCtx('group');state.cookies={};await serverTreeSnapshot(createElement(EditAttendanceWorkflowPage,{params:Promise.resolve({lineageId:shared})}));
   const groupAll=await edit('group','all',shared),groupOne=await edit('group','one',single),multiAll=await edit('multi','all',shared),singleAll=await edit('single','all',single);
-  const form=(observed:{result:unknown})=>{const found=leaves(observed.result,'WorkflowForm');expect(found).toHaveLength(1);return found[0] as {options:{companies:{id:string}[];employees:{id:string}[];approverEmployees:{id:string}[];canManageAllCompanies:boolean}};initial:unknown};
+  const form=(observed:{result:unknown})=>{const found=leaves(observed.result,'WorkflowForm');expect(found).toHaveLength(1);return found[0] as {options:{companies:{id:string}[];employees:{id:string}[];approverEmployees:{id:string}[]};initial:unknown};
   for(const observed of [groupAll,groupOne,multiAll,singleAll])expect(observed.statements.map(s=>s.sql).filter(text=>SLOW_READS.test(text))).toEqual([]);
   const sharedForm=form(groupAll).options;
   expect(sorted(ids(sharedForm.approverEmployees))).toEqual(sorted(approvers));
@@ -217,7 +218,7 @@ describe('03cb9b74: Create, Copy, Edit and View Workflow at group scale',()=>{
   expect(form(create).options.employees).toEqual([]);expect(form(create).options.approverEmployees).toEqual([]);
   const copy=await measure('newPage','copy','group','all',()=>serverTreeSnapshot(createElement(NewAttendanceWorkflowPage,{searchParams:Promise.resolve({applicationType:'irregularity',copyFrom:shared})})));
   expect(sorted(ids(form(copy).options.approverEmployees))).toEqual(sorted(approvers));
-  await measure('newPage','create','single','all',()=>serverTreeSnapshot(createElement(NewAttendanceWorkflowPage,{searchParams:Promise.resolve({applicationType:'self_overtime'})})));
+  await measure('newPage','create','single','all',()=>serverTreeSnapshot(createElement(NewAttendanceWorkflowPage,{searchParams:Promise.resolve({applicationType:'self_overtime',companyId})})));
   for(const observed of [create,copy])expect(observed.statements.map(s=>s.sql).filter(text=>SLOW_READS.test(text))).toEqual([]);
 
   const view=await measure('viewPage','shared','group','all',()=>serverTreeSnapshot(createElement(ViewAttendanceWorkflowPage,{params:Promise.resolve({lineageId:shared}),searchParams:Promise.resolve({})})));
