@@ -579,11 +579,14 @@ export function ReprocessForm({
           row that is not ready yet), the same rule as `tickCell` below. */}
       {onTab === 'skipped' && (
         <div className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          {selectionControls(() => {setSelected(prev=>new Map([...prev,
-            ...visibleHeld.filter((r) => r.kind === 'recalculated' || r.blockers.length === 0),
-            ...visibleNotOwed.filter((c) => c.blockers.length === 0),
-            ...visibleSkipped,
-          ].map((r) => [r.employmentId, prev.get(r.employmentId) ?? r] as [string,Selected])]));})}
+          {selectionControls(() => {
+            const onPage: Selected[] = [
+              ...visibleHeld.filter((r) => r.kind === 'recalculated' || r.blockers.length === 0),
+              ...visibleNotOwed.filter((c) => c.blockers.length === 0),
+              ...visibleSkipped,
+            ];
+            setSelected((prev) => new Map([...prev, ...onPage.map((r) => [r.employmentId, prev.get(r.employmentId) ?? r] as [string, Selected])]));
+          })}
         </div>
       )}
 
