@@ -220,8 +220,9 @@ describe('038c304b rev 2 — Cancel, Close and "Discard your changes?"', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     await user.keyboard('{Escape}');
     ask = await screen.findByRole('alertdialog', { name: c.discardTitle });
-    // The question is modal: the pop-up behind it stays open (hidden from assistive technology while asked).
-    expect(screen.getByRole('dialog', { name: c.editTitle, hidden: true })).toBeTruthy();
+    // The question is modal: the pop-up behind it stays open with the typing (aria-hidden while asked, so it is found
+    // by its form rather than by its accessible name, which a hidden title does not give).
+    expect((document.querySelector('form[data-cp38-form]')?.querySelector('input[name="amount"]') as HTMLInputElement | null)?.value).toBe('345');
 
     await user.click(within(ask).getByRole('button', { name: c.discard }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: c.editTitle })).toBeNull());
