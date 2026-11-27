@@ -361,7 +361,10 @@ describe('6aee208b — Reprocess Required tabs and the all-pages selection', () 
     // A one-time Select all token and the held focus are never carried to another tab.
     expect(REPROCESS_PAGE).toContain("!['page', 'tab', 'error', 'selectAll', 'held'].includes(k)");
     expect(REPROCESS_FORM).toMatch(/<Link key=\{key\} href=\{paging\.tabs!\.hrefs\[key\]!\} replace scroll=\{false\}/);
-    // The form keeps its one mount per job, which is what keeps the ticks across a tab change.
-    expect(REPROCESS_PAGE).toContain("key={thisJob?.id ?? 'selection'}");
+    // The form keeps its one mount per job STATE, which is what keeps the ticks across a tab change: the key depends on
+    // the job alone (8a3de8ae: its id while it runs, `<id>:done` once it ends), never on the tab, page or search.
+    expect(REPROCESS_PAGE).toContain('key={formKey}');
+    expect(REPROCESS_PAGE).toContain("const formKey = thisJob ? (jobFinished ? `${thisJob.id}:done` : thisJob.id) : 'selection';");
+    expect(REPROCESS_PAGE).not.toMatch(/const formKey[^\n]*\b(?:tab|current|sp\.page|sp\.q)\b/);
   });
 });

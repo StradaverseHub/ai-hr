@@ -300,6 +300,18 @@ export default async function ReprocessPage({
   const outcomes = thisJob ? decodeReprocessEmployeeOutcomes(thisJob.result, thisJob.employmentIds) : null;
   const jobRowIds = new Set(outcomes?.flatMap(outcome => outcome.historyId ? [outcome.historyId] : []) ?? []);
   const earlier = disclosure.filter(row => !jobRowIds.has(row.id));
+  // 8a3de8ae — THE SELECTION STARTS FRESH WHEN THE JOB ENDS. The form seeds its ticks once per mount, and the redirect
+  // that carries the job id mounts it while the job is still queued or running, so the people being reprocessed were
+  // still stale and were ticked again; the refresh when the job settled kept that mount and those ticks. The key now
+  // changes exactly once more, when the job ends (completed, or stopped = failed): a fresh mount seeded from what the
+  // run says NOW — successes are no longer stale, failures still are, tax-held people are on Skipped and never
+  // pre-ticked. Queued → running does not remount; tab, page and search changes keep the mount as before. No client
+  // effect: the existing refresh when the job settles is what delivers the new key.
+  const jobFinished = thisJob !== null && (thisJob.status === 'completed' || thisJob.status === 'failed');
+  const formKey = thisJob ? (jobFinished ? `${thisJob.id}:done` : thisJob.id) : 'selection';
+  // 8a3de8ae — the employees THIS job reprocessed successfully (its own recorded outcomes, already fenced to this run),
+  // so Processed / No Change can say Reprocessed for an employee the job just ADDED (their payslip is at version 1).
+  const reprocessedNow = outcomes?.filter((o) => o.status === 'reprocessed').map((o) => o.employmentId) ?? [];
 
   const money = (n: unknown) => formatMoney(n, currency);
   /** What moved, in the words of the diff: gross first when it moved, then each statutory line. */
@@ -371,8 +383,9 @@ export default async function ReprocessPage({
               no filter query, and every Payroll Result link the result table then draws drops the
               operator on an unfiltered list. The Remove form carries it the same way. */}
           <ReprocessForm
-            key={thisJob?.id ?? 'selection'}
+            key={formKey}
             batchId={batchId}
+            reprocessedNow={reprocessedNow}
             employees={candidates}
             required={requiredRows}
             focusIds={focus}

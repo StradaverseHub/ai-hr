@@ -91,6 +91,10 @@ describe('r382 recorded processing outcome presentation',()=>{
     const src=fs.readFileSync(path.resolve(__dirname,'../app/payroll/[batchId]/reprocess/page.tsx'),'utf8');
     expect(src).not.toContain('thisJob.error');
     expect(src).not.toMatch(/r\.at\s*>=\s*thisJob\.createdAt/);
-    expect(src).toContain("key={thisJob?.id ?? 'selection'}");
+    // 8a3de8ae — one mount while the job runs, one fresh mount when it ends (completed or stopped), so the selection is
+    // re-seeded from the run's stored facts and the employees it reprocessed are no longer ticked.
+    expect(src).toContain("const jobFinished = thisJob !== null && (thisJob.status === 'completed' || thisJob.status === 'failed');");
+    expect(src).toContain("const formKey = thisJob ? (jobFinished ? `${thisJob.id}:done` : thisJob.id) : 'selection';");
+    expect(src).toContain('key={formKey}');
   });
 });

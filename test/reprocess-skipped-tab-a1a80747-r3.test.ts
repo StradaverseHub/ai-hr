@@ -16,6 +16,10 @@
  *      again (an older reprocess skip no longer counts) and its own `taxHeld` list holds people.
  *   C. SELECT ALL. Every tickable row of the tab on every page, with the search applied, New rows that are not ready left
  *      out; Processed / No Change is every unmarked payslip; another tenant gets nothing.
+ *   D. 8a3de8ae — AFTER A PARTIAL REPROCESS, THE STORED FACTS THE SCREEN RE-SEEDS FROM. A real job reprocesses two
+ *      marked employees and fails a third (their salary record was withdrawn); a fourth is skipped by the tax check.
+ *      The arrival ticks then name only the failed one, the tax-held one is on Skipped, the two reprocessed ones are on
+ *      Processed / No Change at version 2, and the job's outcomes name exactly those two as reprocessed.
  */
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -30,9 +34,13 @@ import {
   BatchHasPendingEmployeesError,
   closeBatch,
   createBatch,
+  decodeReprocessEmployeeOutcomes,
   generatePayslips,
+  getReprocessJob,
+  payrollEmployeeSelectionPage,
   reprocessRequiredPage,
   reprocessSelectAll,
+  reprocessSelectedEmployees,
   reprocessStaleSelection,
   runOutstandingTx,
 } from '../core/payroll';
@@ -244,5 +252,58 @@ describe('a1a80747 r3 · C — Select all', () => {
     const stranger = { ...(await entitledCtx(other, ['hr_admin'])), grants: [{ role: 'hr_admin' as const, companyId: null }] };
     expect((await reprocessSelectAll(stranger, { batchId, tab: 'required' })).rows).toEqual([]);
     expect((await reprocessSelectAll(ctx, { batchId: randomUUID(), tab: 'required' })).rows).toEqual([]);
+  });
+});
+
+describe('8a3de8ae · D — after a partial reprocess, the selection is re-seeded from the run', () => {
+  it('two reprocessed, one failed, one tax-held: only the failed one is ticked on arrival; Select all never adds the others', async () => {
+    const ada = await hire('Fictional Ada Done', 'MJ001', 5000);
+    const ben = await hire('Fictional Ben Done', 'MJ002', 4800);
+    const cid = await hire('Fictional Cid Failed', 'MJ003', 4600);
+    const dan = await hire('Fictional Dan Taxheld', 'MJ004', 4400);
+    const eve = await hire('Fictional Eve Paid', 'MJ005', 4200);
+    const batchId = await processedRun();
+    await mark(batchId, [ada, ben, cid, dan]);
+    await refresh(batchId);
+    // Before: all four marked employees are ticked on arrival.
+    expect((await reprocessStaleSelection(ctx, batchId)).rows.map((r) => r.employmentId).sort()).toEqual([ada, ben, cid, dan].sort());
+
+    // Cid's salary record is withdrawn after processing, so his recalculation fails on its own (the job carries on).
+    await owner.client`update compensation set superseded_at=now() where tenant_id=${b.tenantId}::uuid and employment_id=${cid}::uuid and superseded_at is null`;
+    const run = await reprocessSelectedEmployees(ctx, { batchId, employmentIds: [ada, ben, cid], idempotencyKey: randomUUID() });
+    expect(run.status).toBe('completed');
+    // Dan is held by the tax check, recorded as the job's check records it (see the file header).
+    await outcome(batchId, dan, 'skipped', 'TAX_RECALC_REQUIRED');
+
+    const job = await getReprocessJob(ctx, run.jobId);
+    expect(job?.status).toBe('completed');
+    const outcomes = decodeReprocessEmployeeOutcomes(job!.result, job!.employmentIds)!;
+    expect(outcomes).toHaveLength(3);
+    const statusOf = new Map(outcomes.map((o) => [o.employmentId, o.status]));
+    expect(statusOf.get(ada)).toBe('reprocessed');
+    expect(statusOf.get(ben)).toBe('reprocessed');
+    expect(statusOf.get(cid)).toBe('validation_failed');
+    // What the page hands the form as `reprocessedNow`.
+    expect(outcomes.filter((o) => o.status === 'reprocessed').map((o) => o.employmentId).sort()).toEqual([ada, ben].sort());
+
+    // THE FRESH SEED: only the failed employee is still marked and ticked on arrival.
+    expect((await reprocessStaleSelection(ctx, batchId)).rows.map((r) => r.employmentId)).toEqual([cid]);
+    const required = await tabRows(batchId, 'required');
+    expect(ids(required.rows)).toEqual([cid]);
+    const skipped = await tabRows(batchId, 'skipped');
+    expect(ids(skipped.rows)).toEqual([dan]);
+    expect(skipped.rows[0]).toMatchObject({ taxSkipped: true, kind: 'recalculated' });
+
+    // Processed / No Change: the reprocessed two at version 2 (they read Reprocessed after any reload), Eve untouched.
+    const unchanged = await payrollEmployeeSelectionPage(ctx, { batchId, kind: 'reprocess', page: all, tab: 'unchanged' });
+    const version = new Map(unchanged.rows.map((r) => [r.employmentId, r.version]));
+    expect([...version.keys()].sort()).toEqual([ada, ben, eve].sort());
+    expect(version.get(ada)).toBe(2);
+    expect(version.get(ben)).toBe(2);
+    expect(version.get(eve)).toBe(1);
+    expect(unchanged.rows.every((r) => !r.stale)).toBe(true);
+
+    // Select all on Reprocess Required names the failed one only.
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'required' })).rows)).toEqual([cid]);
   });
 });

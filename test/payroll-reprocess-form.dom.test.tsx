@@ -1047,3 +1047,109 @@ describe('a1a80747 r3 — the Skipped tab and Select all', () => {
     });
   });
 });
+
+/**
+ * 8a3de8ae — AFTER A REPROCESS FINISHES, THE TICKS ARE WORKED OUT AGAIN FROM THE RUN. The page mounts this form under
+ * the job's id while the job is queued or running, and under `<job id>:done` once it completes or stops; tab, page and
+ * search changes keep the key. A partial job — two reprocessed (one recalculated, one added), one failed, one held for
+ * income tax review — must leave exactly the failed one ticked, everywhere the selection is read: the tick boxes, the
+ * hidden inputs, the count, the review and the button. The finished employees read Reprocessed on Processed / No Change.
+ */
+describe('8a3de8ae — the selection after a reprocess job ends', () => {
+  const TABS = (current: 'required' | 'skipped' | 'unchanged') => ({
+    current,
+    counts: { required: 3, skipped: 1, unchanged: 4 },
+    hrefs: { required: '?tab=required', skipped: '?tab=skipped', unchanged: '?tab=unchanged' },
+  });
+  const A = { employmentId: 'ja', employeeCode: 'EMP0301', name: 'Alpha Done' };
+  const B = { employmentId: 'jb', employeeCode: 'EMP0302', name: 'Bravo Added' };
+  const C = { employmentId: 'jc', employeeCode: 'EMP0303', name: 'Charlie Failed' };
+  const D = { employmentId: 'jd', employeeCode: 'EMP0304', name: 'Delta Taxheld' };
+  const E = { employmentId: 'je', employeeCode: 'EMP0305', name: 'Echo Paid' };
+  const paging = (current: 'required' | 'skipped' | 'unchanged', rows: number) =>
+    ({ existing: pageState(parsePageQuery(), rows, rows), runTotal: 6, existingTotal: 5, search: '', tabs: TABS(current) });
+  /** While the job runs: A and C are stale (Changed), B is a ready New joiner the run owes; all three were submitted. */
+  const running = (current: 'required' | 'unchanged') => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm key="J" batchId="b1" currency="MYR" jobRunning
+        employees={current === 'unchanged' ? [emp({ ...A, stale: true }), emp({ ...C, stale: true }), emp({ ...D }), emp({ ...E })] : []}
+        required={current === 'required' ? [{ kind: 'recalculated', ...A }, { kind: 'recalculated', ...C },
+          added({ ...B, owed: true, notOwedReason: null })] : []}
+        stale={{ rows: [A, C], withoutPayslip: 0 }} paging={paging(current, current === 'unchanged' ? 4 : 3)} />
+    </NextIntlClientProvider>
+  );
+  /** The run after the job: A recalculated (version 2), B added (version 1, named by the job's outcomes), C failed and
+   * still stale, D skipped for income tax by the job's check, E untouched. */
+  const finished = (current: 'required' | 'skipped' | 'unchanged', key = 'J:done', reprocessedNow: string[] = [A.employmentId, B.employmentId]) => (
+    <NextIntlClientProvider locale="en" messages={messages}>
+      <ReprocessForm key={key} batchId="b1" currency="MYR" reprocessedNow={reprocessedNow}
+        employees={current === 'unchanged' ? [emp({ ...A, reprocessedTimes: 1 }), emp({ ...B }), emp({ ...C, stale: true }), emp({ ...E })] : []}
+        required={current === 'required' ? [{ kind: 'recalculated', ...C }]
+          : current === 'skipped' ? [{ kind: 'recalculated', ...D, taxSkipped: true }] : []}
+        stale={{ rows: [C], withoutPayslip: 0 }} paging={paging(current, current === 'unchanged' ? 4 : 1)} />
+    </NextIntlClientProvider>
+  );
+  const statusOf = (container: HTMLElement, id: string) => {
+    const row = container.querySelector(`input[type="checkbox"][value="${id}"]`)!.closest('tr') as HTMLElement;
+    const cells = row.querySelectorAll('td');
+    return { checked: (row.querySelector('input[type="checkbox"]') as HTMLInputElement).checked, status: cells[1]!.textContent, reason: cells[2]!.textContent };
+  };
+
+  it('while the job runs the submitted people stay ticked, across a tab change under the same key', () => {
+    const { container, rerender } = render(running('required'));
+    expect(posted(container).sort()).toEqual(['ja', 'jb', 'jc']);
+    expect(submit().textContent).toContain('Reprocess 3 employee(s)');
+    rerender(running('unchanged'));
+    expect(posted(container).sort(), 'same key ⇒ same mount ⇒ same ticks').toEqual(['ja', 'jb', 'jc']);
+  });
+
+  it('when the job ends, only the failed employee is still ticked — boxes, hidden inputs, count, review and button agree', () => {
+    const { container, rerender } = render(running('required'));
+    rerender(running('unchanged'));
+    expect(posted(container).sort()).toEqual(['ja', 'jb', 'jc']);
+    rerender(finished('unchanged'));
+    expect(posted(container)).toEqual(['jc']);
+    expect(statusOf(container, 'ja').checked).toBe(false);
+    expect(statusOf(container, 'jb').checked).toBe(false);
+    expect(statusOf(container, 'jc').checked).toBe(true);
+    expect(statusOf(container, 'je').checked).toBe(false);
+    expect(container.textContent).toContain('1 of 6 selected');
+    const review = screen.getByText(/Before you submit/).closest('div') as HTMLElement;
+    expect(review.textContent).toContain('1 of 6 employee(s)');
+    expect(review.textContent).toContain('Charlie Failed');
+    expect(review.textContent).not.toContain('Alpha Done');
+    expect(review.textContent).not.toContain('Bravo Added');
+    expect(submit().textContent).toContain('Reprocess 1 employee(s)');
+    expect(submit()).not.toBeDisabled();
+  });
+
+  it('Processed / No Change says Reprocessed for finished work, Reprocess Required for the failed one, Processed otherwise', () => {
+    const { container } = render(finished('unchanged'));
+    expect(statusOf(container, 'ja')).toMatchObject({ status: 'Reprocessed', reason: 'A new payroll result was saved for this employee.' });
+    // Added by this job: version 1 on the payslip, named Reprocessed by the job's own outcomes.
+    expect(statusOf(container, 'jb')).toMatchObject({ status: 'Reprocessed', reason: 'A new payroll result was saved for this employee.' });
+    expect(statusOf(container, 'jc')).toMatchObject({ status: 'Reprocess Required' });
+    expect(statusOf(container, 'je').status).toBe('Processed');
+    expect(statusOf(container, 'je').reason).toContain('Already paid on this run');
+  });
+
+  it('the employee held for income tax review waits on Skipped, unticked; a tab change keeps the fresh ticks', () => {
+    const { container, rerender } = render(running('required'));
+    rerender(finished('required'));
+    expect(posted(container)).toEqual(['jc']);
+    rerender(finished('skipped'));
+    expect(statusOf(container, 'jd')).toMatchObject({ checked: false, status: 'Skipped' });
+    expect(posted(container)).toEqual(['jc']);
+    // A late re-render of the finished job (the same key) changes nothing either.
+    rerender(finished('skipped'));
+    expect(posted(container)).toEqual(['jc']);
+  });
+
+  it('a reload after the job (no job outcomes to hand) still reads Reprocessed from the stored payslip and ticks only C', () => {
+    const { container } = render(finished('unchanged', 'selection', []));
+    expect(posted(container)).toEqual(['jc']);
+    expect(statusOf(container, 'ja').status).toBe('Reprocessed');
+    // B's payslip is at version 1 and no job is on screen: an ordinary processed payslip again.
+    expect(statusOf(container, 'jb').status).toBe('Processed');
+  });
+});

@@ -166,7 +166,14 @@ export function ReprocessForm({
   selectAll,
   taxReviewHref,
   heldHref,
+  reprocessedNow,
 }: {
+  /**
+   * 8a3de8ae — the employees the job on screen reprocessed successfully (its recorded outcomes). Status only: a
+   * Processed / No Change row in it reads Reprocessed even when its payslip is at version 1 (the job just added them).
+   * It never ticks or unticks anybody — the selection is re-seeded by the page remounting this form when the job ends.
+   */
+  reprocessedNow?: string[];
   /** a1a80747 r3 — the people `focusIds` names, as identities, so a held employee on another page is still ticked and named. */
   focusRows?: ReprocessStaleRow[];
   /** a1a80747 r3 — Select all on the open tab (Reprocess Required or Processed / No Change only). */
@@ -209,6 +216,7 @@ export function ReprocessForm({
   const t = useTranslations('payroll.batch');
   const td=useTranslations('derivedOrganisation');
   const requiredRows = required ?? [];
+  const reprocessedNowIds = new Set(reprocessedNow ?? []);
   // The New rows of this page (with their readiness), and among them the people the run has nothing to pay.
   const additions = requiredRows.filter((r): r is Extract<ReprocessRequiredRow,{kind:'added'}> => r.kind === 'added');
   // a1a80747 r2 — three places for a New row: Nothing payable (the run's skip decision, unless the run says it is owed),
@@ -237,6 +245,10 @@ export function ReprocessForm({
    *   - nobody on Processed / No Change, ever.
    * Page, rows-per-page, search and tab changes are router replaces under the same form key, so they keep
    * this state; a later server render cannot add anyone to it.
+   * 8a3de8ae — the one exception is the end of a Reprocess job: the page gives this form a NEW key when the job
+   * completes or stops (`<job id>:done`), so this seed runs again from what the run says then. Employees the job
+   * reprocessed are no longer stale and leave the selection — and with it the hidden inputs, the count, the review
+   * and the button's number, which are all read from this one Map.
    * 016276b7 — "Process held employees" (`focusIds`) instead ticks exactly the run's employees held for income tax
    * review among the ready New people, and nobody else. The ticks stay editable.
    */
@@ -707,6 +719,10 @@ export function ReprocessForm({
           <tbody className="divide-y divide-border">
             {visibleEmployees.map((e) => {
               const on = selected.has(e.employmentId);
+              // 8a3de8ae — finished work reads as finished: a payslip recalculated on this run (version above 1, off the
+              // stored payslip, so it survives a reload or a page change) or one the job on screen just reprocessed is
+              // Reprocessed, in green. A stale row still needs it and keeps Reprocess Required; everyone else is Processed.
+              const reprocessed = !e.stale && (e.reprocessedTimes > 0 || reprocessedNowIds.has(e.employmentId));
               return (
                 <tr key={e.employmentId} className={on ? 'bg-primary/5' : undefined}>
                   {tickCell(e)}
@@ -716,12 +732,20 @@ export function ReprocessForm({
                         {t('reprocessStatusRequired')}
                       </span>
                     </td>
+                  ) : reprocessed ? (
+                    <td className="whitespace-nowrap px-3 py-2">
+                      <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300">
+                        {t('reprocessOutcomeStatus.reprocessed')}
+                      </span>
+                    </td>
                   ) : (
                     <td className="whitespace-nowrap px-3 py-2 font-medium text-emerald-700 dark:text-emerald-400">
                       {t('reprocessStatusProcessed')}
                     </td>
                   )}
-                  <td className="px-3 py-2 text-xs text-muted-foreground">{e.stale ? t('reprocessReasonRequired') : t('reprocessReasonProcessed')}</td>
+                  <td className="px-3 py-2 text-xs text-muted-foreground">
+                    {e.stale ? t('reprocessReasonRequired') : reprocessed ? t('reprocessSucceededReason') : t('reprocessReasonProcessed')}
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2 text-muted-foreground">
                     {e.reprocessedTimes > 0 ? t('reprocessAlreadyCount', { n: e.reprocessedTimes }) : '—'}
                   </td>
