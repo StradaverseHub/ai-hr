@@ -12072,8 +12072,10 @@ export function payrollEmployeeSelectionPage(ctx:SessionContext,p:{batchId:strin
  });
 }
 
-/** 6aee208b — one stale employee as the Reprocess screen names them: identity only, no money. */
-export type ReprocessStaleRow={employmentId:string;employeeCode:string|null;name:string};
+/** 6aee208b — one stale employee as the Reprocess screen names them: identity only, no money.
+ * 7aaff171 — a Select all row also says, when true, that the person has no payslip on this run (`added`: ticking them
+ * adds them) and that this run owes them nothing (`notOwed`), so the review can count both for off-page people. */
+export type ReprocessStaleRow={employmentId:string;employeeCode:string|null;name:string;added?:boolean;notOwed?:boolean};
 
 /**
  * 6aee208b — EVERY employee the run marked stale, for the Reprocess screen to tick on arrival on every page.
@@ -12116,20 +12118,26 @@ const wholeTab=(ceiling:number):PageQuery=>({page:0,size:'all',limit:ceiling,off
  * search applied. Identity only (the review names them; the submit posts their ids).
  *   - required: the Reprocess Required tab's rows (owed, not skipped for income tax) less New rows that are not ready
  *     (their readiness gaps block the add, exactly as their tick boxes are disabled on the page);
+ *   - skipped (7aaff171): the Skipped tab's rows of THIS run — held for income tax review, nothing payable, not owed on
+ *     this run — less New rows that are not ready, by the same rule. The same whole-Skipped-tab read Process held
+ *     employees makes; nobody from Reprocess Required or Processed / No Change, each person once (the list is DISTINCT
+ *     ON employment). A not-owed row says so (`notOwed`), for the review's count;
  *   - unchanged: every payslip on the run the mark does not name (Processed / No Change).
- * There is no Select all on the Skipped tab: skipped people are ticked one by one or with Process held employees.
  * The same two owners as the pages (one set-based statement each, plus the New rows' readiness), under a ceiling of
  * REPROCESS_SELECT_ALL_CEILING: `tooMany` when the tab holds more, and then no ids at all, never a silent part.
  * Read only; who may see the screen is decided by the page (requireAdmin plus the reprocess gates), as for its pages.
  */
-export async function reprocessSelectAll(ctx:SessionContext,p:{batchId:string;tab:'required'|'unchanged';search?:string})
+export async function reprocessSelectAll(ctx:SessionContext,p:{batchId:string;tab:'required'|'skipped'|'unchanged';search?:string})
  :Promise<{rows:ReprocessStaleRow[];total:number;tooMany:boolean}>{
- if(p.tab==='required'){
-  const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,search:p.search,tab:'required',ceiling:REPROCESS_SELECT_ALL_CEILING});
-  if(r.requiredTotal>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total:r.requiredTotal,tooMany:true};
+ if(p.tab==='required'||p.tab==='skipped'){
+  const tab=p.tab;
+  const r=await reprocessRequiredPage(ctx,{batchId:p.batchId,search:p.search,tab,ceiling:REPROCESS_SELECT_ALL_CEILING});
+  const total=tab==='required'?r.requiredTotal:r.skippedTotal;
+  if(total>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total,tooMany:true};
   const rows=r.rows.filter(x=>x.kind==='recalculated'||x.blockers.length===0)
-   .map(x=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name}));
-  return {rows,total:r.requiredTotal,tooMany:false};
+   .map((x):ReprocessStaleRow=>({employmentId:x.employmentId,employeeCode:x.employeeCode,name:x.name,
+    ...(x.kind==='added'?{added:true}:{}),...(x.owed?{}:{notOwed:true})}));
+  return {rows,total,tooMany:false};
  }
  const r=await payrollEmployeeSelectionPage(ctx,{batchId:p.batchId,kind:'reprocess',search:p.search,tab:'unchanged',ceiling:REPROCESS_SELECT_ALL_CEILING});
  if(r.tabCounts.unchanged>REPROCESS_SELECT_ALL_CEILING)return {rows:[],total:r.tabCounts.unchanged,tooMany:true};

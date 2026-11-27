@@ -7422,6 +7422,7 @@
       "reprocessGapBank": "thông tin ngân hàng",
       "reprocessNewCollects": "Thêm một người mới SẼ thu cả các giao dịch một lần đang chờ họ trong tháng này.",
       "reprocessReviewAddNote": "{n} người trong số đó được thêm vào đợt chạy này lần đầu tiên: phiếu lương của họ được tạo, số nhân viên của đợt chạy tăng lên, và các khoản vay, yêu cầu hoàn tiền cùng khoản chi một lần của họ được tất toán kèm theo.",
+      "reprocessReviewNotOwedNote": "{n} người trong số đó không có khoản nào phải trả trong đợt chạy này. Việc xử lý lại sẽ bao gồm họ như thể bạn đã chọn từng người một.",
       "reprocessResultAdded": "Đã thêm vào đợt chạy này",
       "reprocessResultAddedCount": "Đã thêm {n} người vào đợt chạy này",
       "reprocessWhyAdded": "Đây là phiếu lương đầu tiên của họ trong đợt chạy này, nên không có gì để so sánh.",

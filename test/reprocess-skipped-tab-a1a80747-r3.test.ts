@@ -246,13 +246,76 @@ describe('a1a80747 r3 · C — Select all', () => {
   it('another tenant and a foreign run id get nobody', async () => {
     await hire('Fictional Ada', 'SK001', 5000);
     const batchId = await processedRun();
-    await hire('Fictional Late', 'SK004', 4200, `${period}-10`);
+    const late = await hire('Fictional Late', 'SK004', 4200, `${period}-10`);
     const other = await seedBase();
     await setModule(other.tenantId, 'payroll', 'active');
     const stranger = { ...(await entitledCtx(other, ['hr_admin'])), grants: [{ role: 'hr_admin' as const, companyId: null }] };
     expect((await reprocessSelectAll(stranger, { batchId, tab: 'required' })).rows).toEqual([]);
     expect((await reprocessSelectAll(ctx, { batchId: randomUUID(), tab: 'required' })).rows).toEqual([]);
+    // 7aaff171 — the Skipped tab's Select all is fenced the same way: the owner's tenant sees Late, nobody else does.
+    await outcome(batchId, late, 'skipped', 'TAX_RECALC_REQUIRED');
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'skipped' })).rows)).toEqual([late]);
+    expect((await reprocessSelectAll(stranger, { batchId, tab: 'skipped' })).rows).toEqual([]);
+    expect((await reprocessSelectAll(ctx, { batchId: randomUUID(), tab: 'skipped' })).rows).toEqual([]);
   });
+
+  /**
+   * 7aaff171 — SELECT ALL ON THE SKIPPED TAB. A run set up for a chosen list of three: one marked (Reprocess Required),
+   * one paid and unmarked (Processed / No Change), one marked and skipped by the tax check (Held for income tax review).
+   * Everybody else in the company is Not owed on this run (outside its chosen list) — 58 ready people and one with no
+   * salary record. 60 people on the Skipped tab, three pages of 25.
+   */
+  it('Skipped: every tickable row of the tab on every page, with the search, never a Required, Processed or not-ready one', async () => {
+    const required = await hire('Fictional Chosen Marked', 'SC001', 5000);
+    const processed = await hire('Fictional Chosen Paid', 'SC002', 4900);
+    const held = await hire('Fictional Chosen Taxheld', 'SC003', 4800);
+    const outsiders: string[] = [];
+    for (let i = 0; i < 58; i += 1) {
+      const e = await hireEmployee(ctx, {
+        person: { fullName: `Fictional Outsider ${String(i).padStart(2, '0')}`, primaryEmail: `${randomUUID()}@fixture.test` },
+        companyId: b.companyId, departmentId: b.deptA, employeeCode: `SO${String(i).padStart(3, '0')}`, employmentType: 'full_time', hiredOn,
+      });
+      await setCompensation(ctx, { employmentId: e.employmentId, basicSalary: 3000 + i, effectiveFrom: hiredOn });
+      outsiders.push(e.employmentId);
+    }
+    const notReady = await hire('Fictional Outsider Unready', 'SO900', null);
+    const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: period, scope: { employmentIds: [required, processed, held] } });
+    await generatePayslips(ctx, { batchId });
+    await mark(batchId, [required, held]);
+    await refresh(batchId);
+    await outcome(batchId, held, 'skipped', 'TAX_RECALC_REQUIRED');
+
+    // The tab, page by page: 60 people, the first page shows 25 of them.
+    const pageOne = await reprocessRequiredPage(ctx, { batchId, page: parsePageQuery({ page: '0', size: '25' }), tab: 'skipped' });
+    expect(pageOne.rows).toHaveLength(25);
+    expect(pageOne.state.hasNext).toBe(true);
+    expect(pageOne.skippedRunTotal).toBe(60);
+    const whole = await tabRows(batchId, 'skipped');
+    expect(ids(whole.rows)).toEqual([...outsiders, notReady, held].sort());
+    expect(whole.rows.find((r) => r.employmentId === notReady)!.blockers.length).toBeGreaterThan(0);
+
+    // Select all: everyone who can be ticked, every page, each once; the not-ready one is left out, as their box is.
+    const everyone = await reprocessSelectAll(ctx, { batchId, tab: 'skipped' });
+    expect(everyone.tooMany).toBe(false);
+    expect(everyone.total).toBe(60);
+    expect(ids(everyone.rows)).toEqual([...outsiders, held].sort());
+    expect(new Set(everyone.rows.map((r) => r.employmentId)).size).toBe(everyone.rows.length);
+    for (const nobody of [required, processed, notReady]) expect(everyone.rows.some((r) => r.employmentId === nobody), nobody).toBe(false);
+    // Identity only, with what the review needs: the outsiders are additions this run owes nothing; the held one is neither.
+    const byId = new Map(everyone.rows.map((r) => [r.employmentId, r]));
+    expect(outsiders.every((id) => byId.get(id)!.notOwed === true && byId.get(id)!.added === true)).toBe(true);
+    expect(byId.get(held)).toEqual({ employmentId: held, employeeCode: 'SC003', name: 'Fictional Chosen Taxheld' });
+    expect(Object.keys(byId.get(outsiders[0])!).sort()).toEqual(['added', 'employeeCode', 'employmentId', 'name', 'notOwed']);
+
+    // With a search, only the matches (SO010 to SO019).
+    const matching = await reprocessSelectAll(ctx, { batchId, tab: 'skipped', search: 'so01' });
+    expect(ids(matching.rows)).toEqual(outsiders.slice(10, 20).sort());
+    expect(matching.total).toBe(10);
+
+    // The other tabs keep their own Select all: Required is the marked one, Processed / No Change the paid one.
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'required' })).rows)).toEqual([required]);
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'unchanged' })).rows)).toEqual([processed]);
+  }, 120_000);
 });
 
 describe('8a3de8ae · D — after a partial reprocess, the selection is re-seeded from the run', () => {
@@ -303,7 +366,8 @@ describe('8a3de8ae · D — after a partial reprocess, the selection is re-seede
     expect(version.get(eve)).toBe(1);
     expect(unchanged.rows.every((r) => !r.stale)).toBe(true);
 
-    // Select all on Reprocess Required names the failed one only.
+    // Select all on Reprocess Required names the failed one only; on Skipped (7aaff171) the tax-held one only.
     expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'required' })).rows)).toEqual([cid]);
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'skipped' })).rows)).toEqual([dan]);
   });
 });

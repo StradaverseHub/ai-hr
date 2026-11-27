@@ -7422,6 +7422,7 @@
       "reprocessGapBank": "银行资料",
       "reprocessNewCollects": "新增员工确实会一并收取本月已在等待他们的一次性交易。",
       "reprocessReviewAddNote": "其中 {n} 人是首次加入本次运行：系统会生成他们的工资单，运行的人数随之增加，他们的贷款、报销和一次性付款也会一并结清。",
+      "reprocessReviewNotOwedNote": "其中 {n} 人在本次运行中没有任何应付款项。重新处理会将他们包括在内，就像您逐一勾选了他们一样。",
       "reprocessResultAdded": "已加入本次运行",
       "reprocessResultAddedCount": "本次运行新增 {n} 人",
       "reprocessWhyAdded": "这是他们在本次运行中的第一张工资单，因此没有可比较的对象。",

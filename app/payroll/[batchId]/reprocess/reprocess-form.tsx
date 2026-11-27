@@ -36,8 +36,10 @@ export type ReprocessCandidate = {
   stale?: boolean;
 };
 
-/** 6aee208b — one person the run marked stale, as `reprocessStaleSelection` names them: identity, no money. */
-export type ReprocessStaleRow = { employmentId: string; employeeCode: string | null; name: string };
+/** 6aee208b — one person the run marked stale, as `reprocessStaleSelection` names them: identity, no money.
+ * 7aaff171 — a Select all row may also say the person has no payslip on this run (`added`) and that the run owes them
+ * nothing (`notOwed`), so the review counts additions and not-owed people it cannot see on the page. */
+export type ReprocessStaleRow = { employmentId: string; employeeCode: string | null; name: string; added?: boolean; notOwed?: boolean };
 
 /** 6aee208b — the review names at most this many people, then "and N more"; every ticked id is still posted. */
 const REVIEW_NAME_CAP = 20;
@@ -54,7 +56,7 @@ export type ReprocessTabs = {
 };
 
 /**
- * a1a80747 r3 — "Select all N employees" on the open tab. `href` reloads this screen with a one-time token; the server
+ * a1a80747 r3 — "Select all N employees" on the open tab (7aaff171: the Skipped tab too). `href` reloads this screen with a one-time token; the server
  * then hands back `applied` (everyone on the tab who can be ticked, every page, search applied, `token` = that token)
  * and the form adds them to the selection ONCE per token, then drops the token from the address so a page change
  * cannot re-tick somebody the operator has since unticked. `tooMany` (more than the server reads at once) ticks nobody.
@@ -176,7 +178,7 @@ export function ReprocessForm({
   reprocessedNow?: string[];
   /** a1a80747 r3 — the people `focusIds` names, as identities, so a held employee on another page is still ticked and named. */
   focusRows?: ReprocessStaleRow[];
-  /** a1a80747 r3 — Select all on the open tab (Reprocess Required or Processed / No Change only). */
+  /** a1a80747 r3 — Select all on the open tab (7aaff171: Reprocess Required, Skipped and Processed / No Change). */
   selectAll?: ReprocessSelectAll | null;
   /** a1a80747 r3 — where an employee skipped for income tax is corrected (Recalculate Income Tax Value), when the reader may. */
   taxReviewHref?: string | null;
@@ -271,9 +273,13 @@ export function ReprocessForm({
   const total = paging?.runTotal ?? employees.length + additions.length;
   const currentById=new Map<string,Selected>([...employees,...requiredRows].map(e=>[e.employmentId,e]));
   const pickedRows=[...selected.values()].map(e=>currentById.get(e.employmentId)??e);
-  const pickedNew=pickedRows.filter((e):e is ReprocessAddCandidate=>'hiredOn' in e);
+  // 7aaff171 — an off-page person ticked by Select all is an addition when the server said so (`added`).
+  const isAddition=(e:Selected)=>'hiredOn' in e||('added' in e&&e.added===true);
+  const pickedNew=pickedRows.filter(isAddition);
   // A stale row the operator has not seen yet is still an EXISTING payslip: it is a recalculation, not an add.
-  const pickedExisting=pickedRows.filter(e=>!('hiredOn' in e));
+  const pickedExisting=pickedRows.filter(e=>!isAddition(e));
+  // 7aaff171 — ticked people this run owes nothing (a Not owed row on screen, or an off-page one Select all named).
+  const pickedNotOwed=pickedRows.filter(e=>('owed' in e&&e.owed===false)||('notOwed' in e&&e.notOwed===true)).length;
   // 6aee208b — the selection line, read against the CURRENT stale set (a fresh render may name more people
   // than the seed did; they are counted here, never silently ticked).
   const staleSelected=staleRows.filter(e=>selected.has(e.employmentId)).length;
@@ -567,16 +573,18 @@ export function ReprocessForm({
 
       {paging&&<ClientPager state={paging.existing} note={t('reprocessPagingNote')} rememberAs="payroll-reprocess-existing"/>}
 
-      {/* a1a80747 r3 — on the Skipped tab the selection is stated here, since there is no list header to carry it. */}
+      {/* 7aaff171 — THE SKIPPED TAB'S SELECTION BAR: the same controls and words as the Reprocess Required header (count,
+          Select this page, Select all N employees, Clear), on a strip styled like the list headers, above its three
+          groups. Select this page adds everyone shown in the three groups except rows whose tick box is disabled (a New
+          row that is not ready yet), the same rule as `tickCell` below. */}
       {onTab === 'skipped' && (
-        <p className="text-sm">
-          {t('reprocessSummary', { n: selected.size, total })}
-          {selected.size > 0 && (
-            <button type="button" onClick={() => setSelected(new Map())} className="ml-3 font-medium text-primary hover:underline">
-              {t('reprocessClear')}
-            </button>
-          )}
-        </p>
+        <div className="rounded-xl border border-border bg-muted/50 px-3 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
+          {selectionControls(() => {setSelected(prev=>new Map([...prev,
+            ...visibleHeld.filter((r) => r.kind === 'recalculated' || r.blockers.length === 0),
+            ...visibleNotOwed.filter((c) => c.blockers.length === 0),
+            ...visibleSkipped,
+          ].map((r) => [r.employmentId, prev.get(r.employmentId) ?? r] as [string,Selected])]));})}
+        </div>
       )}
 
       {/* a1a80747 — THE ONE REPROCESS REQUIRED LIST: New and Changed, each employee once. */}
@@ -807,6 +815,13 @@ export function ReprocessForm({
           {pickedNew.length > 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
               {t('reprocessReviewAddNote', { n: pickedNew.length })}
+            </p>
+          )}
+          {/* 7aaff171 — people this run owes nothing are only ticked by hand or by Select all on the Skipped tab; say how
+              many, so nobody is added to the run without the operator noticing. */}
+          {pickedNotOwed > 0 && (
+            <p className="mt-1 text-xs text-muted-foreground">
+              {t('reprocessReviewNotOwedNote', { n: pickedNotOwed })}
             </p>
           )}
         </div>
