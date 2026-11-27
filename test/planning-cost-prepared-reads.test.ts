@@ -292,11 +292,17 @@ describe('planning cost: named prepared statements for the large combined reads'
    // The retained plan memory of this text stays within the size db/prepared-read.ts records for its label, which
    // with the text limits bounds one backend (PREPARED_READ_BACKEND_BOUND_BYTES).
    expect(measured.retained.genericPlanBytes,`${persona} ${pair.target} retained plan bytes`).toBeLessThanOrEqual(PREPARED_READ_MEASURED_TEXT_BYTES[pair.target]);
-   // What the application now sends is no slower than before (1 ms or 10% of noise): the account task statement with its
-   // generic plan from the first call (genericPlanSettingsStatement), every other statement prepared in auto mode, after
-   // its first five calls on a connection.
+   // Primary, deterministic: the text was prepared on the connection and every prepared call ran through it
+   // (pg_prepared_statements counts each execution as a generic or a custom plan), and the forced-generic calls reused
+   // the one generic plan.
+   expect(measured.prepared.plans,`${persona} ${pair.target} prepared on the connection`).not.toBeNull();
+   expect(measured.prepared.plans!.generic+measured.prepared.plans!.custom,`${persona} ${pair.target} prepared executions`).toBeGreaterThanOrEqual(PREPARED_CALLS);
+   expect(measured.generic.plans!.generic-measured.prepared.plans!.generic,`${persona} ${pair.target} generic plan reused`).toBeGreaterThanOrEqual(GENERIC_CALLS);
+   // Secondary, a ceiling only: wall time against the unnamed baseline. On reads of about 8 ms, interleaved medians of
+   // the same statement on a shared runner differ by about 2 ms (gate 46022490252: 10.66 against 8.26), so the
+   // ceiling is x1.5 + 5 ms: it catches a real regression (a lost plan, a re-plan per call), not runner noise.
    const after=pair.target==='account-tasks'?measured.generic.wallMs!:measured.prepared.laterMs!;
-   expect(after,`${persona} ${pair.target} wall after vs before`).toBeLessThanOrEqual(measured.unnamed.wallMs!*1.1+1);
+   expect(after,`${persona} ${pair.target} wall after vs before`).toBeLessThanOrEqual(measured.unnamed.wallMs!*1.5+5);
    // The fixture has no recruitment work (nor had staging: the statement ran in 0.2 ms); every other read returns rows.
    if(pair.target!=='recruitment-personal-todos')expect(measured.rows,`${persona} ${pair.target} returned rows`).toBeGreaterThan(0);
   }
