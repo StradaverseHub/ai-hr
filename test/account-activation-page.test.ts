@@ -43,9 +43,10 @@ import {observeStatements} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 
 /** Recorded budget: the largest (transactions, statements) over both scopes. Budgets only go down; raising one needs an
- * ADR note (docs/adr/0181-database-read-cost-architecture.md). From the design: the session read, then one tenant
- * transaction holding the person statement and the manual-setup proof and list. Tighten to the CI ACTION_BUDGET line. */
-const BUDGET={transactions:3,statements:12};
+ * ADR note (docs/adr/0181-database-read-cost-architecture.md). Measured in focused run 46034846486 (27 Nov 2026): one
+ * tenant transaction, two statements (identity and the person statement) at both scopes; the ceiling keeps room for the
+ * manual-setup proof and list, which run only when an embedded or Keycloak issuer is selected. */
+const BUDGET={transactions:1,statements:4};
 let b:Base,other:Base,fixture:ScaleFixture;
 const ids={external:'',internal:'',invited:'',withLogin:'',leaver:'',foreign:''};
 const measured:Record<string,{transactions:number;statements:number}>={};

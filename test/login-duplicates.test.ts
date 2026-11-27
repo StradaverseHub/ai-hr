@@ -17,10 +17,11 @@ import {countLoginDuplicateGroups,readLoginDuplicateGroup,readLoginDuplicates,Lo
 import {mergeLogins} from '../core/login-merge';
 import {parseKeysetPageQuery} from '../lib/pagination';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {allowPeopleDuplicates} from './helpers/allow-people-duplicates';
 
 let base:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);
-beforeEach(async()=>{await resetDb();base=await seedBase();ctx=adminCtx(base);});
+beforeEach(async()=>{await resetDb();base=await seedBase();await allowPeopleDuplicates(base.tenantId);ctx=adminCtx(base);});
 afterAll(closeAll);
 
 type Login={appUserId:string;personId:string};
@@ -106,7 +107,7 @@ describe('board 0735d1b7: duplicate login groups',()=>{
   const scoped:SessionContext={...ctx,grants:[{role:'hr_admin',companyId:base.companyId}]};
   await expect(readLoginDuplicates(scoped,'identity',first())).rejects.toBeInstanceOf(LoginDuplicatesError);
   await expect(countLoginDuplicateGroups(scoped)).rejects.toBeInstanceOf(LoginDuplicatesError);
-  const other=await seedBase(),otherCtx=adminCtx(other);
+  const other=await seedBase(),otherCtx=adminCtx(other);await allowPeopleDuplicates(other.tenantId);
   // The same IC in the other tenant: it never joins tenant A's group and tenant A's group is not readable there.
   await login(other,'Fictional B1','dup-b@example.test',{ic:'770707077777'});
   const mine=(await readLoginDuplicates(ctx,'identity',first())).groups;

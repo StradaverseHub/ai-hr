@@ -29,10 +29,11 @@ import {changeInitialPassword,credentialByLogin,startLogin,verifyMfa,type AuthRe
 import {parseKeysetPageQuery} from '../lib/pagination';
 import {pgSqlState} from '../lib/db-error';
 import {adminCtx,closeAll,eventTypesFor,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {allowPeopleDuplicates} from './helpers/allow-people-duplicates';
 
 let base:Base,ctx:SessionContext;
 beforeAll(migrateTestDb);
-beforeEach(async()=>{await resetDb();base=await seedBase();ctx=adminCtx(base);});
+beforeEach(async()=>{await resetDb();base=await seedBase();await allowPeopleDuplicates(base.tenantId);ctx=adminCtx(base);});
 afterEach(()=>{vi.unstubAllEnvs();});
 afterAll(closeAll);
 
@@ -186,7 +187,7 @@ describe('board 0735d1b7: merge logins',()=>{
   const a=await login(base,'Fictional Tan Master',{ic:'660606-06-6060'});
   const b=await login(base,'Fictional Tan Copy',{ic:'660606066060'});
   const group=await identityGroup();
-  const other=await seedBase(),otherCtx=adminCtx(other);
+  const other=await seedBase(),otherCtx=adminCtx(other);await allowPeopleDuplicates(other.tenantId);
   await refused(mergeLogins(otherCtx,input({groupDigest:group.digest,masterId:a.appUserId,mergedIds:[b.appUserId]})),'stale');
   const {mergeIds}=await mergeLogins(ctx,input({groupDigest:group.digest,masterId:a.appUserId,mergedIds:[b.appUserId]}));
   await refused(undoLoginMerge(otherCtx,{mergeId:mergeIds[0],reason:'Fictional foreign undo',removeCarried:{roleAssignmentIds:[],assistant:false}}),'forbidden');

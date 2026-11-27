@@ -58,18 +58,18 @@ import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fix
 import {observeStatements} from './helpers/statement-observer';
 
 type Budgeted='listPage'|'batchPage'|'startInvitationBatchAction'|'retryFailedInvitationsAction'|'cancelInvitationBatchAction';
-/** Recorded budgets (transactions, statements). Initial ceilings from the statement shape, to be lowered to the first
- * CI measurement (ACTION_BUDGET lines): the list page is the candidates read (page, both counts; the manual-setup proof
- * when an embedded or Keycloak issuer is selected) plus the company list and the caller's latest batch; the batch page
- * is the job and the names of one page of results; each action is one tenant transaction (admission: company check,
- * the frozen population, worker readiness, admission, job read). Budgets only go down; raising one needs an ADR note
+/** Recorded budgets (transactions, statements), from the first CI measurement (focused run 46034846486, 27 Nov 2026:
+ * list 3/7, batch 1/3, start 1/5, retry 1/6, stop 1/3). The list page is the candidates read (page, both counts) plus the
+ * company list and the caller's latest batch; its ceiling keeps room for the two manual-setup statements (proof and list)
+ * that run only when an embedded or Keycloak issuer is selected. The batch page is the job and the names of one page of
+ * results; each action is one tenant transaction. Budgets only go down; raising one needs an ADR note
  * (docs/adr/0181-database-read-cost-architecture.md). */
 const BUDGETS:Record<Budgeted,{transactions:number;statements:number}>={
- listPage:{transactions:3,statements:10},
- batchPage:{transactions:1,statements:4},
- startInvitationBatchAction:{transactions:1,statements:8},
- retryFailedInvitationsAction:{transactions:1,statements:8},
- cancelInvitationBatchAction:{transactions:1,statements:4},
+ listPage:{transactions:3,statements:9},
+ batchPage:{transactions:1,statements:3},
+ startInvitationBatchAction:{transactions:1,statements:5},
+ retryFailedInvitationsAction:{transactions:1,statements:6},
+ cancelInvitationBatchAction:{transactions:1,statements:3},
 };
 let b:Base,fixture:ScaleFixture;
 const measured:Record<string,{transactions:number;statements:number}>={};

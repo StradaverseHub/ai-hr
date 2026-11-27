@@ -45,7 +45,7 @@ const TRANSIENT_STEP_LIMIT=20;
 const RETRY_SKIPS:readonly [RegExp,string][]=[[/no longer pending/,'notPending'],[/already has a replacement/,'alreadyRetried'],[/cannot be retried/,'notRetryable']];
 
 function inputOf(job:{input:unknown}):SendInput|RetryInput{
- const raw=job.input as Partial<SendInput&RetryInput>|null;
+ const raw=job.input as {mode?:unknown;personIds?:string[];deliveryIds?:string[];role?:unknown;emailLocale?:unknown;companyId?:unknown}|null;
  if(raw?.mode==='send'&&Array.isArray(raw.personIds)&&typeof raw.role==='string'&&typeof raw.emailLocale==='string')
   return {mode:'send',personIds:raw.personIds,role:raw.role,emailLocale:raw.emailLocale,...(typeof raw.companyId==='string'?{companyId:raw.companyId}:{})};
  if(raw?.mode==='retry'&&Array.isArray(raw.deliveryIds))return {mode:'retry',deliveryIds:raw.deliveryIds};

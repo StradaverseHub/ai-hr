@@ -3,7 +3,6 @@
  * administrator sees no tab bar. The counts are capped ("1,000+") and come from one statement of the duplicate owner. */
 import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
-import {getSession} from '@/lib/session';
 import {isGroupAdmin} from '@/lib/authz';
 import type {SessionContext} from '@/db/client';
 import {countLoginDuplicateGroups} from '@/core/login-duplicates';
@@ -17,9 +16,8 @@ const TABS:readonly {key:UsersTab;href:string}[]=[
 /** "1,000+" above the list cap, the exact number below it. */
 export const tabCount=(n:number)=>n>1000?'1,000+':String(n);
 
-/** `session`: the page's already-authorized session (read again from the request when absent). */
-export async function UsersTabs({active,session:known}:{active:UsersTab;session?:SessionContext}){
- const session=known??await getSession();
+/** `session`: the page's already-authorized session (each page calls its guard first). */
+export async function UsersTabs({active,session}:{active:UsersTab;session:SessionContext}){
  if(!isGroupAdmin(session))return null;
  const [t,counts]=await Promise.all([getTranslations('admin.users.tabs'),countLoginDuplicateGroups(session).catch(()=>null)]);
  return <nav aria-label={t('label')} className="overflow-x-auto border-b border-border">

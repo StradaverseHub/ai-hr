@@ -71,7 +71,7 @@ export async function DuplicatesView({session:s,tab,searchParams}:{session:Sessi
  const state=keysetPageState(q,read,read.groups.map(g=>g.id));
  return <div className="mx-auto w-full space-y-6">
   <SecurityPageHeader title={center('users.title')}/>
-  <UsersTabs active={tab}/>
+  <UsersTabs active={tab} session={s}/>
   {searchParams.error&&<div role="alert"><ErrorBanner message={searchParams.error}/></div>}
   <p className="text-sm text-muted-foreground">{t(`help.${tab}`)}</p>
   {read.groups.length===0?<Card className="space-y-2 px-4 py-10 text-center"><p className="text-sm font-medium">{t(`empty.${tab}`)}</p><p className="text-sm text-muted-foreground">{t('emptyHelp')}</p>

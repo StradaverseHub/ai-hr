@@ -47,6 +47,7 @@ import {readLoginMergeState} from '../core/login-merge';
 import {ACTION_NAVIGATION_FIELD} from '../lib/action-navigation';
 import {parseKeysetPageQuery} from '../lib/pagination';
 import {closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
+import {allowPeopleDuplicates} from './helpers/allow-people-duplicates';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {observeStatements} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
@@ -69,7 +70,7 @@ let b:Base,fixture:ScaleFixture;
 const measured:Record<string,{transactions:number;statements:number}>={};
 
 beforeAll(async()=>{
- await migrateTestDb();await resetDb();b=await seedBase();
+ await migrateTestDb();await resetDb();b=await seedBase();await allowPeopleDuplicates(b.tenantId);
  fixture=await buildScaleFixture(b,{employments:1000,events:2000});
  // 120 fictional logins: 40 pairs sharing an IC (written differently) and 20 pairs sharing a work email (different case).
  await owner.db.execute(sql`with people as (

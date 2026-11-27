@@ -63,7 +63,7 @@ describe('account page sections and status-filtered actions (board 0735d1b7)',()
  });
  it('shows Unlock only while the password is locked, and never to a company-level administrator',async()=>{
   await show();expect(screen.queryByRole('button',{name:en.passwordPolicy.full.unlockAction})).toBeNull();cleanup();
-  m.group=false;m.account.mockResolvedValue(account({lockedAt:Date.now()-60_000}));await show();
+  m.group=false;m.merge.mockClear();m.account.mockResolvedValue(account({lockedAt:Date.now()-60_000}));await show();
   expect(screen.queryByRole('button',{name:en.passwordPolicy.full.unlockAction})).toBeNull();
   // Company-level administrators: no User Type, no assistant or archive, no merge facts read; scoped roles stay.
   expect(screen.queryByText(d.userTypeColumn)).toBeNull();
