@@ -30879,7 +30879,8 @@
       "hourlyBasis": "hourly rate ÷ {hours} hours a month",
       "unsaved": "There are unsaved changes. Save the draft before switching it on.",
       "noCompanies": "Choose at least one company in Eligibility.",
-      "noFrom": "Choose the Applies from date in Eligibility."
+      "noFrom": "Choose the Applies from date in Eligibility.",
+      "noDayTypes": "Choose the day types included in General Settings."
     },
     "editor": {
       "codeNameRequired": "Enter the Overtime Pattern Code and Name to save the draft.",

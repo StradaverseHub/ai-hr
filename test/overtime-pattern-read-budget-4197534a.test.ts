@@ -49,6 +49,7 @@ import {previewOvertimeEligibilityAction,activateOvertimePatternAction,editOvert
 import {saveOvertimePatternDraft,activateOvertimePatternWithEligibility,overtimePlannedCandidates,type OvertimeEligibilityPreview} from '../packs/attendance/service';
 import {resolveOvertimePattern} from '../lib/overtime-pattern-evaluate';
 import {blankOvertimePattern} from '../lib/overtime-pattern-editor-scope';
+import {withOvertimeDayTypes} from '../lib/overtime-pattern-guided';
 import {overtimeSettingsToDefinition} from '../lib/overtime-pattern-settings';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {OvertimeFacts} from '../lib/overtime-pattern-model';
@@ -113,7 +114,7 @@ const noWider=(wide:{row:{statements:number;transactions:number}},narrow:{row:{s
  expect(wide.row.statements,'statements').toBeLessThanOrEqual(narrow.row.statements);
  expect(wide.row.transactions,'transactions').toBeLessThanOrEqual(narrow.row.transactions);
 };
-const definition=()=>overtimeSettingsToDefinition(blankOvertimePattern({code:'MYR',minorScale:2}),{rows:[{from:'0:00',to:'2:00',rate:'1.5',restRate:'2',phRate:'3',rounding:'down',roundTo:'0:15'},{from:'2:00',to:'',rate:'2',restRate:'',phRate:'3',rounding:'none',roundTo:''}],monthlyHours:'208',earningItemId:earningId});
+const definition=()=>overtimeSettingsToDefinition(withOvertimeDayTypes(blankOvertimePattern({code:'MYR',minorScale:2}),['workday','off_day','rest_day','holiday']),{rows:[{from:'0:00',to:'2:00',rate:'1.5',restRate:'2',phRate:'3',rounding:'down',roundTo:'0:15'},{from:'2:00',to:'',rate:'2',restRate:'',phRate:'3',rounding:'none',roundTo:''}],monthlyHours:'208',earningItemId:earningId});
 const planned=(extra:Record<string,unknown>={})=>({v:1,criteria:{gradeId:[gradeA],employmentType:['full_time']},employmentIds:[],priority:100,from:today(),...extra});
 async function draft(code:string,companyIds:readonly string[],extra:Record<string,unknown>={}){
  return saveOvertimePatternDraft(personaCtx('group'),{draft:{code,creationCompanyId:b.companyId,companyIds:[...companyIds],name:`${code} fictional`,description:'',definition:definition(),plannedEligibility:planned(extra)}});

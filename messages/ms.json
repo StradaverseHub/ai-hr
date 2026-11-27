@@ -30879,7 +30879,8 @@
       "hourlyBasis": "kadar sejam ÷ {hours} jam sebulan",
       "unsaved": "Terdapat perubahan yang belum disimpan. Simpan draf sebelum menghidupkannya.",
       "noCompanies": "Pilih sekurang-kurangnya satu syarikat dalam Kelayakan.",
-      "noFrom": "Pilih tarikh Terpakai mulai dalam Kelayakan."
+      "noFrom": "Pilih tarikh Terpakai mulai dalam Kelayakan.",
+      "noDayTypes": "Pilih jenis hari yang disertakan dalam Tetapan Am."
     },
     "editor": {
       "codeNameRequired": "Masukkan Kod dan Nama Corak Kerja Lebih Masa untuk menyimpan draf.",

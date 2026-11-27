@@ -4,6 +4,7 @@ import {describe,expect,it} from 'vitest';
 import {analyzeOvertimePattern,validateOvertimePattern,validateOvertimePatternDraft,validateOvertimeAssignmentTarget} from '../lib/overtime-pattern-schema';
 import {evaluateOvertimePattern,resolveOvertimePattern} from '../lib/overtime-pattern-evaluate';
 import {blankOvertimePattern} from '../lib/overtime-pattern-editor-scope';
+import {withOvertimeDayTypes} from '../lib/overtime-pattern-guided';
 import {prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import {definitionToOvertimeSettings,overtimeHoursToMinutes,overtimeMinutesToHours,overtimeSettingsProblems,overtimeSettingsToDefinition,parseOvertimeSettings,type OvertimeSettings} from '../lib/overtime-pattern-settings';
 import {parsePlannedEligibility,plannedEligibilityFromAssignments,plannedEligibilityTargets,selectionOnlyCriteria} from '../lib/overtime-pattern-eligibility';
@@ -12,6 +13,8 @@ import type {OvertimeFact,OvertimeInput,OvertimeCandidate} from '../lib/overtime
 const uuid=(n:number)=>`00000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const date='2026-03-02',currency={code:'MYR',minorScale:2};
 const fact=<T,>(value:T,owner:'attendance'|'approval'|'personnel'|'payroll'='attendance'):OvertimeFact<T>=>({state:'known',value,provenance:{owner,reference:'fixture',asOf:date,basis:'recorded'}});
+/** Activation needs explicit day types (an empty eligibility group is refused), as the editor's checkboxes give. */
+const allDays=()=>withOvertimeDayTypes(blankOvertimePattern(currency),['workday','off_day','rest_day','holiday']);
 const settings=():OvertimeSettings=>({rows:[{from:'0:00',to:'2:00',rate:'1.5',restRate:'2',phRate:'3',rounding:'down',roundTo:'0:15'},{from:'2:00',to:'',rate:'2',restRate:'',phRate:'3',rounding:'none',roundTo:''}],monthlyHours:'208',earningItemId:uuid(20)});
 function day(minutes:string,dayType='workday'):OvertimeInput {
  return {mode:'actual',sessionGranularity:'recorded',layer:'raw',source:{tenantId:uuid(1),employmentId:uuid(2),attendanceId:uuid(3),date,inputDigest:'a'.repeat(64),approvalDigest:'b'.repeat(64)},patternVersionId:uuid(4),assignmentId:uuid(5),currency:{...currency},
@@ -22,7 +25,7 @@ function day(minutes:string,dayType='workday'):OvertimeInput {
 
 describe('Overtime Settings table (board 4197534a)',()=>{
  it('round-trips the table through the canonical definition and activates with the owner-decided duration policies',()=>{
-  const definition=overtimeSettingsToDefinition(blankOvertimePattern(currency),settings());
+  const definition=overtimeSettingsToDefinition(allDays(),settings());
   expect(definition).toMatchObject({eligibilityBasis:'day',durationAllocation:'earliest',durationRounding:null,paymentCap:null,deductions:[],definitions:[]});
   expect(definition.rates.map(rate=>rate.id)).toEqual(['ot_normal','ot_rest','ot_holiday']);
   const valid=validateOvertimePattern(definition);
@@ -32,7 +35,7 @@ describe('Overtime Settings table (board 4197534a)',()=>{
  });
  it('pays each row at basic plus fixed allowance divided by the entered monthly hours, with a blank column using the OT Rate',()=>{
   // 2,080 / 208 hours = 10.00 an hour. Workday 3 h: 2 h x 1.5 + 1 h x 2.0 = 50.00.
-  const definition=validateOvertimePattern(overtimeSettingsToDefinition(blankOvertimePattern(currency),settings()));
+  const definition=validateOvertimePattern(overtimeSettingsToDefinition(allDays(),settings()));
   const workday=evaluateOvertimePattern(definition,day('180'));
   expect(workday.status).toBe('ready');if(workday.status!=='ready')throw new Error(JSON.stringify(workday.status==='refused'?workday.issues:workday.status));
   expect(workday.amountMinorUnits).toBe('5000');
@@ -47,7 +50,7 @@ describe('Overtime Settings table (board 4197534a)',()=>{
  it('recognises an unchanged starting template as one editable row and keeps any other saved definition read-only',()=>{
   expect(definitionToOvertimeSettings(prepareOvertimeStarter('ot30','day','earliest'))).toMatchObject({rows:[{from:'0:00',to:'',rate:'3',restRate:'',phRate:''}],monthlyHours:'',earningItemId:''});
   expect(definitionToOvertimeSettings(blankOvertimePattern(currency))?.rows).toHaveLength(1);
-  const custom=overtimeSettingsToDefinition(blankOvertimePattern(currency),settings());
+  const custom=overtimeSettingsToDefinition(allDays(),settings());
   expect(definitionToOvertimeSettings({...custom,durationRounding:{step:'15',mode:'down'}})).toBeNull();
   expect(definitionToOvertimeSettings({...custom,rates:custom.rates.map(rate=>rate.id==='ot_rest'?{...rate,timeBand:{fromMinute:1320,toMinute:360,endDayOffset:1}}:rate)})).toBeNull();
   expect(definitionToOvertimeSettings({...custom,rates:custom.rates.slice(0,2)})).toBeNull();

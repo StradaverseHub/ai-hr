@@ -12,6 +12,7 @@ import {todayInKualaLumpur} from '../lib/hr-date';
 import {createCompany} from '../core/admin';
 import {moduleKeyOf} from '../lib/audit-format';
 import {blankOvertimePattern} from '../lib/overtime-pattern-editor-scope';
+import {withOvertimeDayTypes} from '../lib/overtime-pattern-guided';
 import {overtimeSettingsToDefinition} from '../lib/overtime-pattern-settings';
 import {overtimeStarterSeed} from '../lib/overtime-pattern-starters';
 import {resolveOvertimePattern} from '../lib/overtime-pattern-evaluate';
@@ -24,7 +25,7 @@ const today=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(today()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
 const employees:{id:string;companyId:string;gradeId:string}[]=[];
 function definition(){
- return overtimeSettingsToDefinition(blankOvertimePattern({code:'MYR',minorScale:2}),{rows:[{from:'0:00',to:'',rate:'1.5',restRate:'',phRate:'3',rounding:'none',roundTo:''}],monthlyHours:'208',earningItemId:earningId});
+ return overtimeSettingsToDefinition(withOvertimeDayTypes(blankOvertimePattern({code:'MYR',minorScale:2}),['workday','off_day','rest_day','holiday']),{rows:[{from:'0:00',to:'',rate:'1.5',restRate:'',phRate:'3',rounding:'none',roundTo:''}],monthlyHours:'208',earningItemId:earningId});
 }
 async function draft(code:string,planned:Record<string,unknown>,companyIds=[b.companyId,second]){
  return saveOvertimePatternDraft(ctx,{draft:{code,creationCompanyId:b.companyId,companyIds,name:`${code} fictional`,description:'',definition:definition(),plannedEligibility:{v:1,criteria:{},employmentIds:[],priority:100,from:today(),...planned}}});

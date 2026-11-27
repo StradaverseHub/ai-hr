@@ -158,6 +158,7 @@ function EditableOvertimeWorkspace({detail,version,setup,starterKey,newPatternCo
     ...(dirty&&editable?[t('previewStep.unsaved')]:[]),
     ...(!companyIds.length?[t('previewStep.noCompanies')]:[]),
     ...(!planned.from?[t('previewStep.noFrom')]:[]),
+    ...((pattern.eligibility.type==='group'&&!pattern.eligibility.children.length)||overtimeDayTypes(pattern.eligibility)?.length===0?[t('previewStep.noDayTypes')]:[]),
   ];
   const criteriaText=OVERTIME_ELIGIBILITY_FIELDS.filter(field=>planned.criteria[field]?.length).map(field=>`${t(`fields.${field}`)}: ${planned.criteria[field]!.map(id=>criterionLabel(field,id)).join(', ')}`).join(' · ');
   const details=[

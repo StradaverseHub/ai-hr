@@ -30879,7 +30879,8 @@
       "hourlyBasis": "lương theo giờ ÷ {hours} giờ mỗi tháng",
       "unsaved": "Có thay đổi chưa lưu. Hãy lưu bản nháp trước khi bật.",
       "noCompanies": "Hãy chọn ít nhất một công ty trong Điều kiện áp dụng.",
-      "noFrom": "Hãy chọn ngày Áp dụng từ trong Điều kiện áp dụng."
+      "noFrom": "Hãy chọn ngày Áp dụng từ trong Điều kiện áp dụng.",
+      "noDayTypes": "Chọn các loại ngày được áp dụng trong Cài đặt chung."
     },
     "editor": {
       "codeNameRequired": "Nhập Mã và Tên mẫu làm thêm giờ để lưu bản nháp.",

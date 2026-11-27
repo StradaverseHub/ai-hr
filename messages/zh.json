@@ -30879,7 +30879,8 @@
       "hourlyBasis": "时薪 ÷ 每月 {hours} 小时",
       "unsaved": "有尚未保存的更改。启用前请先保存草稿。",
       "noCompanies": "请在适用条件中至少选择一家公司。",
-      "noFrom": "请在适用条件中选择适用起始日期。"
+      "noFrom": "请在适用条件中选择适用起始日期。",
+      "noDayTypes": "请在常规设置中选择包含的日期类型。"
     },
     "editor": {
       "codeNameRequired": "请填写加班方案代码和名称以保存草稿。",

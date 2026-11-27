@@ -62,8 +62,10 @@ describe('Overtime Pattern editor (board 4197534a)',()=>{
  it('labels the code field Overtime Pattern Code and saves a draft with only the Code and Name',async()=>{
   wrap(<OvertimeWorkspace detail={null} setup={richSetup} newPatternCompany={null}/>);
   expect(screen.getByLabelText(words.guided.patternLabel)).toBeInTheDocument();expect(words.guided.patternLabel).toMatch(/Overtime Pattern Code/);
+  // The browser asks for the required Code and Name before submitting; nothing is posted without them.
+  expect(screen.getByLabelText(words.guided.patternLabel)).toBeRequired();expect(screen.getByLabelText(words.guided.patternName)).toBeRequired();
   fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
-  expect(await screen.findByText(words.editor.codeNameRequired)).toBeVisible();expect(mocks.save).not.toHaveBeenCalled();
+  await new Promise(resolve=>setTimeout(resolve,0));expect(mocks.save).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText(words.guided.patternLabel),{target:{value:'OT001'}});
   fireEvent.change(screen.getByLabelText(words.guided.patternName),{target:{value:'Standard Overtime'}});
   fireEvent.click(screen.getByRole('button',{name:words.saveDraft}));
