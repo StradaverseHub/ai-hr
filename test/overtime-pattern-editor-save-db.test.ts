@@ -86,8 +86,9 @@ describe('editor saves never take hidden Overtime Pattern values from the browse
   expect(JSON.stringify(afterHidden)).toBe(JSON.stringify(beforeHidden));
   expect(afterHidden).toMatchObject({currency:{code:'SGD',minorScale:2},eligibilityBasis:'session',durationAllocation:'latest'});
   const audits=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,saved.patternId)).orderBy(asc(s.domainEvent.id));
-  expect(audits.at(-1)).toMatchObject({eventType:'overtime.draft.saved',payload:expect.objectContaining({versionId:saved.versionId})});
-  expect([...(audits.at(-1)!.payload as {companyIds:string[]}).companyIds]).toEqual([other.id]);
+  const latest=audits.find(row=>(row.payload as {revision?:number}).revision===after.version.revision);
+  expect(latest).toMatchObject({eventType:'overtime.draft.saved',payload:expect.objectContaining({versionId:saved.versionId})});
+  expect([...(latest!.payload as {companyIds:string[]}).companyIds]).toEqual([other.id]);
  });
  it('files a new pattern under the first chosen company with its currency, refuses mixed currencies and a duplicate code without writing',async()=>{
   const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Third fictional OT employer',country:'MY',currency:'SGD'});

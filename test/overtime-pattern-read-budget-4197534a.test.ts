@@ -52,7 +52,7 @@ import {blankOvertimePattern} from '../lib/overtime-pattern-editor-scope';
 import {overtimeSettingsToDefinition} from '../lib/overtime-pattern-settings';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import type {OvertimeFacts} from '../lib/overtime-pattern-model';
-import {closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
+import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {observeStatements} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
@@ -83,6 +83,8 @@ beforeAll(async()=>{
  companyId=fixture.singleCompanyId;
  const grades=await owner.db.insert(schema.jobGrade).values([{tenantId:b.tenantId,code:'FX-G1',name:'Fictional Grade One'},{tenantId:b.tenantId,code:'FX-G2',name:'Fictional Grade Two'}] as never).returning({id:schema.jobGrade.id});
  gradeA=grades[0].id;gradeB=grades[1].id;
+ // The fixture department is an "All Companies" label so every company's assignment may use it.
+ await owner.withTenant(adminCtx(b),tx=>tx.update(schema.department).set({isGlobal:true}).where(eq(schema.department.id,b.deptA)));
  // Every fixture employment gets a job grade (two in three on Grade One) and a dated assignment in its company.
  await owner.db.execute(sql`update employment set grade_id=case when (('x'||substr(md5(id::text),1,6))::bit(24)::int)%3=0 then ${gradeB}::uuid else ${gradeA}::uuid end where tenant_id=${b.tenantId}::uuid`);
  await owner.db.execute(sql`insert into assignment(tenant_id,employment_id,company_id,department_id,employment_type,valid_from)

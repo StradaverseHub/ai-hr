@@ -59,8 +59,9 @@ function decimalFromHundredths(value:bigint):string {
 }
 
 const dayCondition=(id:string,days:readonly string[]):OvertimeCondition=>({id:id+'_days',type:'group',logic:'and',children:[{id:id+'_day_type',type:'selection',field:'dayType',operator:'in',values:[...days]}]});
-function hourlyRate(divisorMinutes:string):OvertimeExpression {
- return {id:'hourly_rate',unit:'moneyPerHour',type:'hourlyRate',base:{id:'calculation_base',unit:'money',type:'field',field:'calculationBase'},divisorMinutes:{id:'hourly_divisor',unit:'minutes',type:'literal',value:divisorMinutes}};
+/** Every node id in a definition is unique, so each tier's expressions carry the tier id. */
+function hourlyRate(tierId:string,divisorMinutes:string):OvertimeExpression {
+ return {id:tierId+'_rate',unit:'moneyPerHour',type:'hourlyRate',base:{id:tierId+'_base',unit:'money',type:'field',field:'calculationBase'},divisorMinutes:{id:tierId+'_divisor',unit:'minutes',type:'literal',value:divisorMinutes}};
 }
 
 /** Replace only the rates of `base` with the table; currency, eligibility (day types) and the owner-decided duration
@@ -72,8 +73,9 @@ export function overtimeSettingsToDefinition(base:OvertimePattern,settings:Overt
   id:rate.id,name:rate.id,description:'',priority:index,when:dayCondition(rate.id,rate.days),timeBand:null,accumulation:'day',tierMode:'marginal',
   tiers:settings.rows.map((row,i):OvertimeTier=>{
    const multiplier=(rate.column==='rate'?row.rate:row[rate.column].trim()||row.rate).trim();
-   return {id:`${rate.id}_${i}`,from:overtimeClockToMinutes(row.from.trim()),to:row.to.trim()===''?null:overtimeClockToMinutes(row.to.trim()),
-    payment:{method:'hourly',rate:hourlyRate(divisor),multiplier:{id:'rate_multiplier',unit:'scalar',type:'literal',value:multiplier}},
+   const tierId=`${rate.id}_${i}`;
+   return {id:tierId,from:overtimeClockToMinutes(row.from.trim()),to:row.to.trim()===''?null:overtimeClockToMinutes(row.to.trim()),
+    payment:{method:'hourly',rate:hourlyRate(tierId,divisor),multiplier:{id:tierId+'_multiplier',unit:'scalar',type:'literal',value:multiplier}},
     mapping:{earningItemId:settings.earningItemId,currency},
     ...(row.rounding==='none'?{}:{rounding:{step:overtimeClockToMinutes(row.roundTo.trim()),mode:row.rounding}})};
   }),

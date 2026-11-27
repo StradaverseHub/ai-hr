@@ -1,5 +1,5 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen} from '@testing-library/react';
+import {cleanup,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import Page from '../app/admin/attendance/settings/overtime-patterns/page';
@@ -57,7 +57,7 @@ describe('Overtime workspace tolerates historical company selections',()=>{
   m.list.mockResolvedValue({items:[{id:pattern,kind:'formula',code:'OT001',legacyRuleId:null,revision:3,archived:false,name:'Standard Overtime',latestVersionId:version,latestDraft:false,liveVersionId:version,liveFrom:'2026-12-01',status:'active',pendingDraft:false,companyCount:58,companyIds:[],companyNames:['A','B'],writable:true}],nextCursor:null});
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({})})}</NextIntlClientProvider>);
   expect(screen.getByText('OT001')).toBeVisible();expect(screen.getByText('Standard Overtime')).toBeVisible();
-  expect(screen.getByText(en.overtimePatterns.listing.companyCount)).toBeVisible();expect(screen.getByText(en.overtimePatterns.status.active)).toBeVisible();
+  const table=screen.getByRole('table');expect(within(table).getByText(en.overtimePatterns.listing.companyCount)).toBeVisible();expect(within(table).getByText(en.overtimePatterns.status.active)).toBeVisible();
   expect(m.actions.mock.lastCall![0]).toMatchObject({row:{id:pattern,code:'OT001',writable:true,latestDraft:false,revision:3}});
   cleanup();m.workspace.mockClear();
   m.detail.mockResolvedValue({pattern:{id:pattern,kind:'formula',legacyRuleId:null,revision:3},versions:[{id:version,ordinal:1,status:'active',activatedAt:new Date(),effectiveFrom:'2026-12-01',companyIds:[active]}],assignments:[],writable:true});

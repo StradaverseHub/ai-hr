@@ -45,6 +45,8 @@ beforeAll(migrateTestDb);afterAll(closeAll);
 beforeEach(async()=>{
  employees.length=0;await resetDb();b=await seedAttendanceSubmissionBase();await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');ctx=adminCtx(b);
  second=(await createCompany(ctx,{legalName:'Second fictional OT employer',country:'MY',currency:'MYR'})).id;
+ // The fixture department is an "All Companies" label, so both companies' assignments may use it.
+ await owner.withTenant(ctx,tx=>tx.update(s.department).set({isGlobal:true}).where(eq(s.department.id,b.deptA)));
  const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'OT',name:'Overtime Pay fixture',kind:'allowance'}).returning();earningId=earning.id;
  const grades=await owner.db.insert(s.jobGrade).values([{tenantId:b.tenantId,code:'FX-EXE',name:'Fictional Executive'},{tenantId:b.tenantId,code:'FX-NEX',name:'Fictional Non-Executive'}] as never).returning({id:s.jobGrade.id});
  gradeA=grades[0].id;gradeB=grades[1].id;
