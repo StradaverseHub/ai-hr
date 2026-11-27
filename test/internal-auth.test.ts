@@ -309,7 +309,13 @@ describe('first-party authentication with real private storage and existing HR b
     await expect(startLogin({organization:'alpha',username:'owner',password:temp,native:false})).rejects.toMatchObject({code:'invalidLogin'});
     await expect(unlockPasswordAccount({...ctx,tenantId:randomUUID()},base.adminUserId)).rejects.toThrow();
     await expect(unlockPasswordAccount({...ctx,roles:['employee'],grants:[{role:'employee',companyId:null}]},base.adminUserId)).rejects.toThrow();
+    // Board 0735d1b7: the account page reads the lock under the same subject lock and offers Unlock only while it holds;
+    // a company-scoped administrator is refused the unlock.
+    const locked=(await readManagedAccount(ctx,base.adminUserId)).lockedAt;
+    expect(typeof locked).toBe('number');expect(Date.now()-locked!).toBeLessThan(600_000);
+    await expect(unlockPasswordAccount({...ctx,roles:['hr_admin'],grants:[{role:'hr_admin',companyId:base.companyId}]},base.adminUserId)).rejects.toThrow();
     await unlockPasswordAccount(ctx,base.adminUserId);
+    expect((await readManagedAccount(ctx,base.adminUserId)).lockedAt).toBeNull();
     expect((await startLogin({organization:'alpha',username:'owner',password:temp,native:false})).step).toBe('password');
     const events=await owner.client`select id from domain_event where tenant_id=${base.tenantId}::uuid and event_type='app-user.password-unlocked'`;
     expect(events).toHaveLength(1);

@@ -12591,7 +12591,7 @@
         "roleFilter": "Role filter",
         "allRoles": "All roles",
         "allCompanies": "All company scopes",
-        "userType": "Employee record",
+        "userType": "User Type",
         "allTypes": "All user types",
         "groupBy": "Group by",
         "group": {
@@ -12599,7 +12599,7 @@
           "status": "Status",
           "role": "Role",
           "company": "Company scope",
-          "type": "Employee record"
+          "type": "User Type"
         },
         "matched": "{count} of {total} users",
         "clearFilters": "Clear filters",
@@ -12642,7 +12642,17 @@
         "unavailableScope": "Reset Password and Authenticator Control are not available: this account is outside the companies you manage, or it has no HR sign-in account.",
         "unavailableProvider": "Reset Password and Authenticator Control are not available: sign-in for this installation is managed by another provider.",
         "accountControls": "Account controls",
-        "securityHistory": "Security history"
+        "securityHistory": "Security history",
+        "userTypeColumn": "User Type",
+        "userTypeValue": {
+          "internal": "Internal User",
+          "external": "External User"
+        },
+        "unlinkedDetail": "Login not linked to a Personnel Profile",
+        "viewEdit": "View/Edit",
+        "viewEditFor": "View or edit {name}",
+        "invitationSent": "Invitation sent {date}",
+        "invitationFailed": "Invitation email failed"
       },
       "accountTarget": {
         "chooseScope": "Select company scope",
@@ -12807,7 +12817,10 @@
         "attendanceRequestOnBehalf": "Lists only employees in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.request_on_behalf. The request follows the employee's own workflow.",
         "attendanceApproveOnBehalf": "Lists only approvers in companies you administer as HR, or people beneath you in your own reporting line, when you hold attendance.approve_on_behalf. Decisions are recorded as on behalf of the designated approver.",
         "rewardsAdmin": "Rewards must be enabled. Current Rewards setup permissions and company scope determine access to Review Plans and Earlier Plans. Whole-group reviewers and scoped HR administrators can have different read and edit rights; a platform role alone grants neither.",
-        "rewardsHistoryUpload": "Rewards must be enabled. Uploading earlier reward history requires an effective Group Rewards role and current group-wide and selected-company setup authority. HR administrator status alone does not grant upload access."
+        "rewardsHistoryUpload": "Rewards must be enabled. Uploading earlier reward history requires an effective Group Rewards role and current group-wide and selected-company setup authority. HR administrator status alone does not grant upload access.",
+        "batchInvitation": "Group-wide administrators only.",
+        "duplicateLogins": "Group-wide administrators only. A merge combines login accounts only; Personnel Profiles and HR records never change.",
+        "loginActivation": "Group-wide administrators only, for a person who has no login yet."
       },
       "scopedTo": "Scoped to {company} and its sub-companies",
       "screen": {
@@ -12837,7 +12850,243 @@
       "title": "Users & roles",
       "unlinkedLogin": "Unlinked login {id}",
       "userCount": "{count, plural, one {# user} other {# users}}",
-      "accountManagement": "Manage account"
+      "accountManagement": "Manage account",
+      "batchInvite": {
+        "title": "By Batch Send Invitation",
+        "intro": "Send account invitations to many people who are Pending Activation in one go. Choose the people, then the role, company scope and email language once for the whole batch. The emails go out in the background.",
+        "backToUsers": "Users",
+        "running": "A batch is still sending invitations. You can start another batch when it finishes.",
+        "openRunning": "Open the running batch",
+        "lastBatch": "See the results of your last batch",
+        "searchLabel": "Search",
+        "searchPlaceholder": "Name, employee ID or email",
+        "searchSubmit": "Search",
+        "clear": "Clear",
+        "eligibleCount": "{count, plural, =0 {Nobody here can receive an invitation} one {# person can receive an invitation} other {# people can receive an invitation}}",
+        "eligibleCapped": "More than {count} people can receive an invitation. One batch sends at most {count}, so search to narrow the list.",
+        "empty": "Nobody is waiting for an invitation.",
+        "emptySearch": "Nobody matches this search.",
+        "selectAll": "Select all {count} people who can be invited (matching this search)",
+        "selectPage": "Select everyone on this page",
+        "selectedCount": "{count, plural, =0 {Nobody selected} one {# person selected} other {# people selected}}",
+        "selectPerson": "Select {name}",
+        "colSelect": "Select",
+        "colName": "Employee Name",
+        "colEmployeeId": "Employee ID",
+        "colEmail": "Email Address",
+        "colStatus": "Can be invited",
+        "eligible": "Ready",
+        "ineligible": {
+          "noEmail": "No work email",
+          "emailInUse": "Email already used by another login or invitation"
+        },
+        "settings": "Invitation settings for the whole batch",
+        "role": "Role",
+        "scope": "Company scope",
+        "language": "Email language",
+        "review": "Review and send",
+        "confirmTitle": "Confirm the invitations",
+        "confirmBody": "{count, plural, one {# person} other {# people}} will be invited as {role}, scope {scope}, with the email in {language}.",
+        "pendingNote": "Everyone invited stays Pending Activation until they activate their own account. Sending an invitation never activates an account.",
+        "confirmCheck": "I have checked that {count, plural, one {# person} other {# people}} should receive an invitation with these settings.",
+        "send": "Send {count, plural, one {# invitation} other {# invitations}}",
+        "back": "Change the selection",
+        "problem": {
+          "countChanged": "The number of people who can be invited has changed to {count}. Check the selection and confirm again. Nothing was sent.",
+          "tooMany": "One batch can invite at most {count} people. Search to narrow the list. Nothing was sent.",
+          "empty": "Select at least one person who can receive an invitation.",
+          "running": "Another batch is still sending invitations. Wait until it finishes, then try again.",
+          "installing": "This feature is still being installed. Nothing was started. Try again in a few minutes.",
+          "invalid": "Check the role, company scope and email language, and tick the confirmation. Nothing was sent.",
+          "forbidden": "Only a group administrator can send invitations.",
+          "failed": "The batch could not be started. Nothing was sent.",
+          "nothingToRetry": "There are no failed invitation emails left to retry.",
+          "notStoppable": "This batch can no longer be stopped.",
+          "unavailable": "This batch is not available."
+        },
+        "resultsTitle": "Invitation batch",
+        "retryTitle": "Retry of failed invitation emails",
+        "startedAt": "Started {at}",
+        "dropped": "{count, plural, one {# selected person was} other {# selected people were}} no longer waiting for an invitation and left out of the batch.",
+        "state": {
+          "queued": "Waiting to start",
+          "preparing": "Getting ready",
+          "running": "Sending invitations",
+          "finalizing": "Finishing",
+          "discarding": "Stopping",
+          "completed": "Finished",
+          "failed": "Stopped because of an error",
+          "cancelled": "Stopped at your request"
+        },
+        "settingsLine": "Role: {role} · Company scope: {scope}",
+        "companyScoped": "one company",
+        "progressLabel": "Batch progress",
+        "progress": "{done} of {total} processed",
+        "outcome": {
+          "sent": "Sent",
+          "failed": "Failed",
+          "skipped": "Skipped",
+          "uncertain": "Not confirmed"
+        },
+        "uncertainHelp": "Not confirmed: the invitation was created but the email result could not be confirmed. It is not sent again automatically. Check the email log, or resend it from the person's page.",
+        "stoppedError": "The batch stopped because of an error. The results below show who was reached before it stopped.",
+        "cancel": "Stop the batch",
+        "cancelHelp": "People not reached yet are not invited. Invitations already sent stay valid.",
+        "cancelRequested": "Stopping after the current person.",
+        "retry": "Retry failed only ({count})",
+        "retryHelp": "Sends a new invitation email only to the people whose email failed.",
+        "resultsHeading": "Results",
+        "resultsFilter": "Show results",
+        "filterAll": "All ({count})",
+        "noResults": "No results to show.",
+        "colResult": "Result",
+        "colReason": "Reason",
+        "unknownPerson": "Person not available",
+        "more": "Show more",
+        "firstPage": "Back to the first results",
+        "reason": {
+          "notCandidate": "No longer waiting for activation",
+          "hasLogin": "Already has a login account",
+          "alreadyInvited": "Already invited (for example by another administrator a moment earlier)",
+          "setupInProgress": "Username and password setup is in progress",
+          "leftCompany": "Has left the company",
+          "noEmail": "No work email",
+          "emailInUse": "Another person already has a login or invitation with this email",
+          "notPending": "The invitation is no longer pending",
+          "alreadyRetried": "This email was already retried",
+          "notRetryable": "This email can no longer be retried",
+          "stepFailed": "Could not be processed",
+          "relayUnavailable": "The email service is not available",
+          "providerUnavailable": "The sign-in service is not available",
+          "notEligible": "The invitation could not be emailed",
+          "uncertain": "The email result could not be confirmed",
+          "pending": "Email result not confirmed",
+          "sent": "Email recorded as sent",
+          "failed": "Email recorded as failed",
+          "skipped": "Email recorded as not sent",
+          "other": "See the email log"
+        },
+        "open": "By Batch Send Invitation"
+      },
+      "duplicates": {
+        "column": {
+          "master": "Master",
+          "role": "Role in merge",
+          "employeeName": "Employee Name",
+          "employeeId": "Employee ID",
+          "username": "Username",
+          "email": "Email Address",
+          "icNumber": "New IC Number",
+          "passportNumber": "Passport Number",
+          "accountStatus": "Account Status",
+          "userType": "User Type",
+          "lastLogin": "Last Login"
+        },
+        "status": {
+          "active": "Active",
+          "inactive": "Inactive"
+        },
+        "inactiveCause": {
+          "archived": "Switched off",
+          "left": "Employee has left"
+        },
+        "userType": {
+          "internal": "Internal User",
+          "external": "External User"
+        },
+        "neverLoggedIn": "Never logged in",
+        "masterOf": "Master of {count, plural, one {# merged login} other {# merged logins}}",
+        "basis": {
+          "ic": "Same New IC Number",
+          "passport": "Same Passport Number",
+          "email": "Same Work Email Address"
+        },
+        "accountCount": "{count, plural, one {# account} other {# accounts}}",
+        "merge": "Merge",
+        "differentProfiles": "These accounts point to different Personnel Profiles. A merge combines the logins only: each Personnel Profile stays as it is, and the master signs in to its own profile.",
+        "lockedMaster": "One account here is already a master. It stays the master and cannot be swapped for another.",
+        "conflictingMasters": "Two accounts here are already masters of other logins. Undo one of those merges before merging this group, so one person never has two competing masters.",
+        "tooMany": "This group has more than {max} accounts and cannot be merged in one step.",
+        "chooseMaster": "Choose {name} as the Master Login Account",
+        "help": {
+          "identity": "Login accounts whose Personnel Profiles carry exactly the same New IC Number or Passport Number. Pick the Master Login Account in a group and press Merge.",
+          "email": "Login accounts whose Personnel Profiles carry the same work email address (capital letters ignored; blank emails never match). Pick the Master Login Account in a group and press Merge."
+        },
+        "empty": {
+          "identity": "No login accounts share a New IC Number or Passport Number.",
+          "email": "No login accounts share a work email address."
+        },
+        "emptyHelp": "Near matches between Personnel Profiles are reviewed on People > Personnel > Duplicates.",
+        "personnelDuplicates": "Open Personnel duplicates",
+        "mergeTitle": "Merge login accounts",
+        "groupGone": "This duplicate group is no longer available. It may have been merged or changed by someone else.",
+        "backToTab": "Back to the duplicate list",
+        "chooseMasterFirst": "Choose the Master Login Account in the group first.",
+        "mergeHelp": "After the merge only the master can sign in. The other logins are switched off and their sessions end. Their account IDs, history and grants are kept, and each can be brought back with Undo merge. Personnel Profiles, payroll, leave, attendance and all other HR records do not change.",
+        "differentProfilesMerge": "These accounts point to different Personnel Profiles (for example someone hired twice). The master signs in to its own profile only. The other profile stays complete and HR can still see it.",
+        "masterBadge": "Master Login Account",
+        "mergedBadge": "Will be switched off",
+        "carryTitle": "Access the master should take over",
+        "carryHelp": "These roles, company access and AI assistant access are held by the other accounts and not by the master. Tick what the master should take over. Nothing carries over unless you tick it.",
+        "carryNothing": "The other accounts hold no access that the master does not already have.",
+        "carryRole": "{role} · {scope} (held by {from})",
+        "carryAssistant": "AI assistant access (held by {from})",
+        "mergeEffect": "{count, plural, one {# login will be switched off and merged into the master.} other {# logins will be switched off and merged into the master.}}",
+        "reason": "Reason",
+        "confirmationLabel": "Type {word} to confirm",
+        "mergeSubmit": "{count, plural, one {Merge # login into the master} other {Merge # logins into the master}}",
+        "cancel": "Cancel",
+        "merged": "Logins merged. Only the master can sign in now.",
+        "undone": "Merge undone. The login is back as it was before the merge.",
+        "error": {
+          "forbidden": "Only a group administrator can merge logins.",
+          "invalid": "The request was not valid. Open the group again.",
+          "stale": "This group changed after the screen opened. Open it again.",
+          "masterMerged": "The chosen master was itself merged into another login.",
+          "memberIsMaster": "An account in this group is already a master and must stay the master.",
+          "ownLogin": "You cannot merge away your own login.",
+          "lastAdmin": "This merge would leave no group administrator able to sign in.",
+          "confirmation": "Type the confirmation word exactly as shown.",
+          "alreadyUndone": "This merge was already undone.",
+          "carry": "The access to carry over or remove changed. Open the page again.",
+          "failed": "The change could not be saved. Nothing was changed."
+        }
+      },
+      "tabs": {
+        "label": "User lists",
+        "all": "All Users",
+        "identity": "Duplicate IC / Passport",
+        "email": "Duplicate Work Email Address",
+        "duplicates": "Duplicate login accounts"
+      },
+      "activation": {
+        "screen": "Account activation",
+        "title": "Activate account · {name}",
+        "information": "Account information",
+        "personnelProfile": "Personnel Profile",
+        "openPersonnelProfile": "Open Personnel Profile",
+        "actions": "Account actions",
+        "pendingNote": "This person stays Pending Activation until they activate their own account. Sending an invitation never activates an account.",
+        "setupInProgress": "A username and password setup is in progress for this person.",
+        "invitedEmail": "Invitation sent to",
+        "invitedRole": "Role",
+        "invitationCreated": "Invitation created",
+        "invitationExpires": "Invitation expires",
+        "emailStatus": "Invitation email",
+        "sentAt": "Sent {at}",
+        "delivery": {
+          "pending": "Sending or not confirmed yet",
+          "sent": "Sent",
+          "failed": "The invitation email failed",
+          "skipped": "Not sent",
+          "none": "No email recorded"
+        },
+        "deliveryError": "Reason code: {code}",
+        "resend": "Resend invitation",
+        "resendHelp": "Resend replaces this invitation with a new one and emails it again. Revoke cancels the invitation.",
+        "resent": "Invitation sent again.",
+        "resendFailed": "The invitation could not be resent. Check the email delivery log and try again."
+      }
     },
     "audit": {
       "title": "Audit trail",
@@ -39924,8 +40173,46 @@
       "authenticatorEnrolled": "Authenticator set up",
       "unlocked": "Sign-in lock cleared",
       "other": "Account activity",
-      "byActor": "{event} by {actor}"
-    }
+      "byActor": "{event} by {actor}",
+      "merged": "Login merged",
+      "mergeUndone": "Login merge undone"
+    },
+    "merge": {
+      "title": "Login merge",
+      "mergedInto": "This login was merged into <link>{name}</link> and can no longer sign in.",
+      "unnamed": "Unnamed login",
+      "mergedBy": "Merged by {name} on {at}",
+      "reasonShown": "Reason: {reason}",
+      "undoHelp": "Undo merge switches this login back exactly as it was before the merge. Its account ID, history and grants never changed.",
+      "carriedTitle": "Access this merge gave the master. Tick any the master should no longer keep.",
+      "removeRole": "Remove {role} · {scope} from the master",
+      "removeAssistant": "Remove AI assistant access from the master",
+      "undoReason": "Reason for undoing the merge",
+      "undo": "Undo merge",
+      "masterHelp": "These logins were merged into this account. Open one to see its merge or to undo it.",
+      "mergedOn": "Merged on {at}"
+    },
+    "pageTitle": "Manage account · {name}",
+    "section": {
+      "information": "Account information",
+      "actions": "Account actions",
+      "edit": "Edit account information"
+    },
+    "statusDetail": {
+      "suspended": "Suspended",
+      "expired": "Expired",
+      "archived": "Switched off",
+      "left": "Employee has left",
+      "preparing": "Setup pending"
+    },
+    "personnelProfile": "Personnel Profile",
+    "openPersonnelProfile": "Open Personnel Profile",
+    "lockedSince": "The password has been locked since {at} after too many failed sign-in attempts.",
+    "expiredHelp": "This account has passed its Account Active Until date. Change the date under Edit account information, then reactivate it.",
+    "preparingHelp": "The username and password setup for this login has not been finished.",
+    "leftHelp": "It opens again automatically if the person is employed again.",
+    "mergedHelp": "This login was merged into a master login. Use Undo merge below to switch it back on.",
+    "noHistory": "No account activity yet."
   },
   "organisationTagging": {
     "title": "Group structure and organisation tags",
@@ -41089,6 +41376,20 @@
         "cancelled": {
           "title": "Personnel completion stopped",
           "body": "Completed checkpoints remain recorded."
+        }
+      },
+      "accountInvitationBatch": {
+        "completed": {
+          "title": "Invitation batch finished",
+          "body": "Open By Batch Send Invitation to see who was sent, who failed and who was skipped."
+        },
+        "failed": {
+          "title": "Invitation batch stopped",
+          "body": "Invitations already sent stay valid. Open By Batch Send Invitation to see the results and the reason."
+        },
+        "cancelled": {
+          "title": "Invitation batch stopped",
+          "body": "Invitations already sent stay valid. Open By Batch Send Invitation to see the results."
         }
       }
     },

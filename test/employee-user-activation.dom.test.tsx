@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, within, fireEvent } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 import {Children,isValidElement,type ReactNode} from 'react';
@@ -11,6 +11,10 @@ vi.mock('next-intl/server', () => ({ getLocale:m.locale, getTranslations: async 
 } }));
 vi.mock('../app/admin/users/security-page',()=>({SecurityPageHeader:()=>null}));
 vi.mock('../app/admin/users/legacy-navigation',()=>({LegacySecurityNavigation:()=>null}));
+// Board 0735d1b7: the tab bar is an async server component (its counts have their own DB test), and merged logins come
+// from the merge owner (test/login-merge.test.ts); neither is what this file proves.
+vi.mock('../app/admin/users/users-tabs',()=>({UsersTabs:()=>null}));
+vi.mock('../core/login-merge',()=>({listActiveMergedLogins:async()=>new Map()}));
 vi.mock('../lib/security-center-authz',()=>({requireGroupAdministration:async()=>({tenantId:'tenant'})}));
 vi.mock('../lib/authz', () => ({ requireAdmin: async () => ({ tenantId: 'tenant' }), isGroupAdmin: m.group }));
 vi.mock('../lib/identity/config', async importOriginal => ({...await importOriginal<typeof import('../lib/identity/config')>(), keycloakSelected: m.enabled}));
@@ -39,12 +43,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe('employee activation actions and lifecycle display', () => {
-  it('shows pending activation without access-management actions and links both methods by person ID', async () => {
+  it('shows pending activation without access-management actions and links its activation page by person ID', async () => {
     await show(); const d = within(directory());
-    // Board 07c98c36: Pending Activation shows its two actions directly on the row.
+    // Board 0735d1b7: one View/Edit per row; a person waiting for a login opens the activation page, which offers
+    // Set Username and Password and Send Invitation (test/account-activation-page.test.ts).
     expect(d.getByText('Pending Activation')).toBeTruthy();expect(d.getByText('A-001')).toBeTruthy();expect(d.getByText('Never Logged In')).toBeTruthy();
-    expect(d.getByRole('link', { name: 'Set Username and Password' }).getAttribute('href')).toBe('/admin/users/create?activate=person-a');
-    expect(d.getByRole('link', { name: 'Send Invitation' }).getAttribute('href')).toBe('/admin/users/invite?activate=person-a');
+    expect(d.getByRole('link', { name: 'View or edit Employee A' }).getAttribute('href')).toBe('/admin/users/activation/person-a');
+    expect(d.getAllByRole('link')).toHaveLength(1);
     expect(d.queryByRole('button',{name:'Edit'})).toBeNull();
     expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
     expect(d.queryByRole('button',{name:'Archive'})).toBeNull();
@@ -52,8 +57,7 @@ describe('employee activation actions and lifecycle display', () => {
   it('offers the same person-bound activation course under embedded internal authentication', async () => {
     m.enabled.mockReturnValue(false);m.internal.mockReturnValue(true);
     await show();const d=within(directory());
-    expect(d.getByRole('link',{name:'Set Username and Password'})).toHaveAttribute('href','/admin/users/create?activate=person-a');
-    expect(d.getByRole('link',{name:'Send Invitation'})).toHaveAttribute('href','/admin/users/invite?activate=person-a');
+    expect(d.getByRole('link',{name:'View or edit Employee A'})).toHaveAttribute('href','/admin/users/activation/person-a');
     expect(d.queryByRole('button',{name:'Archive'})).toBeNull();expect(d.queryByRole('button',{name:'Add role'})).toBeNull();
     expect(m.enrollments).toHaveBeenCalled();
   });
@@ -90,14 +94,16 @@ describe('employee activation actions and lifecycle display', () => {
     await show(); const d = within(directory());
     expect(d.getAllByText('Employee A')).toHaveLength(1); expect(d.getAllByText('Employee B')).toHaveLength(1);
     expect(d.getAllByText('Pending Activation')).toHaveLength(2); expect(d.getAllByText('Invited')).toHaveLength(1);
-    expect(d.getAllByRole('link', { name: 'Set Username and Password' })).toHaveLength(1);
-    expect(d.getByRole('link', { name: 'Set Username and Password' }).getAttribute('href')).toContain('person-b');
+    // Each person's row opens their own activation page; the invited one shows the invitation and its email there.
+    expect(d.getByRole('link', { name: 'View or edit Employee A' }).getAttribute('href')).toBe('/admin/users/activation/person-a');
+    expect(d.getByRole('link', { name: 'View or edit Employee B' }).getAttribute('href')).toBe('/admin/users/activation/person-b');
   });
   it('shows unfinished manual setup once and offers resume instead of a second activation', async () => {
     m.enrollments.mockResolvedValue([{ id: 'setup', person_id: person.id, status: 'prepared', app_user_id: null }]);
     await show({ activate: person.id }); const d = within(directory());
-    expect(d.getByText('Setup pending')).toBeTruthy(); expect(d.getByRole('link', { name: 'Resume setup' })).toBeTruthy();
-    expect(d.queryByRole('link',{name:'Set Username and Password'})).toBeNull();
+    expect(d.getByText('Setup pending')).toBeTruthy();
+    // Resume lives on the activation page; the row never offers a second activation.
+    expect(d.getAllByRole('link').map(link=>link.getAttribute('href'))).toEqual(['/admin/users/activation/person-a']);
     const data=await import('../app/admin/users/data');expect((await data.loadUsersData({tenantId:'tenant'} as never)).pendingEmployees).toEqual([]);
   });
   it('hidden archived logins cannot reappear through an invitation or a concurrent pending read', async () => {
@@ -108,13 +114,14 @@ describe('employee activation actions and lifecycle display', () => {
     expect(m.users).toHaveBeenCalledWith(expect.anything(), { includeArchived: true });
     const data=await import('../app/admin/users/data');expect((await data.loadUsersData({tenantId:'tenant'} as never)).pendingEmployees).toEqual([]);
   });
-  it('labels a named standalone login and retains its normal archive and role controls',async()=>{
+  it('labels a named standalone login as an External User and opens its account page',async()=>{
     m.users.mockResolvedValue({users:[{id:'external-user',personId:'external-person',name:'External admin',email:'external@example.test',hasEmployment:false,roles:[{id:'grant',role:'hr_admin',companyId:null}]}],hiddenCount:0});
     m.candidates.mockResolvedValue([]);await show();const d=within(directory());
-    expect(d.getByText('External admin')).toBeTruthy();expect(d.queryByText('No employee record')).toBeNull();
-    fireEvent.click(d.getByRole('button',{name:'Edit'}));
-    expect(d.getByText('No employee record')).toBeTruthy();
-    expect(d.getByRole('button',{name:'Archive'})).toBeTruthy();expect(d.getByRole('button',{name:'Add role'})).toBeTruthy();
+    expect(d.getByText('External admin')).toBeTruthy();
+    // Board 0735d1b7: a standalone login is an External User; Archive and roles live on its account page.
+    expect(d.getByText('External User')).toBeTruthy();
+    expect(d.getByRole('link',{name:'View or edit External admin'})).toHaveAttribute('href','/admin/users/external-user/account');
+    expect(d.queryByRole('button',{name:'Archive'})).toBeNull();
   });
   it('sends display fields to the client directory without full provider identity subjects',async()=>{
     const subject='provider-private-subject-abcdef123456';

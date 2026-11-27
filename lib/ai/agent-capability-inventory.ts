@@ -61,6 +61,9 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/settings/login/remembered-mfa-actions.ts":{"saveRememberedMfaAction":"handoff:access_and_authentication"},
  "app/admin/security-center/password-policy/actions.ts":{"saveFullPasswordPolicy":"handoff:access_and_authentication"},
  "app/admin/users/password-unlock-actions.ts":{"unlockPasswordAccountAction":"handoff:access_and_authentication"},
+ // Board 0735d1b7: batch invitation and login merge are human-decided Security Center actions, never AI tools.
+ "app/admin/users/invitations/batch/actions.ts":{"cancelInvitationBatchAction":"handoff:access_and_authentication","retryFailedInvitationsAction":"handoff:access_and_authentication","startInvitationBatchAction":"handoff:access_and_authentication"},
+ "app/admin/users/duplicates/actions.ts":{"mergeLoginsAction":"handoff:access_and_authentication","undoLoginMergeAction":"handoff:access_and_authentication"},
  "app/lifecycle/probation/intake/[employmentId]/evidence/route.ts#route":{"POST":"backlog:approve"},
 // Probation reshape onto shared HR automation (ADR 2026-11-15-probation-shared-automation): the shared builders, Probation
 // access, saved-form import, Personnel postings and routed letter templates. Configuration and postings stay Approve;

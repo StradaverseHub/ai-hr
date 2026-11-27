@@ -20,6 +20,26 @@ A named person who can sign in through explicitly granted access without holding
 Their login does not establish employment, payroll eligibility or a reporting relationship.
 _Avoid_: Dummy employee, fake employee, unlinked identity
 
+**Internal user**:
+A login linked to a Personnel Profile that holds at least one employment, current or ended. A former
+employee whose Personnel Profile still exists stays an Internal user. Worked out from the records; never stored.
+_Avoid_: Staff login, employee account
+
+**External user**:
+A login that is not linked to a Personnel Profile with an employment: a User without an employee record, or a
+login linked to no person at all.
+_Avoid_: Guest, contractor, non-employee
+
+**Master Login Account**:
+The one login that HR chooses to keep when several logins of the same person are merged. Only the master can
+still sign in; it takes over another login's roles or AI assistant access only where HR ticks them.
+_Avoid_: Primary user, main employee, merged person
+
+**Merged login**:
+A login that HR merged under a Master Login Account. It is switched off, keeps its own ID, grants and history,
+and can be restored with Undo merge. A merge combines logins only; Personnel Profiles and employments never change.
+_Avoid_: Deleted user, merged employee, merged profile
+
 ## Employee submissions
 
 **Reported clock attempt**:

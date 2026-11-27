@@ -12591,7 +12591,7 @@
         "roleFilter": "Lọc vai trò",
         "allRoles": "Tất cả vai trò",
         "allCompanies": "Tất cả phạm vi công ty",
-        "userType": "Hồ sơ nhân viên",
+        "userType": "Loại người dùng",
         "allTypes": "Tất cả loại người dùng",
         "groupBy": "Nhóm theo",
         "group": {
@@ -12599,7 +12599,7 @@
           "status": "Trạng thái",
           "role": "Vai trò",
           "company": "Phạm vi công ty",
-          "type": "Hồ sơ nhân viên"
+          "type": "Loại người dùng"
         },
         "matched": "{count} trong {total} người dùng",
         "clearFilters": "Xóa bộ lọc",
@@ -12642,7 +12642,17 @@
         "unavailableScope": "Không thể dùng Đặt lại mật khẩu và Kiểm soát trình xác thực: tài khoản này nằm ngoài các công ty bạn quản lý hoặc không có tài khoản đăng nhập HR.",
         "unavailableProvider": "Không thể dùng Đặt lại mật khẩu và Kiểm soát trình xác thực: việc đăng nhập của hệ thống này do một nhà cung cấp khác quản lý.",
         "accountControls": "Kiểm soát tài khoản",
-        "securityHistory": "Lịch sử bảo mật"
+        "securityHistory": "Lịch sử bảo mật",
+        "userTypeColumn": "Loại người dùng",
+        "userTypeValue": {
+          "internal": "Người dùng nội bộ",
+          "external": "Người dùng bên ngoài"
+        },
+        "unlinkedDetail": "Tài khoản đăng nhập chưa liên kết với Hồ sơ nhân sự",
+        "viewEdit": "Xem/Sửa",
+        "viewEditFor": "Xem hoặc sửa {name}",
+        "invitationSent": "Đã gửi lời mời {date}",
+        "invitationFailed": "Gửi email lời mời không thành công"
       },
       "accountTarget": {
         "chooseScope": "Chọn phạm vi công ty",
@@ -12807,7 +12817,10 @@
         "attendanceRequestOnBehalf": "Chỉ liệt kê nhân viên trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.request_on_behalf. Yêu cầu theo quy trình của chính nhân viên đó.",
         "attendanceApproveOnBehalf": "Chỉ liệt kê người phê duyệt trong các công ty bạn quản trị với vai trò HR, hoặc người dưới bạn trong tuyến báo cáo của chính bạn, khi bạn có quyền attendance.approve_on_behalf. Quyết định được ghi nhận là thay mặt người phê duyệt được chỉ định.",
         "rewardsAdmin": "Phải bật Rewards. Quyền thiết lập hiện hành và phạm vi công ty quyết định quyền truy cập Kế hoạch đánh giá và Kế hoạch trước đây. Người đánh giá toàn tập đoàn và quản trị viên nhân sự theo phạm vi có thể có quyền đọc, sửa khác nhau; riêng vai trò nền tảng không cấp các quyền này.",
-        "rewardsHistoryUpload": "Phải bật Rewards. Tải lịch sử thưởng trước đây lên cần vai trò Group Rewards có hiệu lực cùng quyền thiết lập hiện hành cho toàn tập đoàn và công ty đã chọn. Riêng tư cách quản trị viên nhân sự không cấp quyền tải lên."
+        "rewardsHistoryUpload": "Phải bật Rewards. Tải lịch sử thưởng trước đây lên cần vai trò Group Rewards có hiệu lực cùng quyền thiết lập hiện hành cho toàn tập đoàn và công ty đã chọn. Riêng tư cách quản trị viên nhân sự không cấp quyền tải lên.",
+        "batchInvitation": "Chỉ quản trị viên cấp tập đoàn.",
+        "duplicateLogins": "Chỉ quản trị viên cấp tập đoàn. Gộp chỉ gộp tài khoản đăng nhập; Hồ sơ nhân sự và dữ liệu nhân sự không thay đổi.",
+        "loginActivation": "Chỉ quản trị viên cấp tập đoàn, cho người chưa có tài khoản đăng nhập."
       },
       "scopedTo": "Phạm vi đến {company} và các công ty con của nó",
       "screen": {
@@ -12837,7 +12850,243 @@
       "title": "Người dùng & vai trò",
       "unlinkedLogin": "Đăng nhập chưa liên kết {id}",
       "userCount": "{count, plural, one {# người dùng} other {# người dùng}}",
-      "accountManagement": "Quản lý tài khoản"
+      "accountManagement": "Quản lý tài khoản",
+      "batchInvite": {
+        "title": "Gửi lời mời theo lô",
+        "intro": "Gửi lời mời tạo tài khoản cho nhiều người đang Chờ kích hoạt cùng một lúc. Chọn người, sau đó chọn vai trò, phạm vi công ty và ngôn ngữ email một lần cho cả lô. Email được gửi ở chế độ nền.",
+        "backToUsers": "Người dùng",
+        "running": "Một lô vẫn đang gửi lời mời. Bạn có thể bắt đầu lô khác khi lô này hoàn tất.",
+        "openRunning": "Mở lô đang chạy",
+        "lastBatch": "Xem kết quả lô gần nhất của bạn",
+        "searchLabel": "Tìm kiếm",
+        "searchPlaceholder": "Tên, mã nhân viên hoặc email",
+        "searchSubmit": "Tìm kiếm",
+        "clear": "Xóa",
+        "eligibleCount": "{count, plural, =0 {Không có ai ở đây có thể nhận lời mời} other {# người có thể nhận lời mời}}",
+        "eligibleCapped": "Có hơn {count} người có thể nhận lời mời. Mỗi lô gửi tối đa {count} người, vì vậy hãy tìm kiếm để thu hẹp danh sách.",
+        "empty": "Không có ai đang chờ lời mời.",
+        "emptySearch": "Không có ai khớp với tìm kiếm này.",
+        "selectAll": "Chọn tất cả {count} người có thể mời (khớp với tìm kiếm này)",
+        "selectPage": "Chọn mọi người trên trang này",
+        "selectedCount": "{count, plural, =0 {Chưa chọn ai} other {Đã chọn # người}}",
+        "selectPerson": "Chọn {name}",
+        "colSelect": "Chọn",
+        "colName": "Tên nhân viên",
+        "colEmployeeId": "Mã nhân viên",
+        "colEmail": "Địa chỉ email",
+        "colStatus": "Có thể mời",
+        "eligible": "Sẵn sàng",
+        "ineligible": {
+          "noEmail": "Không có email công việc",
+          "emailInUse": "Email đã được một tài khoản đăng nhập hoặc lời mời khác sử dụng"
+        },
+        "settings": "Thiết lập lời mời cho cả lô",
+        "role": "Vai trò",
+        "scope": "Phạm vi công ty",
+        "language": "Ngôn ngữ email",
+        "review": "Xem lại và gửi",
+        "confirmTitle": "Xác nhận lời mời",
+        "confirmBody": "{count, plural, other {# người}} sẽ được mời với vai trò {role}, phạm vi {scope}, email bằng {language}.",
+        "pendingNote": "Mỗi người được mời vẫn ở trạng thái Chờ kích hoạt cho đến khi tự kích hoạt tài khoản. Việc gửi lời mời không bao giờ kích hoạt tài khoản.",
+        "confirmCheck": "Tôi đã kiểm tra rằng {count, plural, other {# người}} cần nhận lời mời với các thiết lập này.",
+        "send": "Gửi {count, plural, other {# lời mời}}",
+        "back": "Thay đổi lựa chọn",
+        "problem": {
+          "countChanged": "Số người có thể mời đã thay đổi thành {count}. Hãy kiểm tra lựa chọn và xác nhận lại. Chưa có gì được gửi.",
+          "tooMany": "Mỗi lô chỉ mời được tối đa {count} người. Hãy tìm kiếm để thu hẹp danh sách. Chưa có gì được gửi.",
+          "empty": "Hãy chọn ít nhất một người có thể nhận lời mời.",
+          "running": "Một lô khác vẫn đang gửi lời mời. Hãy đợi lô đó hoàn tất rồi thử lại.",
+          "installing": "Tính năng này vẫn đang được cài đặt. Chưa có gì được bắt đầu. Hãy thử lại sau vài phút.",
+          "invalid": "Hãy kiểm tra vai trò, phạm vi công ty và ngôn ngữ email, rồi đánh dấu xác nhận. Chưa có gì được gửi.",
+          "forbidden": "Chỉ quản trị viên tập đoàn mới có thể gửi lời mời.",
+          "failed": "Không thể bắt đầu lô này. Chưa có gì được gửi.",
+          "nothingToRetry": "Không còn email mời thất bại nào để thử lại.",
+          "notStoppable": "Không thể dừng lô này nữa.",
+          "unavailable": "Lô này không khả dụng."
+        },
+        "resultsTitle": "Lô lời mời",
+        "retryTitle": "Thử lại các email mời thất bại",
+        "startedAt": "Bắt đầu lúc {at}",
+        "dropped": "{count, plural, other {# người đã chọn}} không còn chờ lời mời và đã bị loại khỏi lô.",
+        "state": {
+          "queued": "Đang chờ bắt đầu",
+          "preparing": "Đang chuẩn bị",
+          "running": "Đang gửi lời mời",
+          "finalizing": "Đang hoàn tất",
+          "discarding": "Đang dừng",
+          "completed": "Đã hoàn tất",
+          "failed": "Đã dừng do lỗi",
+          "cancelled": "Đã dừng theo yêu cầu của bạn"
+        },
+        "settingsLine": "Vai trò: {role} · Phạm vi công ty: {scope}",
+        "companyScoped": "một công ty",
+        "progressLabel": "Tiến độ của lô",
+        "progress": "Đã xử lý {done} / {total}",
+        "outcome": {
+          "sent": "Đã gửi",
+          "failed": "Thất bại",
+          "skipped": "Bỏ qua",
+          "uncertain": "Chưa xác nhận"
+        },
+        "uncertainHelp": "Chưa xác nhận: lời mời đã được tạo nhưng không thể xác nhận kết quả email. Hệ thống không tự động gửi lại. Hãy kiểm tra nhật ký email hoặc gửi lại từ trang của người đó.",
+        "stoppedError": "Lô đã dừng do lỗi. Kết quả bên dưới cho biết những ai đã được xử lý trước khi dừng.",
+        "cancel": "Dừng lô",
+        "cancelHelp": "Những người chưa được xử lý sẽ không được mời. Các lời mời đã gửi vẫn có hiệu lực.",
+        "cancelRequested": "Sẽ dừng sau người hiện tại.",
+        "retry": "Chỉ thử lại các mục thất bại ({count})",
+        "retryHelp": "Chỉ gửi email mời mới cho những người có email bị thất bại.",
+        "resultsHeading": "Kết quả",
+        "resultsFilter": "Hiển thị kết quả",
+        "filterAll": "Tất cả ({count})",
+        "noResults": "Không có kết quả để hiển thị.",
+        "colResult": "Kết quả",
+        "colReason": "Lý do",
+        "unknownPerson": "Không có thông tin người này",
+        "more": "Hiển thị thêm",
+        "firstPage": "Quay lại các kết quả đầu tiên",
+        "reason": {
+          "notCandidate": "Không còn chờ kích hoạt",
+          "hasLogin": "Đã có tài khoản đăng nhập",
+          "alreadyInvited": "Đã được mời (ví dụ bởi một quản trị viên khác vừa xong)",
+          "setupInProgress": "Đang thiết lập tên đăng nhập và mật khẩu",
+          "leftCompany": "Đã nghỉ việc",
+          "noEmail": "Không có email công việc",
+          "emailInUse": "Một người khác đã có tài khoản đăng nhập hoặc lời mời với email này",
+          "notPending": "Lời mời không còn ở trạng thái chờ",
+          "alreadyRetried": "Email này đã được thử lại",
+          "notRetryable": "Email này không thể thử lại nữa",
+          "stepFailed": "Không thể xử lý",
+          "relayUnavailable": "Dịch vụ email không khả dụng",
+          "providerUnavailable": "Dịch vụ đăng nhập không khả dụng",
+          "notEligible": "Không thể gửi lời mời qua email",
+          "uncertain": "Không thể xác nhận kết quả email",
+          "pending": "Chưa xác nhận kết quả email",
+          "sent": "Email được ghi nhận là đã gửi",
+          "failed": "Email được ghi nhận là thất bại",
+          "skipped": "Email được ghi nhận là chưa gửi",
+          "other": "Xem nhật ký email"
+        },
+        "open": "Gửi lời mời theo lô"
+      },
+      "duplicates": {
+        "column": {
+          "master": "Tài khoản chính",
+          "role": "Vai trò khi gộp",
+          "employeeName": "Tên nhân viên",
+          "employeeId": "Mã nhân viên",
+          "username": "Tên đăng nhập",
+          "email": "Địa chỉ email",
+          "icNumber": "Số CMND mới",
+          "passportNumber": "Số hộ chiếu",
+          "accountStatus": "Trạng thái tài khoản",
+          "userType": "Loại người dùng",
+          "lastLogin": "Lần đăng nhập cuối"
+        },
+        "status": {
+          "active": "Đang hoạt động",
+          "inactive": "Không hoạt động"
+        },
+        "inactiveCause": {
+          "archived": "Đã tắt",
+          "left": "Nhân viên đã nghỉ việc"
+        },
+        "userType": {
+          "internal": "Người dùng nội bộ",
+          "external": "Người dùng bên ngoài"
+        },
+        "neverLoggedIn": "Chưa từng đăng nhập",
+        "masterOf": "{count, plural, other {Tài khoản chính của # tài khoản đã gộp}}",
+        "basis": {
+          "ic": "Cùng số CMND mới",
+          "passport": "Cùng số hộ chiếu",
+          "email": "Cùng địa chỉ email công việc"
+        },
+        "accountCount": "{count, plural, other {# tài khoản}}",
+        "merge": "Gộp",
+        "differentProfiles": "Các tài khoản này trỏ đến các Hồ sơ nhân sự khác nhau. Việc gộp chỉ gộp các tài khoản đăng nhập: mỗi Hồ sơ nhân sự giữ nguyên, và tài khoản chính đăng nhập vào hồ sơ của chính nó.",
+        "lockedMaster": "Một tài khoản ở đây đã là tài khoản chính. Tài khoản đó giữ vai trò chính và không thể đổi sang tài khoản khác.",
+        "conflictingMasters": "Hai tài khoản ở đây đã là tài khoản chính của các tài khoản khác. Hãy hoàn tác một trong các lần gộp đó trước khi gộp nhóm này, để một người không bao giờ có hai tài khoản chính cạnh tranh.",
+        "tooMany": "Nhóm này có hơn {max} tài khoản và không thể gộp trong một bước.",
+        "chooseMaster": "Chọn {name} làm Tài khoản đăng nhập chính",
+        "help": {
+          "identity": "Các tài khoản đăng nhập có Hồ sơ nhân sự mang chính xác cùng Số CMND mới hoặc Số hộ chiếu. Chọn Tài khoản đăng nhập chính trong nhóm và nhấn Gộp.",
+          "email": "Các tài khoản đăng nhập có Hồ sơ nhân sự mang cùng địa chỉ email công việc (không phân biệt chữ hoa; email trống không bao giờ khớp). Chọn Tài khoản đăng nhập chính trong nhóm và nhấn Gộp."
+        },
+        "empty": {
+          "identity": "Không có tài khoản đăng nhập nào dùng chung Số CMND mới hoặc Số hộ chiếu.",
+          "email": "Không có tài khoản đăng nhập nào dùng chung địa chỉ email công việc."
+        },
+        "emptyHelp": "Các trường hợp gần trùng giữa các Hồ sơ nhân sự được xem xét tại Nhân sự > Hồ sơ > Trùng lặp.",
+        "personnelDuplicates": "Mở danh sách hồ sơ trùng lặp",
+        "mergeTitle": "Gộp tài khoản đăng nhập",
+        "groupGone": "Nhóm trùng lặp này không còn nữa. Có thể người khác đã gộp hoặc thay đổi nó.",
+        "backToTab": "Quay lại danh sách trùng lặp",
+        "chooseMasterFirst": "Hãy chọn Tài khoản đăng nhập chính trong nhóm trước.",
+        "mergeHelp": "Sau khi gộp, chỉ tài khoản chính có thể đăng nhập. Các tài khoản khác bị tắt và phiên của chúng kết thúc. Mã tài khoản, lịch sử và quyền của chúng được giữ lại, và mỗi tài khoản có thể được khôi phục bằng Hoàn tác gộp. Hồ sơ nhân sự, bảng lương, nghỉ phép, chấm công và mọi hồ sơ nhân sự khác không thay đổi.",
+        "differentProfilesMerge": "Các tài khoản này trỏ đến các Hồ sơ nhân sự khác nhau (ví dụ một người được tuyển hai lần). Tài khoản chính chỉ đăng nhập vào hồ sơ của chính nó. Hồ sơ còn lại vẫn đầy đủ và bộ phận nhân sự vẫn xem được.",
+        "masterBadge": "Tài khoản đăng nhập chính",
+        "mergedBadge": "Sẽ bị tắt",
+        "carryTitle": "Quyền truy cập mà tài khoản chính nên tiếp nhận",
+        "carryHelp": "Các vai trò, quyền truy cập công ty và quyền dùng trợ lý AI này thuộc về các tài khoản khác chứ không phải tài khoản chính. Hãy đánh dấu những gì tài khoản chính nên tiếp nhận. Không có gì được chuyển sang trừ khi bạn đánh dấu.",
+        "carryNothing": "Các tài khoản khác không có quyền truy cập nào mà tài khoản chính chưa có.",
+        "carryRole": "{role} · {scope} (do {from} nắm giữ)",
+        "carryAssistant": "Quyền dùng trợ lý AI (do {from} nắm giữ)",
+        "mergeEffect": "{count, plural, other {# tài khoản đăng nhập sẽ bị tắt và gộp vào tài khoản chính.}}",
+        "reason": "Lý do",
+        "confirmationLabel": "Nhập {word} để xác nhận",
+        "mergeSubmit": "{count, plural, other {Gộp # tài khoản vào tài khoản chính}}",
+        "cancel": "Hủy",
+        "merged": "Đã gộp tài khoản đăng nhập. Giờ chỉ tài khoản chính có thể đăng nhập.",
+        "undone": "Đã hoàn tác gộp. Tài khoản đăng nhập đã trở lại như trước khi gộp.",
+        "error": {
+          "forbidden": "Chỉ quản trị viên tập đoàn mới có thể gộp tài khoản đăng nhập.",
+          "invalid": "Yêu cầu không hợp lệ. Hãy mở lại nhóm.",
+          "stale": "Nhóm này đã thay đổi sau khi mở màn hình. Hãy mở lại.",
+          "masterMerged": "Tài khoản chính đã chọn đã được gộp vào một tài khoản khác.",
+          "memberIsMaster": "Một tài khoản trong nhóm này đã là tài khoản chính và phải giữ vai trò đó.",
+          "ownLogin": "Bạn không thể gộp mất tài khoản đăng nhập của chính mình.",
+          "lastAdmin": "Việc gộp này sẽ khiến không còn quản trị viên tập đoàn nào đăng nhập được.",
+          "confirmation": "Nhập từ xác nhận đúng như hiển thị.",
+          "alreadyUndone": "Lần gộp này đã được hoàn tác.",
+          "carry": "Quyền truy cập cần chuyển hoặc gỡ đã thay đổi. Hãy mở lại trang.",
+          "failed": "Không thể lưu thay đổi. Không có gì bị thay đổi."
+        }
+      },
+      "tabs": {
+        "label": "Danh sách người dùng",
+        "all": "Tất cả người dùng",
+        "identity": "CMND / Hộ chiếu trùng",
+        "email": "Email công việc trùng",
+        "duplicates": "Tài khoản đăng nhập trùng"
+      },
+      "activation": {
+        "screen": "Kích hoạt tài khoản",
+        "title": "Kích hoạt tài khoản · {name}",
+        "information": "Thông tin tài khoản",
+        "personnelProfile": "Hồ sơ nhân sự",
+        "openPersonnelProfile": "Mở Hồ sơ nhân sự",
+        "actions": "Thao tác tài khoản",
+        "pendingNote": "Người này vẫn ở trạng thái Chờ kích hoạt cho đến khi tự kích hoạt tài khoản. Gửi lời mời không bao giờ kích hoạt tài khoản.",
+        "setupInProgress": "Đang thiết lập tên đăng nhập và mật khẩu cho người này.",
+        "invitedEmail": "Lời mời được gửi tới",
+        "invitedRole": "Vai trò",
+        "invitationCreated": "Thời điểm tạo lời mời",
+        "invitationExpires": "Lời mời hết hạn",
+        "emailStatus": "Email lời mời",
+        "sentAt": "Đã gửi {at}",
+        "delivery": {
+          "pending": "Đang gửi hoặc chưa được xác nhận",
+          "sent": "Đã gửi",
+          "failed": "Gửi email lời mời không thành công",
+          "skipped": "Chưa gửi",
+          "none": "Không có email được ghi nhận"
+        },
+        "deliveryError": "Mã lý do: {code}",
+        "resend": "Gửi lại lời mời",
+        "resendHelp": "Gửi lại sẽ thay lời mời này bằng lời mời mới và gửi email lại. Thu hồi sẽ hủy lời mời.",
+        "resent": "Đã gửi lại lời mời.",
+        "resendFailed": "Không thể gửi lại lời mời. Hãy kiểm tra nhật ký gửi email rồi thử lại."
+      }
     },
     "audit": {
       "title": "Nhật ký kiểm toán",
@@ -39924,8 +40173,46 @@
       "authenticatorEnrolled": "Đã thiết lập trình xác thực",
       "unlocked": "Đã gỡ khóa đăng nhập",
       "other": "Hoạt động tài khoản",
-      "byActor": "{event} bởi {actor}"
-    }
+      "byActor": "{event} bởi {actor}",
+      "merged": "Đã gộp tài khoản đăng nhập",
+      "mergeUndone": "Đã hoàn tác gộp tài khoản"
+    },
+    "merge": {
+      "title": "Gộp tài khoản đăng nhập",
+      "mergedInto": "Tài khoản đăng nhập này đã được gộp vào <link>{name}</link> và không thể đăng nhập nữa.",
+      "unnamed": "Tài khoản chưa có tên",
+      "mergedBy": "Được gộp bởi {name} vào {at}",
+      "reasonShown": "Lý do: {reason}",
+      "undoHelp": "Hoàn tác gộp đưa tài khoản này trở lại chính xác như trước khi gộp. Mã tài khoản, lịch sử và quyền của nó chưa từng thay đổi.",
+      "carriedTitle": "Quyền truy cập mà lần gộp này đã cấp cho tài khoản chính. Đánh dấu những quyền mà tài khoản chính không nên giữ nữa.",
+      "removeRole": "Gỡ {role} · {scope} khỏi tài khoản chính",
+      "removeAssistant": "Gỡ quyền dùng trợ lý AI khỏi tài khoản chính",
+      "undoReason": "Lý do hoàn tác gộp",
+      "undo": "Hoàn tác gộp",
+      "masterHelp": "Các tài khoản này đã được gộp vào tài khoản này. Mở một tài khoản để xem hoặc hoàn tác lần gộp.",
+      "mergedOn": "Đã gộp vào {at}"
+    },
+    "pageTitle": "Quản lý tài khoản · {name}",
+    "section": {
+      "information": "Thông tin tài khoản",
+      "actions": "Thao tác tài khoản",
+      "edit": "Sửa thông tin tài khoản"
+    },
+    "statusDetail": {
+      "suspended": "Đã tạm ngưng",
+      "expired": "Đã hết hạn",
+      "archived": "Đã tắt",
+      "left": "Nhân viên đã nghỉ việc",
+      "preparing": "Đang chờ thiết lập"
+    },
+    "personnelProfile": "Hồ sơ nhân sự",
+    "openPersonnelProfile": "Mở Hồ sơ nhân sự",
+    "lockedSince": "Mật khẩu đã bị khóa từ {at} do đăng nhập sai quá nhiều lần.",
+    "expiredHelp": "Tài khoản này đã quá ngày Hoạt động đến. Hãy đổi ngày trong phần Sửa thông tin tài khoản, rồi kích hoạt lại.",
+    "preparingHelp": "Việc thiết lập tên đăng nhập và mật khẩu cho tài khoản này chưa hoàn tất.",
+    "leftHelp": "Tài khoản sẽ tự động mở lại nếu người này được tuyển dụng lại.",
+    "mergedHelp": "Tài khoản này đã được gộp vào tài khoản chính. Dùng Hoàn tác gộp bên dưới để bật lại.",
+    "noHistory": "Chưa có hoạt động tài khoản."
   },
   "organisationTagging": {
     "title": "Cơ cấu tập đoàn và nhãn tổ chức",
@@ -41089,6 +41376,20 @@
         "cancelled": {
           "title": "Đã dừng bổ sung thông tin nhân sự",
           "body": "Các mốc đã hoàn tất vẫn được lưu."
+        }
+      },
+      "accountInvitationBatch": {
+        "completed": {
+          "title": "Lô lời mời đã hoàn tất",
+          "body": "Mở Gửi lời mời theo lô để xem ai đã được gửi, ai thất bại và ai bị bỏ qua."
+        },
+        "failed": {
+          "title": "Lô lời mời đã dừng",
+          "body": "Các lời mời đã gửi vẫn có hiệu lực. Mở Gửi lời mời theo lô để xem kết quả và lý do."
+        },
+        "cancelled": {
+          "title": "Lô lời mời đã dừng",
+          "body": "Các lời mời đã gửi vẫn có hiệu lực. Mở Gửi lời mời theo lô để xem kết quả."
         }
       }
     },

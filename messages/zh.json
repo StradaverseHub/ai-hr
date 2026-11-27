@@ -12591,7 +12591,7 @@
         "roleFilter": "角色筛选",
         "allRoles": "所有角色",
         "allCompanies": "所有公司范围",
-        "userType": "员工记录",
+        "userType": "用户类型",
         "allTypes": "所有用户类型",
         "groupBy": "分组依据",
         "group": {
@@ -12599,7 +12599,7 @@
           "status": "状态",
           "role": "角色",
           "company": "公司范围",
-          "type": "员工记录"
+          "type": "用户类型"
         },
         "matched": "{total} 位用户中的 {count} 位",
         "clearFilters": "清除筛选",
@@ -12642,7 +12642,17 @@
         "unavailableScope": "无法使用重置密码和验证器控制：此账户不在您管理的公司范围内，或没有 HR 登录账户。",
         "unavailableProvider": "无法使用重置密码和验证器控制：本系统的登录由其他提供方管理。",
         "accountControls": "账户控制",
-        "securityHistory": "安全记录"
+        "securityHistory": "安全记录",
+        "userTypeColumn": "用户类型",
+        "userTypeValue": {
+          "internal": "内部用户",
+          "external": "外部用户"
+        },
+        "unlinkedDetail": "登录账户未关联人员档案",
+        "viewEdit": "查看/编辑",
+        "viewEditFor": "查看或编辑 {name}",
+        "invitationSent": "邀请已于 {date} 发送",
+        "invitationFailed": "邀请邮件发送失败"
       },
       "accountTarget": {
         "chooseScope": "选择公司范围",
@@ -12807,7 +12817,10 @@
         "attendanceRequestOnBehalf": "仅在您持有 attendance.request_on_behalf 时，列出您作为人事管理的公司中的员工，或您本人汇报线下属的人员。申请遵循该员工自己的工作流程。",
         "attendanceApproveOnBehalf": "仅在您持有 attendance.approve_on_behalf 时，列出您作为人事管理的公司中的审批人，或您本人汇报线下属的人员。决定将记录为代指定审批人作出。",
         "rewardsAdmin": "必须启用薪酬奖励。当前原生设置权限和公司范围决定对评审计划及以往计划的访问。集团评审人员和具有公司范围的人力资源管理员可能拥有不同的读取和编辑权限；仅有平台角色不会授予这些权限。",
-        "rewardsHistoryUpload": "必须启用薪酬奖励。上传以往奖励历史需要有效的集团薪酬奖励角色，以及当前集团范围和所选公司的设置权限。仅有人力资源管理员身份不授予上传权限。"
+        "rewardsHistoryUpload": "必须启用薪酬奖励。上传以往奖励历史需要有效的集团薪酬奖励角色，以及当前集团范围和所选公司的设置权限。仅有人力资源管理员身份不授予上传权限。",
+        "batchInvitation": "仅限集团级管理员。",
+        "duplicateLogins": "仅限集团级管理员。合并只合并登录账户，人员档案和人事记录不会改变。",
+        "loginActivation": "仅限集团级管理员，适用于尚无登录账户的人员。"
       },
       "scopedTo": "范围限定为 {company} 及其子公司",
       "screen": {
@@ -12837,7 +12850,243 @@
       "title": "用户与角色",
       "unlinkedLogin": "未关联的登录账号 {id}",
       "userCount": "{count, plural, one {# 名用户} other {# 名用户}}",
-      "accountManagement": "管理账户"
+      "accountManagement": "管理账户",
+      "batchInvite": {
+        "title": "批量发送邀请",
+        "intro": "一次性向多位“待激活”的人员发送账户邀请。先选择人员，再为整批统一选择角色、公司范围和邮件语言。邮件在后台发送。",
+        "backToUsers": "用户",
+        "running": "仍有一批邀请正在发送。完成后才能开始新的一批。",
+        "openRunning": "打开正在进行的批次",
+        "lastBatch": "查看您上一批的结果",
+        "searchLabel": "搜索",
+        "searchPlaceholder": "姓名、员工编号或邮箱",
+        "searchSubmit": "搜索",
+        "clear": "清除",
+        "eligibleCount": "{count, plural, =0 {此处没有可接收邀请的人员} other {# 人可接收邀请}}",
+        "eligibleCapped": "可接收邀请的人数超过 {count}。每批最多发送 {count} 人，请通过搜索缩小范围。",
+        "empty": "没有人在等待邀请。",
+        "emptySearch": "没有符合此搜索的人员。",
+        "selectAll": "选择全部 {count} 位可邀请的人员（符合此搜索）",
+        "selectPage": "选择本页所有人",
+        "selectedCount": "{count, plural, =0 {未选择任何人} other {已选择 # 人}}",
+        "selectPerson": "选择 {name}",
+        "colSelect": "选择",
+        "colName": "员工姓名",
+        "colEmployeeId": "员工编号",
+        "colEmail": "电子邮箱",
+        "colStatus": "可否邀请",
+        "eligible": "可邀请",
+        "ineligible": {
+          "noEmail": "没有工作邮箱",
+          "emailInUse": "该邮箱已被其他登录账户或邀请使用"
+        },
+        "settings": "整批的邀请设置",
+        "role": "角色",
+        "scope": "公司范围",
+        "language": "邮件语言",
+        "review": "检查并发送",
+        "confirmTitle": "确认邀请",
+        "confirmBody": "将邀请 {count, plural, other {# 人}}，角色为 {role}，范围为 {scope}，邮件语言为 {language}。",
+        "pendingNote": "每位被邀请的人在自行激活账户之前都保持“待激活”。发送邀请绝不会激活账户。",
+        "confirmCheck": "我已确认 {count, plural, other {# 人}} 应按这些设置收到邀请。",
+        "send": "发送 {count, plural, other {# 份邀请}}",
+        "back": "修改选择",
+        "problem": {
+          "countChanged": "可邀请的人数已变为 {count}。请检查选择后重新确认。未发送任何邀请。",
+          "tooMany": "每批最多可邀请 {count} 人。请通过搜索缩小范围。未发送任何邀请。",
+          "empty": "请至少选择一位可接收邀请的人员。",
+          "running": "另一批邀请仍在发送中。请等待其完成后再试。",
+          "installing": "此功能仍在安装中。未开始任何操作。请几分钟后再试。",
+          "invalid": "请检查角色、公司范围和邮件语言，并勾选确认。未发送任何邀请。",
+          "forbidden": "只有集团管理员可以发送邀请。",
+          "failed": "无法开始此批次。未发送任何邀请。",
+          "nothingToRetry": "没有可重试的失败邀请邮件。",
+          "notStoppable": "此批次已无法停止。",
+          "unavailable": "此批次不可用。"
+        },
+        "resultsTitle": "邀请批次",
+        "retryTitle": "重试失败的邀请邮件",
+        "startedAt": "开始于 {at}",
+        "dropped": "{count, plural, other {# 位所选人员}}已不再等待邀请，已从此批次中排除。",
+        "state": {
+          "queued": "等待开始",
+          "preparing": "准备中",
+          "running": "正在发送邀请",
+          "finalizing": "正在完成",
+          "discarding": "正在停止",
+          "completed": "已完成",
+          "failed": "因错误而停止",
+          "cancelled": "已按您的要求停止"
+        },
+        "settingsLine": "角色：{role} · 公司范围：{scope}",
+        "companyScoped": "单一公司",
+        "progressLabel": "批次进度",
+        "progress": "已处理 {done} / {total}",
+        "outcome": {
+          "sent": "已发送",
+          "failed": "失败",
+          "skipped": "已跳过",
+          "uncertain": "未确认"
+        },
+        "uncertainHelp": "未确认：邀请已创建，但无法确认邮件结果。系统不会自动重新发送。请查看邮件日志，或在该人员的页面重新发送。",
+        "stoppedError": "此批次因错误而停止。下方结果显示停止前已处理的人员。",
+        "cancel": "停止此批次",
+        "cancelHelp": "尚未处理的人员不会被邀请。已发送的邀请仍然有效。",
+        "cancelRequested": "将在当前人员处理完后停止。",
+        "retry": "仅重试失败的（{count}）",
+        "retryHelp": "只向邮件发送失败的人员重新发送邀请邮件。",
+        "resultsHeading": "结果",
+        "resultsFilter": "显示结果",
+        "filterAll": "全部（{count}）",
+        "noResults": "没有可显示的结果。",
+        "colResult": "结果",
+        "colReason": "原因",
+        "unknownPerson": "人员不可用",
+        "more": "显示更多",
+        "firstPage": "返回第一页结果",
+        "reason": {
+          "notCandidate": "已不再等待激活",
+          "hasLogin": "已有登录账户",
+          "alreadyInvited": "已被邀请（例如刚刚由另一位管理员邀请）",
+          "setupInProgress": "正在设置用户名和密码",
+          "leftCompany": "已离职",
+          "noEmail": "没有工作邮箱",
+          "emailInUse": "其他人员已有使用此邮箱的登录账户或邀请",
+          "notPending": "该邀请已不再处于待处理状态",
+          "alreadyRetried": "此邮件已重试过",
+          "notRetryable": "此邮件已无法重试",
+          "stepFailed": "无法处理",
+          "relayUnavailable": "邮件服务不可用",
+          "providerUnavailable": "登录服务不可用",
+          "notEligible": "无法通过邮件发送此邀请",
+          "uncertain": "无法确认邮件结果",
+          "pending": "邮件结果尚未确认",
+          "sent": "邮件记录为已发送",
+          "failed": "邮件记录为失败",
+          "skipped": "邮件记录为未发送",
+          "other": "请查看邮件日志"
+        },
+        "open": "批量发送邀请"
+      },
+      "duplicates": {
+        "column": {
+          "master": "主账户",
+          "role": "合并角色",
+          "employeeName": "员工姓名",
+          "employeeId": "员工编号",
+          "username": "用户名",
+          "email": "电子邮件地址",
+          "icNumber": "新身份证号码",
+          "passportNumber": "护照号码",
+          "accountStatus": "账户状态",
+          "userType": "用户类型",
+          "lastLogin": "最近登录"
+        },
+        "status": {
+          "active": "有效",
+          "inactive": "无效"
+        },
+        "inactiveCause": {
+          "archived": "已停用",
+          "left": "员工已离职"
+        },
+        "userType": {
+          "internal": "内部用户",
+          "external": "外部用户"
+        },
+        "neverLoggedIn": "从未登录",
+        "masterOf": "{count, plural, other {已合并 # 个登录账户的主账户}}",
+        "basis": {
+          "ic": "相同的新身份证号码",
+          "passport": "相同的护照号码",
+          "email": "相同的工作电子邮件地址"
+        },
+        "accountCount": "{count, plural, other {# 个账户}}",
+        "merge": "合并",
+        "differentProfiles": "这些账户指向不同的人事档案。合并只合并登录账户：每份人事档案保持不变，主账户登录到其自己的档案。",
+        "lockedMaster": "此处有一个账户已是主账户。它将保持为主账户，不能更换。",
+        "conflictingMasters": "此处有两个账户已是其他登录账户的主账户。请先撤销其中一个合并，再合并此组，以免一个人有两个相互竞争的主账户。",
+        "tooMany": "此组账户超过 {max} 个，无法一次合并。",
+        "chooseMaster": "选择 {name} 作为主登录账户",
+        "help": {
+          "identity": "人事档案中新身份证号码或护照号码完全相同的登录账户。在组中选择主登录账户并按“合并”。",
+          "email": "人事档案中工作电子邮件地址相同的登录账户（不区分大小写；空白电子邮件从不匹配）。在组中选择主登录账户并按“合并”。"
+        },
+        "empty": {
+          "identity": "没有登录账户共用新身份证号码或护照号码。",
+          "email": "没有登录账户共用工作电子邮件地址。"
+        },
+        "emptyHelp": "人事档案之间的近似匹配在 人员 > 人事 > 重复项 中审核。",
+        "personnelDuplicates": "打开人事重复项",
+        "mergeTitle": "合并登录账户",
+        "groupGone": "此重复组已不可用。可能已被他人合并或更改。",
+        "backToTab": "返回重复列表",
+        "chooseMasterFirst": "请先在组中选择主登录账户。",
+        "mergeHelp": "合并后只有主账户可以登录。其他登录账户将被停用，其会话结束。它们的账户编号、历史记录和权限都会保留，每一个都可以通过“撤销合并”恢复。人事档案、薪资、休假、考勤及所有其他人力资源记录均不变。",
+        "differentProfilesMerge": "这些账户指向不同的人事档案（例如某人被聘用两次）。主账户只登录到其自己的档案。另一份档案保持完整，人力资源部门仍可查看。",
+        "masterBadge": "主登录账户",
+        "mergedBadge": "将被停用",
+        "carryTitle": "主账户应接管的访问权限",
+        "carryHelp": "这些角色、公司访问权限和 AI 助手访问权限由其他账户持有，而主账户没有。请勾选主账户应接管的内容。除非您勾选，否则不会转移任何内容。",
+        "carryNothing": "其他账户没有持有主账户尚未拥有的访问权限。",
+        "carryRole": "{role} · {scope}（由 {from} 持有）",
+        "carryAssistant": "AI 助手访问权限（由 {from} 持有）",
+        "mergeEffect": "{count, plural, other {# 个登录账户将被停用并合并到主账户。}}",
+        "reason": "原因",
+        "confirmationLabel": "输入 {word} 以确认",
+        "mergeSubmit": "{count, plural, other {将 # 个登录账户合并到主账户}}",
+        "cancel": "取消",
+        "merged": "登录账户已合并。现在只有主账户可以登录。",
+        "undone": "合并已撤销。该登录账户已恢复到合并前的状态。",
+        "error": {
+          "forbidden": "只有集团管理员可以合并登录账户。",
+          "invalid": "请求无效。请重新打开该组。",
+          "stale": "此组在页面打开后已更改。请重新打开。",
+          "masterMerged": "所选主账户本身已被合并到另一个登录账户。",
+          "memberIsMaster": "此组中有一个账户已是主账户，必须保持为主账户。",
+          "ownLogin": "您不能合并掉自己的登录账户。",
+          "lastAdmin": "此合并将导致没有集团管理员可以登录。",
+          "confirmation": "请按显示内容准确输入确认词。",
+          "alreadyUndone": "此合并已被撤销。",
+          "carry": "要转移或移除的访问权限已更改。请重新打开页面。",
+          "failed": "无法保存更改。未做任何更改。"
+        }
+      },
+      "tabs": {
+        "label": "用户列表",
+        "all": "所有用户",
+        "identity": "重复的身份证 / 护照",
+        "email": "重复的工作邮箱地址",
+        "duplicates": "重复的登录账户"
+      },
+      "activation": {
+        "screen": "账户激活",
+        "title": "激活账户 · {name}",
+        "information": "账户信息",
+        "personnelProfile": "人员档案",
+        "openPersonnelProfile": "打开人员档案",
+        "actions": "账户操作",
+        "pendingNote": "此人在自行激活账户之前一直处于“待激活”状态。发送邀请不会激活账户。",
+        "setupInProgress": "正在为此人设置用户名和密码。",
+        "invitedEmail": "邀请发送至",
+        "invitedRole": "角色",
+        "invitationCreated": "邀请创建时间",
+        "invitationExpires": "邀请到期时间",
+        "emailStatus": "邀请邮件",
+        "sentAt": "已于 {at} 发送",
+        "delivery": {
+          "pending": "正在发送或尚未确认",
+          "sent": "已发送",
+          "failed": "邀请邮件发送失败",
+          "skipped": "未发送",
+          "none": "没有邮件记录"
+        },
+        "deliveryError": "原因代码：{code}",
+        "resend": "重新发送邀请",
+        "resendHelp": "重新发送会用新邀请替换此邀请并再次发送邮件。撤销会取消该邀请。",
+        "resent": "邀请已重新发送。",
+        "resendFailed": "无法重新发送邀请。请查看邮件发送日志后重试。"
+      }
     },
     "audit": {
       "title": "审计日志",
@@ -39924,8 +40173,46 @@
       "authenticatorEnrolled": "验证器已设置",
       "unlocked": "登录锁定已解除",
       "other": "账户活动",
-      "byActor": "{event}（操作人：{actor}）"
-    }
+      "byActor": "{event}（操作人：{actor}）",
+      "merged": "登录账户已合并",
+      "mergeUndone": "登录账户合并已撤销"
+    },
+    "merge": {
+      "title": "登录账户合并",
+      "mergedInto": "此登录账户已合并到 <link>{name}</link>，无法再登录。",
+      "unnamed": "未命名的登录账户",
+      "mergedBy": "由 {name} 于 {at} 合并",
+      "reasonShown": "原因：{reason}",
+      "undoHelp": "撤销合并会将此登录账户完全恢复到合并前的状态。其账户编号、历史记录和权限从未改变。",
+      "carriedTitle": "此合并给予主账户的访问权限。请勾选主账户不应再保留的项目。",
+      "removeRole": "从主账户移除 {role} · {scope}",
+      "removeAssistant": "从主账户移除 AI 助手访问权限",
+      "undoReason": "撤销合并的原因",
+      "undo": "撤销合并",
+      "masterHelp": "这些登录账户已合并到此账户。打开其中一个可查看或撤销其合并。",
+      "mergedOn": "合并于 {at}"
+    },
+    "pageTitle": "管理账户 · {name}",
+    "section": {
+      "information": "账户信息",
+      "actions": "账户操作",
+      "edit": "编辑账户信息"
+    },
+    "statusDetail": {
+      "suspended": "已停用",
+      "expired": "已过期",
+      "archived": "已关闭",
+      "left": "员工已离职",
+      "preparing": "设置待完成"
+    },
+    "personnelProfile": "人员档案",
+    "openPersonnelProfile": "打开人员档案",
+    "lockedSince": "由于登录失败次数过多，密码自 {at} 起已被锁定。",
+    "expiredHelp": "此账户已超过“账户有效期至”日期。请在“编辑账户信息”中更改日期，然后重新激活。",
+    "preparingHelp": "此登录账户的用户名和密码设置尚未完成。",
+    "leftHelp": "如果此人再次受雇，账户会自动重新开放。",
+    "mergedHelp": "此登录账户已合并到主登录账户。请使用下方的“撤销合并”重新启用。",
+    "noHistory": "暂无账户活动。"
   },
   "organisationTagging": {
     "title": "集团结构与组织标签",
@@ -41089,6 +41376,20 @@
         "cancelled": {
           "title": "人事资料补充已停止",
           "body": "已完成的检查点记录将保留。"
+        }
+      },
+      "accountInvitationBatch": {
+        "completed": {
+          "title": "邀请批次已完成",
+          "body": "打开“批量发送邀请”查看已发送、失败和已跳过的人员。"
+        },
+        "failed": {
+          "title": "邀请批次已停止",
+          "body": "已发送的邀请仍然有效。打开“批量发送邀请”查看结果和原因。"
+        },
+        "cancelled": {
+          "title": "邀请批次已停止",
+          "body": "已发送的邀请仍然有效。打开“批量发送邀请”查看结果。"
         }
       }
     },

@@ -304,8 +304,13 @@ export function listPendingInvitations(ctx: SessionContext) {
         companyId: appInvitation.companyId,
         expiresAt: appInvitation.expiresAt,
         createdAt: appInvitation.createdAt,
+        // Board 0735d1b7: the invitation's own email (one delivery per invitation), joined in the same read.
+        deliveryId: accountEmailDelivery.id,
+        deliveryStatus: accountEmailDelivery.status,
+        deliverySentAt: accountEmailDelivery.sentAt,
       })
       .from(appInvitation)
+      .leftJoin(accountEmailDelivery, and(eq(accountEmailDelivery.invitationId, appInvitation.id), eq(accountEmailDelivery.kind, 'invitation')))
       .where(eq(appInvitation.status, 'pending'))
       .orderBy(appInvitation.createdAt),
   );

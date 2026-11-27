@@ -7,6 +7,7 @@ import { isGroupAdmin } from '@/lib/authz';
 import { listUsers } from '@/core/admin';
 import { listAssistantGrants } from '@/core/assistant-grant';
 import { listPendingInvitations } from '@/core/auth';
+import { listActiveMergedLogins } from '@/core/login-merge';
 import { adminCompanies, listCompanies, listEmployees } from '@/core/read';
 
 import type { SessionContext } from '@/db/client';
@@ -32,7 +33,7 @@ export async function loadUsersData(s: SessionContext) {
   // company-scoped admin sees the users list with no invitation rows. Archive is group-admin-only
   // anyway (the 0016 app_user WITH CHECK), so a delegated admin's view of this screen is read-only.
   // Widening invitation visibility is a new authz surface and out of scope here.
-  const [userList, assistantGrants, companies, invitations, employees, manualEnrollments, activationCandidates] = await Promise.all([
+  const [userList, assistantGrants, companies, invitations, employees, manualEnrollments, activationCandidates, mergedAway] = await Promise.all([
     listUsers(s, { includeArchived: true }),
     // ADR-0082 §2.8 — who currently holds an assistant grant. One read for the page, not one per row.
     listAssistantGrants(s),
@@ -41,9 +42,12 @@ export async function loadUsersData(s: SessionContext) {
     groupAdmin ? listEmployees(s) : Promise.resolve([]),
     groupAdmin && (keycloakSelected() || internalSelected()) ? listManualIdentityEnrollments(s) : Promise.resolve([]),
     groupAdmin ? listEmployeeActivationCandidates(s) : Promise.resolve([]),
+    // Board 0735d1b7: logins merged under a master leave All Users (their account page stays reachable from the
+    // master's page). One statement through the merge owner's definer.
+    listActiveMergedLogins(s),
   ]);
   const { users: allUsers } = userList;
-  const users = allUsers;
+  const users = allUsers.filter((u) => !mergedAway.has(u.id));
   // LIVE grants only. listAssistantGrants deliberately returns every grant EVER, revoked rows included
   // ("who could ask the assistant last March" is the reason revocation is a stamp rather than a delete),
   // so filtering on revokedAt is load-bearing: without it a revoked user reads as still granted and the
@@ -102,6 +106,8 @@ export async function loadUsersData(s: SessionContext) {
       manuallyArchived: false,
       hasEmployment: activationCandidates.find(p=>p.id===inv.personId)?.hasEmployment,
       employeeCode: activationCandidates.find(p=>p.id===inv.personId)?.code ?? null,
+      invitationSentAt: inv.deliverySentAt ? new Date(inv.deliverySentAt).toISOString() : null,
+      invitationDelivery: inv.deliveryStatus ?? null,
     });
   }
 

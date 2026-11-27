@@ -12591,7 +12591,7 @@
         "roleFilter": "Penapis peranan",
         "allRoles": "Semua peranan",
         "allCompanies": "Semua skop syarikat",
-        "userType": "Rekod pekerja",
+        "userType": "Jenis Pengguna",
         "allTypes": "Semua jenis pengguna",
         "groupBy": "Kumpulkan mengikut",
         "group": {
@@ -12599,7 +12599,7 @@
           "status": "Status",
           "role": "Peranan",
           "company": "Skop syarikat",
-          "type": "Rekod pekerja"
+          "type": "Jenis Pengguna"
         },
         "matched": "{count} daripada {total} pengguna",
         "clearFilters": "Kosongkan penapis",
@@ -12642,7 +12642,17 @@
         "unavailableScope": "Tetapkan Semula Kata Laluan dan Kawalan Pengesah tidak tersedia: akaun ini di luar syarikat yang anda urus, atau tiada akaun log masuk HR.",
         "unavailableProvider": "Tetapkan Semula Kata Laluan dan Kawalan Pengesah tidak tersedia: log masuk untuk pemasangan ini diurus oleh pembekal lain.",
         "accountControls": "Kawalan akaun",
-        "securityHistory": "Sejarah keselamatan"
+        "securityHistory": "Sejarah keselamatan",
+        "userTypeColumn": "Jenis Pengguna",
+        "userTypeValue": {
+          "internal": "Pengguna Dalaman",
+          "external": "Pengguna Luaran"
+        },
+        "unlinkedDetail": "Log masuk tidak dipautkan kepada Profil Kakitangan",
+        "viewEdit": "Lihat/Sunting",
+        "viewEditFor": "Lihat atau sunting {name}",
+        "invitationSent": "Jemputan dihantar {date}",
+        "invitationFailed": "E-mel jemputan gagal"
       },
       "accountTarget": {
         "chooseScope": "Pilih skop syarikat",
@@ -12807,7 +12817,10 @@
         "attendanceRequestOnBehalf": "Hanya menyenaraikan pekerja dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.request_on_behalf. Permohonan mengikut aliran kerja pekerja itu sendiri.",
         "attendanceApproveOnBehalf": "Hanya menyenaraikan pelulus dalam syarikat yang anda tadbir sebagai HR, atau orang di bawah anda dalam talian pelaporan anda sendiri, jika anda memegang attendance.approve_on_behalf. Keputusan direkodkan bagi pihak pelulus yang ditetapkan.",
         "rewardsAdmin": "Rewards mesti didayakan. Kebenaran persediaan semasa dan skop syarikat menentukan akses kepada Pelan Semakan dan Pelan Terdahulu. Penyemak seluruh kumpulan dan pentadbir HR berskop boleh mempunyai hak baca dan sunting yang berbeza; peranan platform sahaja tidak memberikan hak tersebut.",
-        "rewardsHistoryUpload": "Rewards mesti didayakan. Muat naik sejarah ganjaran terdahulu memerlukan peranan Group Rewards yang berkuat kuasa serta kuasa persediaan semasa bagi seluruh kumpulan dan syarikat yang dipilih. Status pentadbir HR sahaja tidak memberikan akses muat naik."
+        "rewardsHistoryUpload": "Rewards mesti didayakan. Muat naik sejarah ganjaran terdahulu memerlukan peranan Group Rewards yang berkuat kuasa serta kuasa persediaan semasa bagi seluruh kumpulan dan syarikat yang dipilih. Status pentadbir HR sahaja tidak memberikan akses muat naik.",
+        "batchInvitation": "Pentadbir seluruh kumpulan sahaja.",
+        "duplicateLogins": "Pentadbir seluruh kumpulan sahaja. Penggabungan hanya menggabungkan akaun log masuk; Profil Kakitangan dan rekod HR tidak berubah.",
+        "loginActivation": "Pentadbir seluruh kumpulan sahaja, untuk orang yang belum mempunyai log masuk."
       },
       "scopedTo": "Diskopkan kepada {company} dan anak syarikatnya",
       "screen": {
@@ -12837,7 +12850,243 @@
       "title": "Pengguna & peranan",
       "unlinkedLogin": "Log masuk tidak berpaut {id}",
       "userCount": "{count, plural, one {# pengguna} other {# pengguna}}",
-      "accountManagement": "Urus akaun"
+      "accountManagement": "Urus akaun",
+      "batchInvite": {
+        "title": "Hantar Jemputan Secara Berkelompok",
+        "intro": "Hantar jemputan akaun kepada ramai orang yang Menunggu Pengaktifan sekali gus. Pilih orangnya, kemudian pilih peranan, skop syarikat dan bahasa e-mel sekali untuk seluruh kelompok. E-mel dihantar di latar belakang.",
+        "backToUsers": "Pengguna",
+        "running": "Satu kelompok masih menghantar jemputan. Anda boleh memulakan kelompok lain apabila ia selesai.",
+        "openRunning": "Buka kelompok yang sedang berjalan",
+        "lastBatch": "Lihat keputusan kelompok terakhir anda",
+        "searchLabel": "Cari",
+        "searchPlaceholder": "Nama, ID pekerja atau e-mel",
+        "searchSubmit": "Cari",
+        "clear": "Kosongkan",
+        "eligibleCount": "{count, plural, =0 {Tiada sesiapa di sini boleh menerima jemputan} other {# orang boleh menerima jemputan}}",
+        "eligibleCapped": "Lebih daripada {count} orang boleh menerima jemputan. Satu kelompok menghantar paling banyak {count}, jadi cari untuk mengecilkan senarai.",
+        "empty": "Tiada sesiapa yang menunggu jemputan.",
+        "emptySearch": "Tiada sesiapa yang sepadan dengan carian ini.",
+        "selectAll": "Pilih kesemua {count} orang yang boleh dijemput (sepadan dengan carian ini)",
+        "selectPage": "Pilih semua orang di halaman ini",
+        "selectedCount": "{count, plural, =0 {Tiada yang dipilih} other {# orang dipilih}}",
+        "selectPerson": "Pilih {name}",
+        "colSelect": "Pilih",
+        "colName": "Nama Pekerja",
+        "colEmployeeId": "ID Pekerja",
+        "colEmail": "Alamat E-mel",
+        "colStatus": "Boleh dijemput",
+        "eligible": "Sedia",
+        "ineligible": {
+          "noEmail": "Tiada e-mel kerja",
+          "emailInUse": "E-mel sudah digunakan oleh log masuk atau jemputan lain"
+        },
+        "settings": "Tetapan jemputan untuk seluruh kelompok",
+        "role": "Peranan",
+        "scope": "Skop syarikat",
+        "language": "Bahasa e-mel",
+        "review": "Semak dan hantar",
+        "confirmTitle": "Sahkan jemputan",
+        "confirmBody": "{count, plural, other {# orang}} akan dijemput sebagai {role}, skop {scope}, dengan e-mel dalam {language}.",
+        "pendingNote": "Setiap orang yang dijemput kekal Menunggu Pengaktifan sehingga mereka mengaktifkan akaun sendiri. Menghantar jemputan tidak pernah mengaktifkan akaun.",
+        "confirmCheck": "Saya telah menyemak bahawa {count, plural, other {# orang}} patut menerima jemputan dengan tetapan ini.",
+        "send": "Hantar {count, plural, other {# jemputan}}",
+        "back": "Ubah pilihan",
+        "problem": {
+          "countChanged": "Bilangan orang yang boleh dijemput telah berubah kepada {count}. Semak pilihan dan sahkan semula. Tiada apa-apa dihantar.",
+          "tooMany": "Satu kelompok boleh menjemput paling banyak {count} orang. Cari untuk mengecilkan senarai. Tiada apa-apa dihantar.",
+          "empty": "Pilih sekurang-kurangnya seorang yang boleh menerima jemputan.",
+          "running": "Kelompok lain masih menghantar jemputan. Tunggu sehingga ia selesai, kemudian cuba lagi.",
+          "installing": "Ciri ini masih sedang dipasang. Tiada apa-apa dimulakan. Cuba lagi dalam beberapa minit.",
+          "invalid": "Semak peranan, skop syarikat dan bahasa e-mel, dan tandakan pengesahan. Tiada apa-apa dihantar.",
+          "forbidden": "Hanya pentadbir kumpulan boleh menghantar jemputan.",
+          "failed": "Kelompok tidak dapat dimulakan. Tiada apa-apa dihantar.",
+          "nothingToRetry": "Tiada lagi e-mel jemputan yang gagal untuk dicuba semula.",
+          "notStoppable": "Kelompok ini tidak lagi boleh dihentikan.",
+          "unavailable": "Kelompok ini tidak tersedia."
+        },
+        "resultsTitle": "Kelompok jemputan",
+        "retryTitle": "Cuba semula e-mel jemputan yang gagal",
+        "startedAt": "Dimulakan {at}",
+        "dropped": "{count, plural, other {# orang yang dipilih}} tidak lagi menunggu jemputan dan dikecualikan daripada kelompok.",
+        "state": {
+          "queued": "Menunggu untuk bermula",
+          "preparing": "Sedang bersedia",
+          "running": "Sedang menghantar jemputan",
+          "finalizing": "Sedang diselesaikan",
+          "discarding": "Sedang dihentikan",
+          "completed": "Selesai",
+          "failed": "Terhenti kerana ralat",
+          "cancelled": "Dihentikan atas permintaan anda"
+        },
+        "settingsLine": "Peranan: {role} · Skop syarikat: {scope}",
+        "companyScoped": "satu syarikat",
+        "progressLabel": "Kemajuan kelompok",
+        "progress": "{done} daripada {total} telah diproses",
+        "outcome": {
+          "sent": "Dihantar",
+          "failed": "Gagal",
+          "skipped": "Dilangkau",
+          "uncertain": "Tidak disahkan"
+        },
+        "uncertainHelp": "Tidak disahkan: jemputan telah dibuat tetapi keputusan e-mel tidak dapat disahkan. Ia tidak dihantar semula secara automatik. Semak log e-mel, atau hantar semula dari halaman orang itu.",
+        "stoppedError": "Kelompok terhenti kerana ralat. Keputusan di bawah menunjukkan siapa yang dicapai sebelum ia terhenti.",
+        "cancel": "Hentikan kelompok",
+        "cancelHelp": "Orang yang belum dicapai tidak akan dijemput. Jemputan yang sudah dihantar kekal sah.",
+        "cancelRequested": "Akan berhenti selepas orang semasa.",
+        "retry": "Cuba semula yang gagal sahaja ({count})",
+        "retryHelp": "Menghantar e-mel jemputan baharu hanya kepada orang yang e-melnya gagal.",
+        "resultsHeading": "Keputusan",
+        "resultsFilter": "Tunjukkan keputusan",
+        "filterAll": "Semua ({count})",
+        "noResults": "Tiada keputusan untuk ditunjukkan.",
+        "colResult": "Keputusan",
+        "colReason": "Sebab",
+        "unknownPerson": "Orang tidak tersedia",
+        "more": "Tunjukkan lagi",
+        "firstPage": "Kembali ke keputusan pertama",
+        "reason": {
+          "notCandidate": "Tidak lagi menunggu pengaktifan",
+          "hasLogin": "Sudah mempunyai akaun log masuk",
+          "alreadyInvited": "Sudah dijemput (contohnya oleh pentadbir lain sebentar tadi)",
+          "setupInProgress": "Penetapan nama pengguna dan kata laluan sedang dijalankan",
+          "leftCompany": "Telah meninggalkan syarikat",
+          "noEmail": "Tiada e-mel kerja",
+          "emailInUse": "Orang lain sudah mempunyai log masuk atau jemputan dengan e-mel ini",
+          "notPending": "Jemputan tidak lagi menunggu",
+          "alreadyRetried": "E-mel ini sudah dicuba semula",
+          "notRetryable": "E-mel ini tidak lagi boleh dicuba semula",
+          "stepFailed": "Tidak dapat diproses",
+          "relayUnavailable": "Perkhidmatan e-mel tidak tersedia",
+          "providerUnavailable": "Perkhidmatan log masuk tidak tersedia",
+          "notEligible": "Jemputan tidak dapat dihantar melalui e-mel",
+          "uncertain": "Keputusan e-mel tidak dapat disahkan",
+          "pending": "Keputusan e-mel belum disahkan",
+          "sent": "E-mel direkodkan sebagai dihantar",
+          "failed": "E-mel direkodkan sebagai gagal",
+          "skipped": "E-mel direkodkan sebagai tidak dihantar",
+          "other": "Lihat log e-mel"
+        },
+        "open": "Hantar Jemputan Secara Berkumpulan"
+      },
+      "duplicates": {
+        "column": {
+          "master": "Induk",
+          "role": "Peranan dalam gabungan",
+          "employeeName": "Nama Pekerja",
+          "employeeId": "ID Pekerja",
+          "username": "Nama Pengguna",
+          "email": "Alamat E-mel",
+          "icNumber": "Nombor KP Baru",
+          "passportNumber": "Nombor Pasport",
+          "accountStatus": "Status Akaun",
+          "userType": "Jenis Pengguna",
+          "lastLogin": "Log Masuk Terakhir"
+        },
+        "status": {
+          "active": "Aktif",
+          "inactive": "Tidak Aktif"
+        },
+        "inactiveCause": {
+          "archived": "Dimatikan",
+          "left": "Pekerja telah berhenti"
+        },
+        "userType": {
+          "internal": "Pengguna Dalaman",
+          "external": "Pengguna Luaran"
+        },
+        "neverLoggedIn": "Belum pernah log masuk",
+        "masterOf": "Induk bagi {count, plural, other {# log masuk yang digabungkan}}",
+        "basis": {
+          "ic": "Nombor KP Baru yang sama",
+          "passport": "Nombor Pasport yang sama",
+          "email": "Alamat E-mel Kerja yang sama"
+        },
+        "accountCount": "{count, plural, other {# akaun}}",
+        "merge": "Gabung",
+        "differentProfiles": "Akaun ini merujuk kepada Profil Personel yang berbeza. Penggabungan hanya menggabungkan log masuk: setiap Profil Personel kekal seperti sedia ada, dan akaun induk log masuk ke profilnya sendiri.",
+        "lockedMaster": "Satu akaun di sini sudah menjadi induk. Ia kekal sebagai induk dan tidak boleh ditukar.",
+        "conflictingMasters": "Dua akaun di sini sudah menjadi induk bagi log masuk lain. Batalkan salah satu gabungan itu sebelum menggabungkan kumpulan ini, supaya seseorang tidak mempunyai dua induk yang bersaing.",
+        "tooMany": "Kumpulan ini mempunyai lebih daripada {max} akaun dan tidak boleh digabungkan dalam satu langkah.",
+        "chooseMaster": "Pilih {name} sebagai Akaun Log Masuk Induk",
+        "help": {
+          "identity": "Akaun log masuk yang Profil Personelnya mempunyai Nombor KP Baru atau Nombor Pasport yang sama sepenuhnya. Pilih Akaun Log Masuk Induk dalam kumpulan dan tekan Gabung.",
+          "email": "Akaun log masuk yang Profil Personelnya mempunyai alamat e-mel kerja yang sama (huruf besar diabaikan; e-mel kosong tidak pernah dipadankan). Pilih Akaun Log Masuk Induk dalam kumpulan dan tekan Gabung."
+        },
+        "empty": {
+          "identity": "Tiada akaun log masuk yang berkongsi Nombor KP Baru atau Nombor Pasport.",
+          "email": "Tiada akaun log masuk yang berkongsi alamat e-mel kerja."
+        },
+        "emptyHelp": "Padanan hampir antara Profil Personel disemak di Orang > Personel > Pendua.",
+        "personnelDuplicates": "Buka pendua Personel",
+        "mergeTitle": "Gabungkan akaun log masuk",
+        "groupGone": "Kumpulan pendua ini tidak lagi tersedia. Ia mungkin telah digabungkan atau diubah oleh orang lain.",
+        "backToTab": "Kembali ke senarai pendua",
+        "chooseMasterFirst": "Pilih Akaun Log Masuk Induk dalam kumpulan terlebih dahulu.",
+        "mergeHelp": "Selepas penggabungan hanya akaun induk boleh log masuk. Log masuk lain dimatikan dan sesinya tamat. ID akaun, sejarah dan kebenarannya disimpan, dan setiap satu boleh dikembalikan dengan Batal gabungan. Profil Personel, gaji, cuti, kehadiran dan semua rekod HR lain tidak berubah.",
+        "differentProfilesMerge": "Akaun ini merujuk kepada Profil Personel yang berbeza (contohnya seseorang yang diambil bekerja dua kali). Akaun induk hanya log masuk ke profilnya sendiri. Profil lain kekal lengkap dan HR masih boleh melihatnya.",
+        "masterBadge": "Akaun Log Masuk Induk",
+        "mergedBadge": "Akan dimatikan",
+        "carryTitle": "Akses yang patut diambil alih oleh akaun induk",
+        "carryHelp": "Peranan, akses syarikat dan akses pembantu AI ini dipegang oleh akaun lain dan bukan oleh akaun induk. Tandakan apa yang patut diambil alih oleh akaun induk. Tiada apa yang dipindahkan melainkan anda menandakannya.",
+        "carryNothing": "Akaun lain tidak memegang sebarang akses yang belum dimiliki oleh akaun induk.",
+        "carryRole": "{role} · {scope} (dipegang oleh {from})",
+        "carryAssistant": "Akses pembantu AI (dipegang oleh {from})",
+        "mergeEffect": "{count, plural, other {# log masuk akan dimatikan dan digabungkan ke dalam akaun induk.}}",
+        "reason": "Sebab",
+        "confirmationLabel": "Taip {word} untuk mengesahkan",
+        "mergeSubmit": "{count, plural, other {Gabungkan # log masuk ke dalam akaun induk}}",
+        "cancel": "Batal",
+        "merged": "Log masuk telah digabungkan. Hanya akaun induk boleh log masuk sekarang.",
+        "undone": "Gabungan dibatalkan. Log masuk kembali seperti sebelum penggabungan.",
+        "error": {
+          "forbidden": "Hanya pentadbir kumpulan boleh menggabungkan log masuk.",
+          "invalid": "Permintaan tidak sah. Buka kumpulan itu semula.",
+          "stale": "Kumpulan ini berubah selepas skrin dibuka. Bukanya semula.",
+          "masterMerged": "Akaun induk yang dipilih telah digabungkan ke dalam log masuk lain.",
+          "memberIsMaster": "Satu akaun dalam kumpulan ini sudah menjadi induk dan mesti kekal sebagai induk.",
+          "ownLogin": "Anda tidak boleh menggabungkan log masuk anda sendiri.",
+          "lastAdmin": "Penggabungan ini akan menyebabkan tiada pentadbir kumpulan yang boleh log masuk.",
+          "confirmation": "Taip perkataan pengesahan tepat seperti yang dipaparkan.",
+          "alreadyUndone": "Gabungan ini telah pun dibatalkan.",
+          "carry": "Akses untuk dipindahkan atau dibuang telah berubah. Buka halaman itu semula.",
+          "failed": "Perubahan tidak dapat disimpan. Tiada apa yang diubah."
+        }
+      },
+      "tabs": {
+        "label": "Senarai pengguna",
+        "all": "Semua Pengguna",
+        "identity": "IC / Pasport Berganda",
+        "email": "Alamat E-mel Kerja Berganda",
+        "duplicates": "Akaun log masuk berganda"
+      },
+      "activation": {
+        "screen": "Pengaktifan akaun",
+        "title": "Aktifkan akaun · {name}",
+        "information": "Maklumat akaun",
+        "personnelProfile": "Profil Kakitangan",
+        "openPersonnelProfile": "Buka Profil Kakitangan",
+        "actions": "Tindakan akaun",
+        "pendingNote": "Orang ini kekal Menunggu Pengaktifan sehingga mereka mengaktifkan akaun sendiri. Menghantar jemputan tidak sekali-kali mengaktifkan akaun.",
+        "setupInProgress": "Persediaan nama pengguna dan kata laluan sedang dijalankan untuk orang ini.",
+        "invitedEmail": "Jemputan dihantar kepada",
+        "invitedRole": "Peranan",
+        "invitationCreated": "Jemputan dibuat",
+        "invitationExpires": "Jemputan tamat tempoh",
+        "emailStatus": "E-mel jemputan",
+        "sentAt": "Dihantar {at}",
+        "delivery": {
+          "pending": "Sedang dihantar atau belum disahkan",
+          "sent": "Dihantar",
+          "failed": "E-mel jemputan gagal",
+          "skipped": "Tidak dihantar",
+          "none": "Tiada e-mel direkodkan"
+        },
+        "deliveryError": "Kod sebab: {code}",
+        "resend": "Hantar semula jemputan",
+        "resendHelp": "Hantar semula menggantikan jemputan ini dengan yang baharu dan menghantarnya semula melalui e-mel. Batal membatalkan jemputan.",
+        "resent": "Jemputan telah dihantar semula.",
+        "resendFailed": "Jemputan tidak dapat dihantar semula. Semak log penghantaran e-mel dan cuba lagi."
+      }
     },
     "audit": {
       "title": "Jejak audit",
@@ -39924,8 +40173,46 @@
       "authenticatorEnrolled": "Pengesah disediakan",
       "unlocked": "Kunci log masuk dikosongkan",
       "other": "Aktiviti akaun",
-      "byActor": "{event} oleh {actor}"
-    }
+      "byActor": "{event} oleh {actor}",
+      "merged": "Log masuk digabungkan",
+      "mergeUndone": "Gabungan log masuk dibatalkan"
+    },
+    "merge": {
+      "title": "Gabungan log masuk",
+      "mergedInto": "Log masuk ini telah digabungkan ke dalam <link>{name}</link> dan tidak lagi boleh log masuk.",
+      "unnamed": "Log masuk tanpa nama",
+      "mergedBy": "Digabungkan oleh {name} pada {at}",
+      "reasonShown": "Sebab: {reason}",
+      "undoHelp": "Batal gabungan mengembalikan log masuk ini tepat seperti sebelum penggabungan. ID akaun, sejarah dan kebenarannya tidak pernah berubah.",
+      "carriedTitle": "Akses yang diberikan kepada akaun induk oleh gabungan ini. Tandakan yang tidak patut disimpan lagi oleh akaun induk.",
+      "removeRole": "Buang {role} · {scope} daripada akaun induk",
+      "removeAssistant": "Buang akses pembantu AI daripada akaun induk",
+      "undoReason": "Sebab membatalkan gabungan",
+      "undo": "Batal gabungan",
+      "masterHelp": "Log masuk ini telah digabungkan ke dalam akaun ini. Buka satu untuk melihat gabungannya atau membatalkannya.",
+      "mergedOn": "Digabungkan pada {at}"
+    },
+    "pageTitle": "Urus akaun · {name}",
+    "section": {
+      "information": "Maklumat akaun",
+      "actions": "Tindakan akaun",
+      "edit": "Sunting maklumat akaun"
+    },
+    "statusDetail": {
+      "suspended": "Digantung",
+      "expired": "Tamat tempoh",
+      "archived": "Dimatikan",
+      "left": "Pekerja telah berhenti",
+      "preparing": "Persediaan belum selesai"
+    },
+    "personnelProfile": "Profil Kakitangan",
+    "openPersonnelProfile": "Buka Profil Kakitangan",
+    "lockedSince": "Kata laluan telah dikunci sejak {at} selepas terlalu banyak percubaan log masuk yang gagal.",
+    "expiredHelp": "Akaun ini telah melepasi tarikh Akaun Aktif Sehingga. Tukar tarikh di bawah Sunting maklumat akaun, kemudian aktifkan semula.",
+    "preparingHelp": "Persediaan nama pengguna dan kata laluan untuk log masuk ini belum selesai.",
+    "leftHelp": "Ia dibuka semula secara automatik jika orang itu diambil bekerja semula.",
+    "mergedHelp": "Log masuk ini telah digabungkan ke dalam log masuk induk. Gunakan Buat asal gabungan di bawah untuk menghidupkannya semula.",
+    "noHistory": "Belum ada aktiviti akaun."
   },
   "organisationTagging": {
     "title": "Struktur kumpulan dan tag organisasi",
@@ -41089,6 +41376,20 @@
         "cancelled": {
           "title": "Pelengkapan maklumat dihentikan",
           "body": "Titik semak yang selesai kekal direkodkan."
+        }
+      },
+      "accountInvitationBatch": {
+        "completed": {
+          "title": "Kelompok jemputan selesai",
+          "body": "Buka Hantar Jemputan Secara Berkelompok untuk melihat siapa yang dihantar, gagal dan dilangkau."
+        },
+        "failed": {
+          "title": "Kelompok jemputan terhenti",
+          "body": "Jemputan yang sudah dihantar kekal sah. Buka Hantar Jemputan Secara Berkelompok untuk melihat keputusan dan sebabnya."
+        },
+        "cancelled": {
+          "title": "Kelompok jemputan dihentikan",
+          "body": "Jemputan yang sudah dihantar kekal sah. Buka Hantar Jemputan Secara Berkelompok untuk melihat keputusan."
         }
       }
     },

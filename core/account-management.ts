@@ -13,6 +13,8 @@ import {replacePassword,generateTemporaryPassword} from '../lib/internal-auth/pa
 import {isCalendarDate} from '../lib/calendar-date';
 import {todayInKualaLumpur} from '../lib/hr-date';
 import {requestRecovery} from '../lib/internal-auth/recovery';
+import {loginFailuresKey,type LoginFailures} from '../lib/internal-auth/login-lockout';
+import {effectivePasswordPolicy} from '../lib/internal-auth/password-policy';
 
 /** Adapt parameterized canonical auth IO to the existing RLS transaction. Never interpolate values as SQL. */
 function authSql(tx:Tx):AuthSql {
@@ -36,13 +38,27 @@ async function withAccount<T>(ctx:SessionContext,userId:string,operation:(tx:Tx,
   return operation(tx,auth,c);
  });
 }
-export type AccountSummary={name?:string|null;username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null};
+export type AccountSummary={name?:string|null;username:string;email:string;status:'active'|'suspended'|'expired'|'preparing';activeUntil:string|null;mustChange:boolean;temporaryPasswordExpiresAt:number|null;exemptionUntil:number|null;
+ /** Board 0735d1b7: when the password was locked by failed attempts (epoch ms), or null when it is not locked now. A lock
+  *  the Password Policy's automatic unlock has already released reads as not locked (the next sign-in clears it). */
+ lockedAt?:number|null};
+/** Whether a stored failed-attempt record still locks the password now, under the tenant's Password Policy. The same
+ * rule as sign-in admission (lib/internal-auth/login-lockout.ts): lockout off, or an automatic unlock window that has
+ * passed, means not locked. Pure. */
+export function passwordLockedAt(failures:LoginFailures|null,requirements:{lockoutEnabled:boolean;autoUnlock:boolean;unlockMinutes:number}|undefined,now=Date.now()):number|null{
+ if(!failures||failures.lockedAt===null||!requirements?.lockoutEnabled)return null;
+ if(requirements.autoUnlock&&now>=failures.lockedAt+requirements.unlockMinutes*60_000)return null;
+ return failures.lockedAt;
+}
 const accountStatus=(c:Credential):AccountSummary['status']=>!c.enabled?'preparing':c.suspended?'suspended':!accountAvailable(c)?'expired':'active';
 /** The read settles an ended authenticator pause (deleted and audited once as expired) under the account lock. */
 export function readManagedAccount(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(tx,auth,c):Promise<AccountSummary>=>{
  const exemption=await settleRecoveryExemption(auth,c);
+ // Read under the same subject lock as sign-in admission, so the page and a concurrent sign-in agree.
+ const failures=await readRecord<LoginFailures>(auth,loginFailuresKey(c.subject)),policy=await effectivePasswordPolicy(auth,c.tenantId);
  const [person]=await tx.execute(sql`select p.full_name from app_user au left join person p on p.id=au.person_id and p.tenant_id=au.tenant_id where au.id=${userId}::uuid and au.tenant_id=${ctx.tenantId}::uuid`) as unknown as {full_name:string|null}[];
- return {name:person?.full_name??null,username:c.username,email:c.email,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null};
+ return {name:person?.full_name??null,username:c.username,email:c.email,status:accountStatus(c),activeUntil:c.accountActiveUntil??null,mustChange:c.mustChange,temporaryPasswordExpiresAt:c.temporaryPasswordExpiresAt??null,exemptionUntil:exemption?.expiresAt??null,
+  lockedAt:passwordLockedAt(failures,policy.requirements)};
 });}
 /** A policy-conforming candidate for the Reset Password dialog. Nothing is stored or audited; the admin may edit it. */
 export function generateManagedAccountPassword(ctx:SessionContext,userId:string){return withAccount(ctx,userId,async(_tx,auth,c)=>{
@@ -133,6 +149,35 @@ export async function endManagedAccountSessionsTx(tx:Tx,ctx:SessionContext,userI
  await revokeCredentialsSessions(auth,c.subject);
  await writeRecord(auth,`credential:${c.subject}`,c,c.subject);
  return true;
+}
+
+/** Board 0735d1b7 — the account page's facts that do not need the internal credential: the login, its person, the
+ * Personnel Profile it links to, its roles with company scope and its AI assistant grant. Row security decides what the
+ * administrator sees (a login outside their companies is simply absent); one statement. Never changes anything. */
+export type AccountOverview={id:string;personId:string|null;name:string|null;email:string|null;loginSuffix:string|null;
+ archivedAt:string|null;leftEmployment:boolean;hasEmployment:boolean;employeeCode:string|null;profileEmploymentId:string|null;
+ roles:{id:string;role:string;companyId:string|null;company:string|null}[];assistantGranted:boolean};
+export async function readAccountOverview(ctx:SessionContext,userId:string):Promise<AccountOverview|null>{
+ if(!ctx.userId||!isAdmin(ctx)||!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId))return null;
+ return withTenant(ctx,async tx=>{
+  const [row]=await tx.execute<{id:string;person_id:string|null;name:string|null;email:string|null;subject:string|null;archived_at:Date|string|null;
+   blocked:boolean;has_employment:boolean;employee_code:string|null;profile_employment_id:string|null;roles:AccountOverview['roles']|null;assistant:boolean}>(sql`
+   select u.id::text,u.person_id::text,p.full_name as name,p.primary_email as email,u.workos_user_id as subject,u.archived_at,
+    app.login_blocked(u.id) as blocked,
+    exists(select 1 from employment e where e.tenant_id=u.tenant_id and e.person_id=u.person_id) as has_employment,
+    (select string_agg(distinct e.employee_code,', ') from employment e where e.tenant_id=u.tenant_id and e.person_id=u.person_id and e.terminated_on is null) as employee_code,
+    (select e.id::text from employment e where e.tenant_id=u.tenant_id and e.person_id=u.person_id
+      order by (e.terminated_on is null) desc,e.hired_on desc nulls last,e.id limit 1) as profile_employment_id,
+    (select jsonb_agg(jsonb_build_object('id',r.id,'role',r.role,'companyId',r.company_id,'company',c.legal_name) order by r.role,c.legal_name nulls first,r.id)
+      from role_assignment r left join company c on c.id=r.company_id and c.tenant_id=r.tenant_id where r.tenant_id=u.tenant_id and r.app_user_id=u.id) as roles,
+    exists(select 1 from assistant_grant g where g.tenant_id=u.tenant_id and g.app_user_id=u.id and g.revoked_at is null) as assistant
+   from app_user u left join person p on p.id=u.person_id and p.tenant_id=u.tenant_id
+   where u.tenant_id=${ctx.tenantId}::uuid and u.id=${userId}::uuid`);
+  if(!row)return null;
+  return{id:row.id,personId:row.person_id,name:row.name,email:row.email,loginSuffix:row.name?null:(row.subject??'').slice(-6),
+   archivedAt:row.archived_at===null?null:new Date(row.archived_at).toISOString(),leftEmployment:row.archived_at===null&&Boolean(row.blocked),
+   hasEmployment:Boolean(row.has_employment),employeeCode:row.employee_code,profileEmploymentId:row.profile_employment_id,roles:row.roles??[],assistantGranted:Boolean(row.assistant)};
+ });
 }
 
 export type ManagedDirectoryAccount=Pick<AccountSummary,'username'|'status'|'activeUntil'|'exemptionUntil'>;

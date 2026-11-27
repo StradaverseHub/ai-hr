@@ -5,17 +5,18 @@ import Link from 'next/link';
 import {getTranslations} from 'next-intl/server';
 import {getSession} from '@/lib/session';
 import {isGroupAdmin} from '@/lib/authz';
-import {readLoginMergeState} from '@/core/login-merge';
+import {readLoginMergeState,type LoginMergeState} from '@/core/login-merge';
 import {ActionNavigateForm} from '@/components/action-navigate-form';
 import {Card,Field,inputCls} from '@/components/ui';
 import {formatDmyTime} from '@/lib/date-display';
 import {ManualSubmit} from '../../manual-submit';
 import {undoLoginMergeAction} from '../../duplicates/actions';
 
-export async function LoginMergePanel({userId}:{userId:string}){
+/** `state`: the merge facts the account page already read for this login (so they are read once per page). */
+export async function LoginMergePanel({userId,state:known}:{userId:string;state?:LoginMergeState|null}){
  const s=await getSession();
  if(!isGroupAdmin(s))return null;
- const state=await readLoginMergeState(s,userId).catch(()=>null);
+ const state=known!==undefined?known:await readLoginMergeState(s,userId).catch(()=>null);
  if(!state||(!state.mergedInto&&!state.mergedLogins.length))return null;
  const t=await getTranslations('accountManagement.merge'),users=await getTranslations('admin.users');
  const merged=state.mergedInto;
