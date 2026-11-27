@@ -75,9 +75,10 @@ const BUDGETS:Record<Key,{transactions:number;statements:number}>={
  saveCp38DialogAction:{transactions:2,statements:16},
  deleteCp38DialogAction:{transactions:2,statements:15},
  deleteCp38Action:{transactions:1,statements:13},
- // 038c304b rev 2 — the Export to Excel route (first recording: the session and scope reads, one read-only snapshot for
- // the count and the keyset batches, one short transaction for the cp38.exported event; ~400 records = one batch).
- export:{transactions:6,statements:20},
+ // 038c304b rev 2 — the Export to Excel route. Measured on the CI runner (alpha-focused-checks run 45926516649): 3 and 9
+ // for every persona and scope (the scope read, one read-only snapshot for the count and the keyset batch — ~400 records
+ // are one batch — and one short transaction for the cp38.exported event); 4 and 11 with ?company (the company list).
+ export:{transactions:4,statements:11},
 };
 type Persona='group'|'multi'|'single';
 type Scope='all'|'one';

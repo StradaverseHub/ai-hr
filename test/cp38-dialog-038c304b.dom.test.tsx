@@ -220,7 +220,8 @@ describe('038c304b rev 2 — Cancel, Close and "Discard your changes?"', () => {
     await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     await user.keyboard('{Escape}');
     ask = await screen.findByRole('alertdialog', { name: c.discardTitle });
-    expect(screen.getByRole('dialog', { name: c.editTitle })).toBeTruthy();
+    // The question is modal: the pop-up behind it stays open (hidden from assistive technology while asked).
+    expect(screen.getByRole('dialog', { name: c.editTitle, hidden: true })).toBeTruthy();
 
     await user.click(within(ask).getByRole('button', { name: c.discard }));
     await waitFor(() => expect(screen.queryByRole('dialog', { name: c.editTitle })).toBeNull());

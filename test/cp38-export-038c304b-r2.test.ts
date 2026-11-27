@@ -97,7 +97,8 @@ beforeAll(async () => {
   await resetDb();
   b = await seedBase();
   await setModule(b.tenantId, 'payroll', 'active');
-  a = adminCtx(b);
+  // The group administrator: a group-wide grant, so the company switcher offers every company (lib/scope.ts).
+  a = { ...adminCtx(b), grants: [{ role: 'hr_admin', companyId: null }] } as SessionContext;
   // A second company with an administrator of that company only.
   const [beta] = await owner.db.insert(schema.company).values({ tenantId: b.tenantId, legalName: 'Fictional Beta Sdn Bhd' }).returning({ id: schema.company.id });
   betaId = beta.id;
