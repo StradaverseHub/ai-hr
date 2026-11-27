@@ -1,7 +1,8 @@
 import { Readable } from 'node:stream';
 import JSZip from 'jszip';
 
-export type TransactionCell = string | number | null | { date: string };
+/** `{ money }` is a number shown with two decimals (#,##0.00); `{ date }` a real Excel date. */
+export type TransactionCell = string | number | null | { date: string } | { money: number };
 const SHEET_CAPACITY = 1_048_575;
 const NS = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main';
 const REL = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
@@ -28,6 +29,10 @@ function cellXml(cell: TransactionCell, ref: string) {
   if (typeof cell === 'number') {
     if (!Number.isFinite(cell)) throw new Error('The transaction contains an invalid number.');
     return `<c r="${ref}"><v>${cell}</v></c>`;
+  }
+  if ('money' in cell) {
+    if (!Number.isFinite(cell.money)) throw new Error('The transaction contains an invalid number.');
+    return `<c r="${ref}" s="3"><v>${cell.money}</v></c>`;
   }
   const serial = (Date.parse(cell.date + 'T00:00:00Z') - Date.UTC(1899, 11, 30)) / 86_400_000;
   if (!Number.isFinite(serial)) throw new Error('The transaction contains an invalid date.');
@@ -56,13 +61,21 @@ const styleFile = XML + `<styleSheet xmlns="${NS}">`
   + '<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>'
   + '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
   + '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-  + '<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
+  + '<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>'
   + '<xf numFmtId="49" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
-  + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
+  + '<xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/>'
+  + '<xf numFmtId="4" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>'
   + '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles></styleSheet>';
 
 /** One Excel workbook with bounded streams, repeating column headings whenever Excel's row limit is reached. */
-export function transactionXlsxStream(headers: string[], rows: AsyncIterable<readonly TransactionCell[]>, total: number): Readable {
+export function transactionXlsxStream(
+  headers: string[],
+  rows: AsyncIterable<readonly TransactionCell[]>,
+  total: number,
+  /** The sheets' name before their number (default "Transactions"); at most 28 characters; Excel's forbidden : \\ / ? * [ ] become spaces. */
+  sheetName = 'Transactions',
+): Readable {
+  const sheetTitle = text(sheetName.replace(/[:\\/?*[\]]/g, ' ').slice(0, 28)).replace(/"/g, '&quot;');
   const zip = new JSZip();
   const count = Math.max(1, Math.ceil(total / SHEET_CAPACITY));
   const indices = Array.from({ length: count }, (_, index) => index + 1);
@@ -76,7 +89,7 @@ export function transactionXlsxStream(headers: string[], rows: AsyncIterable<rea
     + '</Types>');
   zip.file('_rels/.rels', XML + `<Relationships xmlns="${RELS}"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
   zip.file('xl/workbook.xml', XML + `<workbook xmlns="${NS}" xmlns:r="${REL}"><sheets>`
-    + indices.map((i) => `<sheet name="Transactions ${i}" sheetId="${i}" r:id="rId${i}"/>`).join('') + '</sheets></workbook>');
+    + indices.map((i) => `<sheet name="${sheetTitle} ${i}" sheetId="${i}" r:id="rId${i}"/>`).join('') + '</sheets></workbook>');
   zip.file('xl/_rels/workbook.xml.rels', XML + `<Relationships xmlns="${RELS}">`
     + indices.map((i) => `<Relationship Id="rId${i}" Type="${REL}/worksheet" Target="worksheets/sheet${i}.xml"/>`).join('')
     + `<Relationship Id="rIdStyles" Type="${REL}/styles" Target="styles.xml"/></Relationships>`);

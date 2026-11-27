@@ -10,6 +10,7 @@ import { todayInKualaLumpur } from '@/lib/hr-date';
 import { formatDmy } from '@/lib/date-display';
 import { Badge, Button, Card, EmployeeName, Field, PageHeader, SectionHeader, inputCls, pageWideCls } from '@/components/ui';
 import { Pager } from '@/components/pager';
+import { ExportDownloadLink } from '@/components/export-download-link';
 import { CollapsibleEmployeePanel, EmployeeScopePanel } from '@/components/collapsible-employee-panel';
 import type { Cp38HistoryEntry, Cp38HistoryLabels } from '@/components/cp38/history-list';
 import { Cp38AddButton, Cp38EmployeeHistoryButton, Cp38RowActions, type Cp38DialogLabels } from './cp38-dialog';
@@ -30,6 +31,9 @@ import { Cp38AddButton, Cp38EmployeeHistoryButton, Cp38RowActions, type Cp38Dial
  *  - History for the page's rows is one read by their ids, and the chosen employee's whole history (deleted records
  *    included) one read by employment.
  * Leavers stay in the list (their history) and can be chosen to narrow it; Add is offered only for an active one.
+ *
+ * EXPORT (038c304b rev 2): "Export to Excel" downloads every record the list's filters select (all pages, not the
+ * page shown) from ./export/route.ts, which parses the same filters the same way.
  *
  * GUARD: scopedAdmin (company scope from the switcher) and the Payroll module. The writers refuse anything outside
  * the scope or the caller's payroll administration on their own; this page only decides what to show.
@@ -106,7 +110,9 @@ export default async function Cp38DeductionPage({
     ...(companyId ? { company: companyId } : {}),
     ...(status ? { status } : {}),
   };
-  const returnTo = `${BASE}${Object.keys(filterParams).length ? `?${new URLSearchParams(filterParams)}` : ''}`;
+  const query = Object.keys(filterParams).length ? `?${new URLSearchParams(filterParams)}` : '';
+  const returnTo = `${BASE}${query}`;
+  const exportHref = `${BASE}/export${query}`;
   const panelPreserve: Record<string, string> = {
     ...(companyId ? { company: companyId } : {}),
     ...(status ? { status } : {}),
@@ -121,7 +127,8 @@ export default async function Cp38DeductionPage({
   };
   const labels: Cp38DialogLabels = {
     add: t('add'), addTitle: t('addTitle'), edit: t('edit'), editTitle: t('editTitle'), save: t('save'), saving: t('saving'),
-    close: t('close'), ref: t('ref'), refPlaceholder: t('refPlaceholder'), amount: t('amount'), from: t('from'), to: t('to'),
+    close: t('close'), cancel: t('cancel'), discard: { title: t('discardTitle'), keep: t('keepEditing'), discard: t('discard') },
+    ref: t('ref'), refPlaceholder: t('refPlaceholder'), amount: t('amount'), from: t('from'), to: t('to'),
     toHint: t('toHint'), remarks: t('remarks'), remarksPlaceholder: t('remarksPlaceholder'),
     lastMonth: { toggle: t('lastMonthToggle'), amount: t('lastMonthAmount'), hint: t('lastMonthHint') },
     delete: t('delete'), deleteTitle: t('deleteTitle'), history: t('history.button'), historyTitle: t('history.title'), historyLabels,
@@ -196,6 +203,12 @@ export default async function Cp38DeductionPage({
             </Field>
             <Button type="submit" variant="secondary">
               {t('apply')}
+            </Button>
+            {/* 038c304b rev 2 — every record these filters select, all pages (./export/route.ts). */}
+            <Button asChild variant="outline" className="ml-auto">
+              <ExportDownloadLink href={exportHref} data-cp38-export="">
+                {t('export')}
+              </ExportDownloadLink>
             </Button>
           </form>
           {!selected && <p className="px-4 pt-2 text-xs text-muted-foreground">{t('pickEmployeeAddHint')}</p>}

@@ -26,3 +26,15 @@ it('writes headings for a filtered export with no rows', async () => {
   expect(sheet.A1.v).toBe('Code');
   expect(sheet.A2).toBeUndefined();
 });
+
+it('writes money cells as numbers shown with two decimals and names the sheets as asked (038c304b rev 2)', async () => {
+  async function* source() { yield [{ money: 300 }, { money: 289.35 }, 'x'] as TransactionCell[]; }
+  const buffers: Buffer[] = [];
+  for await (const chunk of transactionXlsxStream(['A', 'B', 'C'], source(), 1, 'CP38 Deduction')) buffers.push(chunk as Buffer);
+  const file = XLSX.read(Buffer.concat(buffers), { type: 'buffer', cellNF: true });
+  expect(file.SheetNames).toEqual(['CP38 Deduction 1']);
+  const sheet = file.Sheets[file.SheetNames[0]];
+  expect(sheet.A2).toMatchObject({ t: 'n', v: 300, z: '#,##0.00' });
+  expect(sheet.B2).toMatchObject({ t: 'n', v: 289.35, z: '#,##0.00' });
+  expect(sheet.C2).toMatchObject({ t: 's', v: 'x' });
+});

@@ -2,7 +2,11 @@
  * cost", rules 2, 3 and 6; docs/SCALE-AND-RELEASE-RULES.md rules 2 and 3) for board 038c304b / bc6b5490:
  *  - app/payroll/transactions/cp38/page.tsx, the Payroll > Transaction Entry > CP38 Deduction page;
  *  - app/payroll/transactions/cp38/actions.ts saveCp38DialogAction (Add and Edit) and deleteCp38DialogAction;
- *  - app/admin/personnel/[employmentId]/cp38-actions.ts deleteCp38Action (the Payroll tab's new Delete).
+ *  - app/admin/personnel/[employmentId]/cp38-actions.ts deleteCp38Action (the Payroll tab's new Delete);
+ *  - app/payroll/transactions/cp38/export/route.ts GET, the page's "Export to Excel" (038c304b rev 2). A route handler is
+ *    not on the read-budget registry (test/read-cost-ratchets/README.md lists pages and server actions), so its budget
+ *    is recorded and asserted here only: every record in one keyset batch per CP38_EXPORT_BATCH rows, the same number of
+ *    statements whatever the number of companies.
  *
  * On the fictional 71-company / 1,000-employment group fixture (test/helpers/ai-centre-scale-fixture.ts) with CP38
  * records on about 400 employees across the staffed companies and correction history on some, the page is rendered as
@@ -51,13 +55,14 @@ import * as schema from '../db/schema';
 import Cp38DeductionPage from '../app/payroll/transactions/cp38/page';
 import {deleteCp38DialogAction,saveCp38DialogAction} from '../app/payroll/transactions/cp38/actions';
 import {deleteCp38Action} from '../app/admin/personnel/[employmentId]/cp38-actions';
+import {GET as exportCp38} from '../app/payroll/transactions/cp38/export/route';
 import {listCp38Across,setCp38,updateCp38} from '../core/cp38';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,observeStatements} from './helpers/statement-observer';
 import {serverTreeSnapshot} from './helpers/server-tree-snapshot';
 
-type Key='page'|'saveCp38DialogAction'|'deleteCp38DialogAction'|'deleteCp38Action';
+type Key='page'|'saveCp38DialogAction'|'deleteCp38DialogAction'|'deleteCp38Action'|'export';
 /** Recorded budgets: the largest (transactions, statements) measured over every persona and scope below. Budgets only
  * go down; raising one needs an ADR note. */
 const BUDGETS:Record<Key,{transactions:number;statements:number}>={
@@ -70,6 +75,9 @@ const BUDGETS:Record<Key,{transactions:number;statements:number}>={
  saveCp38DialogAction:{transactions:2,statements:16},
  deleteCp38DialogAction:{transactions:2,statements:15},
  deleteCp38Action:{transactions:1,statements:13},
+ // 038c304b rev 2 — the Export to Excel route (first recording: the session and scope reads, one read-only snapshot for
+ // the count and the keyset batches, one short transaction for the cp38.exported event; ~400 records = one batch).
+ export:{transactions:6,statements:20},
 };
 type Persona='group'|'multi'|'single';
 type Scope='all'|'one';
@@ -237,5 +245,31 @@ describe('038c304b / bc6b5490: the CP38 writers at group scale',()=>{
   state.session=personaCtx('group');state.cookies={company_scope:companyId};
   expect(await deleteCp38DialogAction(form({id:outside.id}))).toMatchObject({ok:false,message:'payroll.transactions.cp38.error.outOfScope{"ref":"","from":"","to":"payroll.transactions.cp38.open"}'});
   expect(await current(outside.employmentId)).toHaveLength(1);
+ },300_000);
+});
+
+describe('038c304b rev 2: the CP38 Export to Excel route at group scale',()=>{
+ it('exports every record of the scope in a bounded number of reads, without a per-company cost',async()=>{
+  const run=(persona:Persona,scope:Scope,query:Record<string,string>={})=>measure('export',Object.keys(query).join('+')||'all',persona,scope,
+   ()=>exportCp38(new Request(`http://localhost/payroll/transactions/cp38/export?${new URLSearchParams(query)}`)));
+  // One unmeasured export first: process-level caches fill once.
+  state.session=personaCtx('group');state.cookies={};await exportCp38(new Request('http://localhost/payroll/transactions/cp38/export'));
+  const groupAll=await run('group','all'),groupOne=await run('group','one'),multiAll=await run('multi','all'),single=await run('single','all');
+  noWider(groupAll,groupOne);
+  noWider(multiAll,single);
+  await run('group','all',{status:'active',company:companyId});
+  const rowsOf=async(observed:{result:unknown})=>{
+   const res=observed.result as Response;expect(res.status).toBe(200);
+   const XLSX=await import('xlsx');
+   const book=XLSX.read(Buffer.from(await res.arrayBuffer()),{type:'buffer'});
+   return XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[book.SheetNames[0]],{header:1,defval:null}).slice(1).map(r=>r[3]);
+  };
+  // Every record of the population, not a page of it: the same count as the independent query.
+  const all=await expectedList(fixture.companyIds),one=await expectedList([companyId]);
+  expect((await rowsOf(groupAll)).length).toBe(all.length);
+  expect((await rowsOf(multiAll)).length).toBe(all.length);
+  expect((await rowsOf(groupOne)).length).toBe(one.length);
+  expect((await rowsOf(single)).length).toBe(one.length);
+  expect(all.length).toBeGreaterThan(25);
  },300_000);
 });
