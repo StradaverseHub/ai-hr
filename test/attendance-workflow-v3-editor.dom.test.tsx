@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi as vitest } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 // 03cb9b74: the named-approver picker lists nobody until it opens and searches (the page no longer pre-lists approvers).
-const { searchApprovers } = vi.hoisted(() => ({ searchApprovers: vi.fn() }));
-vi.mock('../app/admin/attendance/approval-workflow/actions', () => ({ searchAttendanceApproversAction: searchApprovers }));
+const { searchApprovers } = vitest.hoisted(() => ({ searchApprovers: vitest.fn() }));
+vitest.mock('../app/admin/attendance/approval-workflow/actions', () => ({ searchAttendanceApproversAction: searchApprovers }));
 import { AttendanceStageEditorV3, emptyAttendanceV3Level } from '../app/admin/attendance/approval-workflow/stage-editor-v3';
 import { WorkflowCompanyContext } from '../app/admin/attendance/approval-workflow/approver-picker';
 import type { AttendanceLevelProblem, AttendanceV3Level } from '../lib/attendance-workflow-v3';

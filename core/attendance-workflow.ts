@@ -14,9 +14,8 @@ import { assertCanDecide,decisionEmploymentAuthorityTx } from './approvals';
 import { canApproveOnBehalfForCompanyTx } from './attendance-on-behalf-permission';
 import { scopeOf } from '../lib/delegation-scope';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
-import { labelUsableByCompany } from './system-labels';
+import { labelUsableByCompany, visibleLabelIdsCondition } from './system-labels';
 import { ATTENDANCE_APPLICATION_TYPES, type AttendanceWorkflowOptions } from '../lib/attendance-workflow';
-import { visibleLabelIdsCondition } from './system-labels';
 import { uuidArrayParam } from '../db/sql-arrays';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { AttendanceWorkflowError, attendanceScopesOverlap, attendanceCriteriaGroups, attendanceStageLevelNumber, validateAttendanceWorkflow, type AttendanceWorkflowInput, type AttendanceApplicationType, type AttendanceResolvedStage, type AttendanceResolvedApprover, type AttendanceSkippedLevel, type AttendanceCriteriaGroup } from '../lib/attendance-workflow';
@@ -826,11 +825,23 @@ export async function searchAttendanceApprovers(ctx:SessionContext,input:{compan
  if(!input.companyIds.length||input.companyIds.length>100||input.companyIds.some(id=>!uuid.test(id))||typeof input.query!=='string'||input.query.length>100||!Number.isInteger(input.page)||input.page<0||input.page>200||(input.selectedIds??[]).length>100||(input.selectedIds??[]).some(id=>!uuid.test(id)))throw new AttendanceWorkflowError('invalid','Choose valid company and employee search criteria.');
  return withTenant(ctx,async tx=>{
   await requireAdministeredCompaniesTx(tx,input.companyIds);
-  const companies=sql`ARRAY[${sql.join(input.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
   const pattern='%'+input.query.trim().replace(/[\\%_]/g,'\\$&')+'%';
+  // Board 03cb9b74, measured on the 71-company / 3,000-employment fixture: the per-row authority functions cost 0.4 s
+  // for one company and the per-row x per-company eligibility column another 0.45 s for "All companies". Both now run
+  // per company or once per row, with the same answers (test/attendance-workflow-read-budget-03cb9b74.test.ts compares
+  // them with the previous statement):
+  //  - app.attendance_selected_approver_eligible(company, employment) reads the company only to require it to be in the
+  //    employment's tenant (migration 5140). requireAdministeredCompaniesTx has just proved every chosen company is in
+  //    the current tenant, and the employment is too, so "eligible for every chosen company" is "eligible for the first";
+  //  - app.access_workforce_employment(e.id,'workforce.view') (migration 5010) is the employment's own tenant, voided and
+  //    import-pending conditions plus app.access_workforce_company for its company, so the company part runs once per
+  //    company together with app.is_admin_for.
   const fields=sql`e.id,p.full_name as name,e.employee_code as "employeeCode",c.legal_name as company,
-   not exists(select 1 from unnest(${companies}) target where not app.attendance_selected_approver_eligible(target,e.id)) as eligible`;
-  const visible=sql`e.tenant_id=${ctx.tenantId}::uuid and app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view')`;
+   app.attendance_selected_approver_eligible(${input.companyIds[0]}::uuid,e.id) as eligible`;
+  const visible=sql`e.tenant_id=${ctx.tenantId}::uuid and e.tenant_id=app.current_tenant_id() and e.voided_at is null
+   and (e.import_pending_attempt_id is null or e.import_pending_attempt_id::text=current_setting('app.import_attempt',true))
+   and e.company_id in (select permitted.id from company permitted where permitted.tenant_id=app.current_tenant_id()
+    and app.is_admin_for(permitted.id) and app.access_workforce_company(permitted.id,'workforce.view'))`;
   const rows=await tx.execute<{id:string;name:string;employeeCode:string|null;company:string;eligible:boolean}>(sql`select ${fields} from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where ${visible} and (p.full_name ilike ${pattern} or e.employee_code ilike ${pattern}) order by e.employee_code nulls last,p.full_name,e.id limit 51 offset ${input.page*50}`);
   const selected=input.selectedIds?.length?await tx.execute<typeof rows[number]>(sql`select ${fields} from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where ${visible} and e.id in (${sql.join(input.selectedIds.map(id=>sql`${id}::uuid`),sql`, `)}) order by e.id`):[];
   return {rows:rows.slice(0,50),selected,more:rows.length>50};
