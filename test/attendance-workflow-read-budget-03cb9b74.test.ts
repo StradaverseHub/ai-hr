@@ -202,7 +202,7 @@ describe('03cb9b74: Create, Copy, Edit and View Workflow at group scale',()=>{
    ()=>serverTreeSnapshot(createElement(EditAttendanceWorkflowPage,{params:Promise.resolve({lineageId})})));
   state.session=personaCtx('group');state.cookies={};await serverTreeSnapshot(createElement(EditAttendanceWorkflowPage,{params:Promise.resolve({lineageId:shared})}));
   const groupAll=await edit('group','all',shared),groupOne=await edit('group','one',single),multiAll=await edit('multi','all',shared),singleAll=await edit('single','all',single);
-  const form=(observed:{result:unknown})=>{const found=leaves(observed.result,'WorkflowForm');expect(found).toHaveLength(1);return found[0] as {options:{companies:{id:string}[];employees:{id:string}[];approverEmployees:{id:string}[]};initial:unknown};
+  const form=(observed:{result:unknown})=>{const found=leaves(observed.result,'WorkflowForm');expect(found).toHaveLength(1);return found[0] as {options:{companies:{id:string}[];employees:{id:string}[];approverEmployees:{id:string}[]};initial:unknown};};
   for(const observed of [groupAll,groupOne,multiAll,singleAll])expect(observed.statements.map(s=>s.sql).filter(text=>SLOW_READS.test(text))).toEqual([]);
   const sharedForm=form(groupAll).options;
   expect(sorted(ids(sharedForm.approverEmployees))).toEqual(sorted(approvers));
