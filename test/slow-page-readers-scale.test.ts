@@ -5,14 +5,16 @@
  * (listBatches) and outstanding counts (payrollRunOutstandingCounts), Home's record readiness (recordReadiness) and
  * the Audit Trail's filter lists (auditAggregateTypes, auditActors). It prints SLOW_PAGE lines. All names are
  * invented. */
-import {sql} from 'drizzle-orm';
+import {and,eq,inArray,notInArray,sql} from 'drizzle-orm';
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import type {SessionContext} from '../db/client';
 import * as schema from '../db/schema';
 import {listBatches} from '../core/payroll';
 import {payrollRunOutstandingCounts} from '../core/payroll-view';
 import {recordReadiness} from '../core/record-readiness';
-import {auditActors,auditAggregateTypes} from '../core/read';
+import {auditActors,auditAggregateTypes,auditCompanyScope} from '../core/read';
+import {MAPPED_AGGREGATE_TYPES,MODULE_KEYS,aggregateTypesForModule,type ModuleKey} from '../lib/audit-format';
+import {withTenant} from '../db/client';
 import {closeAll,migrateTestDb,owner,resetDb,seedBase,setModule,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
 import {explainStatements,isIdentityStatement,observeStatements} from './helpers/statement-observer';
@@ -111,8 +113,22 @@ describe('slow-page readers at large-group scale',()=>{
    expect(outstanding.size,name).toBe(name==='group'?32:8);
    for(const [id,v] of outstanding)expect(v,`${name} ${id}`).toMatchObject({count:expected.get(id),held:0,known:true,marked:true});
    expect(await timed(`${name} readiness`,ctx,()=>recordReadiness(ctx))).toBeTruthy();
-   expect(await timed(`${name} audit types`,ctx,()=>auditAggregateTypes(ctx))).toBeTruthy();
-   expect(await timed(`${name} audit actors`,ctx,()=>auditActors(ctx))).toBeTruthy();
+   // The filter lists against the select-distinct queries they replace (7580), for every area.
+   const types=await timed(`${name} audit types`,ctx,()=>auditAggregateTypes(ctx)) as {aggregateType:string}[];
+   const legacyTypes=await withTenant(ctx,tx=>tx.selectDistinct({aggregateType:schema.domainEvent.aggregateType}).from(schema.domainEvent)
+    .where(auditCompanyScope()).orderBy(schema.domainEvent.aggregateType));
+   expect(types.length,name).toBeGreaterThan(0);
+   expect(types,`${name} audit types`).toEqual(legacyTypes);
+   for(const module of [undefined,...MODULE_KEYS] as (ModuleKey|undefined)[]){
+    const actors=await timed(`${name} audit actors ${module??'all'}`,ctx,()=>auditActors(ctx,{module})) as {actorId:string|null;actorName:string|null}[];
+    const area=module==='other'?notInArray(schema.domainEvent.aggregateType,[...MAPPED_AGGREGATE_TYPES]):module?inArray(schema.domainEvent.aggregateType,aggregateTypesForModule(module)):undefined;
+    const legacyActors=await withTenant(ctx,tx=>tx.selectDistinct({actorId:schema.domainEvent.actorId,actorName:schema.person.fullName}).from(schema.domainEvent)
+     .leftJoin(schema.appUser,eq(schema.appUser.id,schema.domainEvent.actorId)).leftJoin(schema.person,eq(schema.person.id,schema.appUser.personId))
+     .where(and(auditCompanyScope(),area)));
+    const key=(r:{actorId:string|null;actorName:string|null})=>`${r.actorName??'~'}|${r.actorId??'~'}`;
+    expect(actors.map(key).sort(),`${name} audit actors ${module??'all'}`).toEqual(legacyActors.map(key).sort());
+    if(module===undefined)expect(actors.length,name).toBeGreaterThan(0);
+   }
   }
  },900_000);
 });

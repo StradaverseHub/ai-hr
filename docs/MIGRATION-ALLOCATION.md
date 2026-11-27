@@ -1,3 +1,14 @@
+# Audit Trail filter lists: domain_event actor index, 27 November 2026
+
+Reserve `7580_domain_event_actor_index`, journal index `10980`, timestamp `1795495007580`, SQL SHA-256
+`d68b7c66ba9ab136398398156c16dc12f12a11465339a00ff4e11302fa6bf57c`. Next free slot after `7570_tp3_import_job` (main). Built on main `240adad5c`.
+Recheck both installations' watermarks and any competing reservation at admission.
+
+Adds `domain_event_actor_idx (tenant_id, actor_id)` only. core/read.ts `auditActors` walks the distinct actors by it
+(recursive skip scan) and `auditAggregateTypes` walks the distinct types by the existing `domain_event_aggregate_idx`,
+each keeping a value only when one of its events passes the caller's audit scope, instead of `select distinct` over
+every visible event. Same rows, same row security.
+
 # Board 5084d02e: Form TP3 Excel import job and Import Log, 26 November 2026
 
 Reserve `7570_tp3_import_job`, journal index `10970`, timestamp `1795495007570`, SQL SHA-256
