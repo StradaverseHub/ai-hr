@@ -19,7 +19,8 @@
  *  - wall time: each route rendered in interleaved rounds in every mode, printed as `ROUTE_WALL {json}` (median and
  *    spread of `ms` per mode), to compare the pool sizes against the join off. The audit log (/admin/audit) and a
  *    processed payroll run of the work-holding company (/payroll/[batchId]) are measured the same way for a group
- *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3.
+ *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3 and
+ *    on the default join, and against their recorded budgets (WALL_BUDGETS).
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {createElement,type ReactNode} from 'react';
@@ -90,8 +91,15 @@ const BUDGETS:Record<BudgetRoute,Partial<Record<'group'|'multi'|'single'|'manage
 };
 
 type BudgetRoute='frame'|'home'|'approvals'|'personnel';
-/** Measured for wall time and equivalence only (their budgets are not recorded yet: test/read-cost-ratchets). */
+/** Measured for a group administrator only, in the last describe (the run is opened for them). */
 type WallRoute='audit'|'payrollRun';
+/** Recorded budgets (transactions, statements) for the group administrator at "All companies", default join on: the
+ * audit log, and the processed 2026-11 run of the work-holding company (its payslips) that the last describe opens.
+ * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
+const WALL_BUDGETS:Record<WallRoute,{transactions:number;statements:number}>={
+ audit:{transactions:4,statements:31},
+ payrollRun:{transactions:18,statements:60},
+};
 type Route=BudgetRoute|WallRoute;
 /** The processed payroll run /payroll/[batchId] shows (opened in the wall-time describe below). */
 let payrollRunId='';
@@ -330,21 +338,30 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   await owner.db.execute(sql`insert into compensation (tenant_id,employment_id,basic_salary,valid_from)
    select e.tenant_id,e.id,3200,'2024-01-01' from employment e where e.company_id=${workCompanyId}::uuid and e.terminated_on is null
     and not exists (select 1 from compensation c where c.employment_id=e.id and c.valid_to is null)`);
-  try{
-   const run=await createBatch(admin,{companyId:workCompanyId,payPeriod:'2026-11'});
-   await generatePayslips(admin,{batchId:run.batchId});
-   payrollRunId=run.batchId;
-  }catch(error){
-   // Still a real run screen, of the latest run (a draft 2026-11 if it was opened, else a fixture month without
-   // payslips): the setup lines say which.
+  // The fixture writes no employer-scoped PCB selection, and processing refuses an employee whose selection is missing
+  // or awaits confirmation ("PCB selected category: confirmation_required", localization/my/tax-selection.ts). Each of
+  // these employments gets the confirmed ordinary resident selection HR would record, at its person's current tax
+  // applicability epoch, the same row an explicit Personnel selection writes.
+  await owner.db.execute(sql`insert into employment_tax_selection_my (tenant_id,employment_id,company_id,scheme,transition_state,tax_applicability_epoch,source,provenance,updated_by_user_id)
+   select e.tenant_id,e.id,e.company_id,'resident','resolved',coalesce(s.tax_applicability_epoch,0),'explicit',
+    ${JSON.stringify({reason:'route_read_budget_fixture',declarationIds:[]})}::jsonb,${b.adminUserId}::uuid
+   from employment e left join employee_statutory_my s on s.person_id=e.person_id and s.tenant_id=e.tenant_id
+   where e.company_id=${workCompanyId}::uuid and e.terminated_on is null
+   on conflict (tenant_id,employment_id,company_id) do nothing`);
+  // The page budgets below are a processed run's, so a run that does not process fails here instead of measuring a
+  // draft.
+  const run=await createBatch(admin,{companyId:workCompanyId,payPeriod:'2026-11'});
+  payrollRunId=run.batchId;
+  try{await generatePayslips(admin,{batchId:run.batchId});}
+  catch(error){
    console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRun:'not processed',error:String((error as Error)?.message??error).slice(0,300)}));
-   const [latest]=await owner.db.select({id:schema.payrollBatch.id}).from(schema.payrollBatch)
-    .where(sql`${schema.payrollBatch.companyId}=${workCompanyId}::uuid`).orderBy(sql`${schema.payrollBatch.payPeriod} desc`).limit(1);
-   payrollRunId=latest.id;
+   throw error;
   }
   const [row]=await owner.db.select({payslips:sql<number>`count(*)::int`}).from(schema.payslip).where(sql`${schema.payslip.batchId}=${payrollRunId}::uuid`);
-  const [run]=await owner.db.select({status:schema.payrollBatch.status,payPeriod:schema.payrollBatch.payPeriod}).from(schema.payrollBatch).where(sql`${schema.payrollBatch.id}=${payrollRunId}::uuid`);
-  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips,...run}));
+  const [processed]=await owner.db.select({status:schema.payrollBatch.status,payPeriod:schema.payrollBatch.payPeriod}).from(schema.payrollBatch).where(sql`${schema.payrollBatch.id}=${payrollRunId}::uuid`);
+  console.log('ROUTE_WALL_SETUP '+JSON.stringify({payrollRunPayslips:row.payslips,...processed}));
+  expect(processed.status,'the measured run is processed').toBe('processed');
+  expect(row.payslips,'the measured run has payslips').toBeGreaterThan(0);
  },240_000);
  it.each(['audit','payrollRun'] as const)('%s renders identically at a pool of 3 and with the join off, and its wall time is measured',async route=>{
   await render(route,'group','all','pool3');
@@ -360,6 +377,11 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   // COMMIT), so the bound is the join off plus the pooled render's fallbacks.
   expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions+pooled.fallbacks);
   console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,refused:pooled.refused}));
+  // The recorded budget, on the default join (as BUDGETS above), with the same output as the join off.
+  const shared=await render(route,'group','all','default');
+  expect(firstDifference(off.output,shared.output),'without vs default').toBeNull();
+  expect(shared.transactions,`${route} group transactions`).toBeLessThanOrEqual(WALL_BUDGETS[route].transactions);
+  expect(shared.statements,`${route} group statements`).toBeLessThanOrEqual(WALL_BUDGETS[route].statements);
   await statementTime(off);await statementTime(pooled);
   await wallTime(route,'group',['without','default','pool3']);
  },300_000);
