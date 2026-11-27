@@ -262,6 +262,13 @@ export function pageRoutes(root:string):string[]{
  return sourceFiles(root,['app']).filter(f=>/(?:^|\/)page\.(?:tsx|ts|jsx|js)$/.test(f));
 }
 
+/** Route handlers (`route.ts`) under app/. Not part of the required inventory (the unbudgeted list holds pages and
+ * actions only); a route handler MAY be registered with a measured budget under its file path (038c304b rev 2: the
+ * CP38 export). */
+export function routeHandlers(root:string):string[]{
+ return sourceFiles(root,['app']).filter(f=>/(?:^|\/)route\.(?:ts|tsx|js)$/.test(f));
+}
+
 /** `file#name` for every exported function of every 'use server' module under app/. */
 export function serverActions(root:string):string[]{
  const out:string[]=[];

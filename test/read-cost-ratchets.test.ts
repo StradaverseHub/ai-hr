@@ -132,8 +132,9 @@ describe('read-cost ratchets on the current tree (allowlists only shrink)',()=>{
   expect(rc.serverActions(root).length).toBeGreaterThan(1000);
   const registry=load<Record<string,string>>('read-budget-registry.json');
   const unbudgeted=load<string[]>('unbudgeted-routes.json');
-  const known=new Set(inventory);
-  const problems=Object.entries(registry).map(([key,test])=>known.has(key)?rc.budgetEvidenceProblem(root,key,test):`${key}: no such page or action`)
+  // A route handler may also carry a measured budget (it is never required to: the inventory stays pages and actions).
+  const known=new Set([...inventory,...rc.routeHandlers(root)]);
+  const problems=Object.entries(registry).map(([key,test])=>known.has(key)?rc.budgetEvidenceProblem(root,key,test):`${key}: no such page, action or route handler`)
    .filter((p):p is string=>p!==null);
   expect(problems,`${DIR}/read-budget-registry.json entries must name a test that measures them with observeStatements`).toEqual([]);
   const both=unbudgeted.filter(key=>key in registry);

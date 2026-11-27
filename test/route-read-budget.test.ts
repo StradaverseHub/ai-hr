@@ -21,6 +21,9 @@
  *    processed payroll run of the work-holding company (/payroll/[batchId]) are measured the same way for a group
  *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3 and
  *    on the default join, and against their recorded budgets (WALL_BUDGETS).
+ *  - the CP38 Deduction Export to Excel route handler (app/payroll/transactions/cp38/export/route.ts, 038c304b rev 2),
+ *    called as the browser calls it, last in the file with CP38 records on ~400 employments: its recorded budget
+ *    (EXPORT_BUDGET), no more for 71 companies than for one, and every record of the scope in the file.
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {createElement,type ReactNode} from 'react';
@@ -65,6 +68,7 @@ import PersonnelPage from '../app/personnel/page';
 import AuditPage from '../app/admin/audit/page';
 import PayrollLayout from '../app/payroll/layout';
 import PayrollRunPage from '../app/payroll/[batchId]/page';
+import {GET as exportCp38} from '../app/payroll/transactions/cp38/export/route';
 import {createBatch,generatePayslips} from '../core/payroll';
 import {closeAll,entitledCtx,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 import {buildScaleFixture,type ScaleFixture} from './helpers/ai-centre-scale-fixture';
@@ -385,4 +389,60 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   await statementTime(off);await statementTime(pooled);
   await wallTime(route,'group',['without','default','pool3']);
  },300_000);
+});
+
+/** Recorded budget (transactions, statements) for the CP38 export route handler, the same for every persona and scope
+ * without filters. Measured on the CI runner (alpha-focused-checks run 45926516649, test/cp38-read-budget-038c304b.test.ts
+ * on the same fixture shape): the company scope read, one read-only snapshot for the exact count and the keyset batches,
+ * and one short transaction for the cp38.exported event. Budgets only go down; raising one needs an ADR note. */
+const EXPORT_BUDGET={transactions:3,statements:9};
+/** The CP38 Deduction page's Export to Excel (038c304b rev 2). Last in the file: the CP38 records it adds are not part of
+ * the fixture the routes above measure. */
+describe('route read budget: the CP38 export route handler',()=>{
+ beforeAll(async()=>{
+  // CP38 records on ~400 employments across the staffed companies (open, ended and upcoming; one record each).
+  const subjects=fixture.employmentIds.filter((_,i)=>i%5<2);
+  const rows=subjects.map((employmentId,i)=>({tenantId:b.tenantId,employmentId,cp38Ref:`CP38/RB/${String(i).padStart(4,'0')}`,amount:String(100+i%50),
+   validFrom:i%7===0?'2027-01-01':'2026-01-01',validTo:i%3===0&&i%7!==0?'2026-07-01':null}));
+  for(let i=0;i<rows.length;i+=500)await owner.db.insert(schema.employeeCp38).values(rows.slice(i,i+500));
+  await owner.db.execute(sql`analyze public.employee_cp38`);
+ },120_000);
+ const exportAs=async(persona:keyof typeof personas,scope:'all'|'one')=>{
+  state.session=personas[persona];state.pathname='/payroll/transactions/cp38/export';
+  state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
+  const observed=await observeStatements(()=>exportCp38(new Request('http://localhost/payroll/transactions/cp38/export')));
+  const res=observed.result;
+  expect(res.status,`${persona} ${scope} export`).toBe(200);
+  const XLSX=await import('xlsx');
+  const book=XLSX.read(Buffer.from(await res.arrayBuffer()),{type:'buffer'});
+  const rows=XLSX.utils.sheet_to_json<unknown[]>(book.Sheets[book.SheetNames[0]],{header:1,defval:null}).slice(1);
+  const row={route:'cp38Export',persona,scope,mode:'route',transactions:observed.transactions,statements:observed.statements.length,ms:Math.round(observed.ms),rows:rows.length};
+  console.log('ROUTE_BUDGET '+JSON.stringify(row));
+  return row;
+ };
+ /** The export's population, independently: current records of non-voided employments of these companies. */
+ const expectedCount=async(companyIds:readonly string[])=>{
+  const [row]=await owner.db.execute<{n:number}>(sql`select count(*)::int as n from employee_cp38 r join employment e on e.id=r.employment_id
+   where r.tenant_id=${b.tenantId}::uuid and r.superseded_at is null and e.voided_at is null and e.company_id=any(${'{'+companyIds.join(',')+'}'}::uuid[])`);
+  return row.n;
+ };
+ it('stays within its budget, costs no more for 71 companies than for one, and exports every record of the scope',async()=>{
+  await exportAs('group','all');
+  const all=await exportAs('group','all'),one=await exportAs('group','one');
+  const multi=await exportAs('multi','all'),single=await exportAs('base','all');
+  for(const measured of [all,one,multi,single]){
+   expect(measured.transactions,`${measured.persona} ${measured.scope} transactions`).toBeLessThanOrEqual(EXPORT_BUDGET.transactions);
+   expect(measured.statements,`${measured.persona} ${measured.scope} statements`).toBeLessThanOrEqual(EXPORT_BUDGET.statements);
+  }
+  expect(all.transactions).toBeLessThanOrEqual(one.transactions);
+  expect(all.statements).toBeLessThanOrEqual(one.statements);
+  expect(multi.transactions).toBeLessThanOrEqual(single.transactions);
+  expect(multi.statements).toBeLessThanOrEqual(single.statements);
+  const everyone=await expectedCount(fixture.companyIds),theirs=await expectedCount([workCompanyId]);
+  expect(everyone).toBeGreaterThan(300);
+  expect(all.rows).toBe(everyone);
+  expect(multi.rows).toBe(everyone);
+  expect(one.rows).toBe(theirs);
+  expect(single.rows).toBe(theirs);
+ },180_000);
 });

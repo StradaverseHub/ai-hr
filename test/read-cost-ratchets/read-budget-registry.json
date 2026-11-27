@@ -8,6 +8,7 @@
  "app/payroll/outstanding-actions.ts#requestPayrollOutstandingRefreshAction": "test/payroll-board-20261125-action-read-budget.test.ts",
  "app/payroll/transactions/cp38/actions.ts#deleteCp38DialogAction": "test/cp38-read-budget-038c304b.test.ts",
  "app/payroll/transactions/cp38/actions.ts#saveCp38DialogAction": "test/cp38-read-budget-038c304b.test.ts",
+ "app/payroll/transactions/cp38/export/route.ts": "test/route-read-budget.test.ts",
  "app/payroll/transactions/cp38/page.tsx": "test/cp38-read-budget-038c304b.test.ts",
  "app/payroll/transactions/fixed/actions.ts#removeFixedTransactionDialogAction": "test/payroll-board-20261125-action-read-budget.test.ts",
  "app/payroll/transactions/fixed/actions.ts#saveFixedTransactionDialogAction": "test/payroll-board-20261125-action-read-budget.test.ts",

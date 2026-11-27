@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode, type RefObject } from 'react';
 import { useRouter } from 'next/navigation';
 import * as Dialog from '@radix-ui/react-dialog';
+import * as AlertDialog from '@radix-ui/react-alert-dialog';
 import { Button, Field, inputCls } from '@/components/ui';
 import { DateField } from '@/components/ui/date-field';
 import { ConfirmSubmit } from '@/components/ui/confirm-submit';
@@ -23,6 +24,11 @@ import { deleteCp38DialogAction, saveCp38DialogAction, type Cp38DialogResult } f
  * writers, so a record changed here is the record on the employee's tab (bc6b5490: editable and deletable always).
  *
  * Every prop is plain data with pre-translated labels (the page is a server component; r123).
+ *
+ * 038c304b rev 2 — every pop-up has a Close (X) in its top corner, and Add and Edit a Cancel beside Save. Cancel, X,
+ * Escape and a click on the overlay all shut the pop-up and save nothing. When the form differs from what it opened
+ * with, they first ask "Discard your changes?" (Keep editing leaves the typing as it was; Discard closes); a form
+ * that is unchanged closes at once. Save is unchanged.
  */
 export type Cp38DialogRecord = {
   id: string;
@@ -43,6 +49,9 @@ export type Cp38DialogLabels = {
   save: string;
   saving: string;
   close: string;
+  cancel: string;
+  /** The question asked before a changed Add/Edit form is closed, and its two answers. */
+  discard: { title: string; keep: string; discard: string };
   ref: string;
   refPlaceholder: string;
   amount: string;
@@ -59,16 +68,37 @@ export type Cp38DialogLabels = {
   historyLabels: Cp38HistoryLabels;
 };
 
-/** The pop-up shell the four controls share (the Family-tab dialog's shape). */
-function Shell({ trigger, title, open, onOpenChange, children }: {
+/** Whether a form differs from what it opened with; false until a form registers itself. */
+type DirtyCheck = RefObject<() => boolean>;
+
+/** Every named value the form would post, in order — what "changed" is measured against. */
+function formSnapshot(form: HTMLFormElement): string {
+  return JSON.stringify(Array.from(new FormData(form), ([k, v]) => [k, typeof v === 'string' ? v : v.name]));
+}
+
+/**
+ * The pop-up shell the four controls share (the Family-tab dialog's shape), with the Close (X) in its top corner.
+ * Every way of closing it (X, Cancel, Escape, the overlay) goes through `requestClose`: with a changed form it asks
+ * first, otherwise it closes. A successful save closes it directly through `onOpenChange(false)`.
+ */
+function Shell({ trigger, title, open, onOpenChange, closeLabel, dirty, discard, children }: {
   trigger: ReactNode;
   title: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  children: ReactNode;
+  closeLabel: string;
+  /** Present for Add and Edit: closing a changed form asks first. */
+  dirty?: DirtyCheck;
+  discard?: Cp38DialogLabels['discard'];
+  children: (requestClose: () => void) => ReactNode;
 }) {
+  const [asking, setAsking] = useState(false);
+  const requestClose = () => {
+    if (dirty && discard && dirty.current()) setAsking(true);
+    else onOpenChange(false);
+  };
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}>
       <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
@@ -76,8 +106,34 @@ function Shell({ trigger, title, open, onOpenChange, children }: {
           aria-describedby={undefined}
           className="fixed left-1/2 top-1/2 z-50 max-h-[calc(100vh-4rem)] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg"
         >
-          <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
-          <div className="mt-4">{children}</div>
+          <div className="flex items-start justify-between gap-4">
+            <Dialog.Title className="text-base font-semibold">{title}</Dialog.Title>
+            <Dialog.Close asChild>
+              <Button type="button" variant="ghost" size="sm" aria-label={closeLabel} data-cp38-close="">
+                ✕
+              </Button>
+            </Dialog.Close>
+          </div>
+          <div className="mt-4">{children(requestClose)}</div>
+          {discard && (
+            <AlertDialog.Root open={asking} onOpenChange={setAsking}>
+              <AlertDialog.Portal>
+                <AlertDialog.Overlay className="fixed inset-0 z-50 bg-black/50" />
+                <AlertDialog.Content className="fixed left-1/2 top-1/2 z-50 w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-popover p-6 text-popover-foreground shadow-lg">
+                  <AlertDialog.Title className="text-base font-semibold">{discard.title}</AlertDialog.Title>
+                  <AlertDialog.Description className="sr-only">{discard.title}</AlertDialog.Description>
+                  <div className="mt-5 flex justify-end gap-2">
+                    <AlertDialog.Cancel asChild>
+                      <Button type="button" variant="outline">{discard.keep}</Button>
+                    </AlertDialog.Cancel>
+                    <AlertDialog.Action asChild>
+                      <Button type="button" variant="destructive" onClick={() => onOpenChange(false)}>{discard.discard}</Button>
+                    </AlertDialog.Action>
+                  </div>
+                </AlertDialog.Content>
+              </AlertDialog.Portal>
+            </AlertDialog.Root>
+          )}
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
@@ -116,17 +172,31 @@ function useCp38Submit(onDone: () => void) {
   return { pending, message, setMessage, submit };
 }
 
-function Cp38Form({ record, employmentId, returnTo, defaultFrom, labels, onDone }: {
+function Cp38Form({ record, employmentId, returnTo, defaultFrom, labels, onDone, onCancel, dirty }: {
   record: Cp38DialogRecord | null;
   employmentId: string;
   returnTo: string;
   defaultFrom: string;
   labels: Cp38DialogLabels;
   onDone: () => void;
+  /** Cancel: the shell's close request (asks first when the form was changed). */
+  onCancel: () => void;
+  /** Filled in here: whether the form now differs from what it opened with. */
+  dirty: DirtyCheck;
 }) {
   const { pending, message, submit } = useCp38Submit(onDone);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    const form = formRef.current;
+    if (!form) return;
+    const initial = formSnapshot(form);
+    dirty.current = () => formSnapshot(form) !== initial;
+    return () => {
+      dirty.current = () => false;
+    };
+  }, [dirty]);
   return (
-    <form onSubmit={submit(saveCp38DialogAction)} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2" data-cp38-form="">
+    <form ref={formRef} onSubmit={submit(saveCp38DialogAction)} className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2" data-cp38-form="">
       <input type="hidden" name="employmentId" value={employmentId} />
       <input type="hidden" name="returnTo" value={returnTo} />
       {record && <input type="hidden" name="id" value={record.id} />}
@@ -162,6 +232,9 @@ function Cp38Form({ record, employmentId, returnTo, defaultFrom, labels, onDone 
         <input name="remarks" defaultValue={record?.remarks ?? ''} placeholder={labels.remarksPlaceholder} className={inputCls} />
       </Field>
       <div className="flex justify-end gap-2 sm:col-span-2">
+        <Button type="button" variant="outline" onClick={onCancel} disabled={pending} data-cp38-cancel="">
+          {labels.cancel}
+        </Button>
         <Button type="submit" disabled={pending}>
           {pending ? labels.saving : labels.save}
         </Button>
@@ -178,9 +251,29 @@ export function Cp38AddButton({ employmentId, returnTo, defaultFrom, labels }: {
   labels: Cp38DialogLabels;
 }) {
   const [open, setOpen] = useState(false);
+  const dirty: DirtyCheck = useRef(() => false);
   return (
-    <Shell trigger={<Button size="sm">{labels.add}</Button>} title={labels.addTitle} open={open} onOpenChange={setOpen}>
-      <Cp38Form record={null} employmentId={employmentId} returnTo={returnTo} defaultFrom={defaultFrom} labels={labels} onDone={() => setOpen(false)} />
+    <Shell
+      trigger={<Button size="sm">{labels.add}</Button>}
+      title={labels.addTitle}
+      open={open}
+      onOpenChange={setOpen}
+      closeLabel={labels.close}
+      dirty={dirty}
+      discard={labels.discard}
+    >
+      {(requestClose) => (
+        <Cp38Form
+          record={null}
+          employmentId={employmentId}
+          returnTo={returnTo}
+          defaultFrom={defaultFrom}
+          labels={labels}
+          onDone={() => setOpen(false)}
+          onCancel={requestClose}
+          dirty={dirty}
+        />
+      )}
     </Shell>
   );
 }
@@ -196,6 +289,7 @@ export function Cp38RowActions({ record, returnTo, labels, history, deleteDescri
 }) {
   const [editOpen, setEditOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const editDirty: DirtyCheck = useRef(() => false);
   const del = useCp38Submit(() => undefined);
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
@@ -204,23 +298,31 @@ export function Cp38RowActions({ record, returnTo, labels, history, deleteDescri
         title={labels.editTitle}
         open={editOpen}
         onOpenChange={setEditOpen}
+        closeLabel={labels.close}
+        dirty={editDirty}
+        discard={labels.discard}
       >
-        <Cp38Form
-          record={record}
-          employmentId={record.employmentId}
-          returnTo={returnTo}
-          defaultFrom={record.validFrom}
-          labels={labels}
-          onDone={() => setEditOpen(false)}
-        />
+        {(requestClose) => (
+          <Cp38Form
+            record={record}
+            employmentId={record.employmentId}
+            returnTo={returnTo}
+            defaultFrom={record.validFrom}
+            labels={labels}
+            onDone={() => setEditOpen(false)}
+            onCancel={requestClose}
+            dirty={editDirty}
+          />
+        )}
       </Shell>
       <Shell
         trigger={<Button size="sm" variant="outline">{labels.history}</Button>}
         title={labels.historyTitle}
         open={historyOpen}
         onOpenChange={setHistoryOpen}
+        closeLabel={labels.close}
       >
-        <Cp38HistoryList entries={history} labels={labels.historyLabels} />
+        {() => <Cp38HistoryList entries={history} labels={labels.historyLabels} />}
       </Shell>
       <form onSubmit={del.submit(deleteCp38DialogAction)}>
         <input type="hidden" name="id" value={record.id} />
@@ -246,8 +348,8 @@ export function Cp38EmployeeHistoryButton({ history, labels, title }: {
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <Shell trigger={<Button size="sm" variant="outline">{labels.history}</Button>} title={title} open={open} onOpenChange={setOpen}>
-      <Cp38HistoryList entries={history} labels={labels.historyLabels} />
+    <Shell trigger={<Button size="sm" variant="outline">{labels.history}</Button>} title={title} open={open} onOpenChange={setOpen} closeLabel={labels.close}>
+      {() => <Cp38HistoryList entries={history} labels={labels.historyLabels} />}
     </Shell>
   );
 }

@@ -178,6 +178,7 @@ import { getCompanyCurrency } from '@/core/read';
 import { listCp38, listCp38Revisions } from '@/core/cp38';
 import { addCp38Action, deleteCp38Action, editCp38Action, terminateCp38Action } from './cp38-actions';
 import { Cp38LastMonthField } from '@/components/cp38/last-month-field';
+import { Cp38DialogCancel } from '@/components/cp38/dialog-cancel';
 import { Cp38HistoryList, type Cp38HistoryEntry, type Cp38HistoryLabels } from '@/components/cp38/history-list';
 import { listDependents, qualifyingChildReliefFor, childAgeYears, isChildReliefEligible, DEPENDENT_GENDERS, DEPENDENT_MARRIAGE_STATUSES, DEPENDENT_RELATIONSHIPS, CHILD_RELIEF_CATEGORIES, type DependentRow } from '@/core/dependents';
 import { addDependentAction, editDependentAction, archiveDependentAction } from './dependent-actions';
@@ -1548,7 +1549,9 @@ export default async function EmployeePage({
           <input {...personnelInput('payroll.cp38_deduction.remarks','edit')} defaultValue={r?.remarks ?? ''} placeholder={t('cp38RemarksPlaceholder')} className={inputCls} />
         </PersonnelField>
       </div>
-      <div className="flex justify-end sm:col-span-2">
+      <div className="flex justify-end gap-2 sm:col-span-2">
+        {/* 038c304b rev 2: Cancel closes the pop-up and saves nothing (the X in its corner does the same). */}
+        <Cp38DialogCancel label={tCp38('cancel')} />
         <ActionButton actionKind="saving" className={btnPrimary}>{r ? t('cp38Save') : t('cp38Add')}</ActionButton>
       </div>
     </form>
