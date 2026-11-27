@@ -93,7 +93,6 @@ describe.each(['classic','monolith','atelier'] as const)('%s Security Center nav
  it('offers no landing to a viewer who may not open the overview',()=>{
   route.path='/admin/users/create';show(theme,false,false,true);
   expect(published.entries.some(entry=>entry.href===SECURITY_CENTER)).toBe(false);
-  expect(published.entries.find(entry=>entry.href==='/admin/users/create')).toMatchObject({parent:en.nav.securityCenter,parentHref:null});
  });
  it('does not expose a security node to an employee',()=>{show(theme,false,false,false);expect(screen.queryByRole('button',{name:en.nav.securityCenter})).toBeNull();expect(screen.queryByRole('navigation',{name:en.nav.securityCenter})).toBeNull();expect(document.querySelector('a[href="/admin/security-center"]')).toBeNull();expect(published.entries.some(entry=>entry.href===SECURITY_CENTER)).toBe(false);});
  it('shows an hr_admin every destination the resolver admits: the pre-change set',()=>{

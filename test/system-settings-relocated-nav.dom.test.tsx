@@ -50,7 +50,8 @@ function openSettings(label = en.nav.systemConfiguration) {
   if (trigger.getAttribute('aria-expanded') !== 'true') fireEvent.click(trigger);
   const panel = document.getElementById(trigger.getAttribute('aria-controls')!);
   expect(panel).not.toBeNull();
-  expect(trigger).toHaveAttribute('aria-controls', 'nav-flyout-systemConfiguration');
+  // The module's own panel in each theme: Classic's and Atelier's fly-out, or Monolith's inline list (as Payroll's).
+  expect(trigger.getAttribute('aria-controls')).toMatch(/^(nav-flyout|atelier-flyout|rail-kids)-systemConfiguration$/);
   expect(panel).toHaveAttribute('aria-label', label);
   return panel!;
 }
