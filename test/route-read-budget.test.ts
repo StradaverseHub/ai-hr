@@ -19,7 +19,8 @@
  *  - wall time: each route rendered in interleaved rounds in every mode, printed as `ROUTE_WALL {json}` (median and
  *    spread of `ms` per mode), to compare the pool sizes against the join off. The audit log (/admin/audit) and a
  *    processed payroll run of the work-holding company (/payroll/[batchId]) are measured the same way for a group
- *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3.
+ *    administrator, after the budget checks (the run is opened for them), with identical output at a pool of 3 and
+ *    on the default join, and against their recorded budgets (WALL_BUDGETS).
  * Every measurement is printed as one `ROUTE_BUDGET {json}` line for the release notes. All names are invented. */
 import {randomUUID} from 'node:crypto';
 import {createElement,type ReactNode} from 'react';
@@ -90,8 +91,15 @@ const BUDGETS:Record<BudgetRoute,Partial<Record<'group'|'multi'|'single'|'manage
 };
 
 type BudgetRoute='frame'|'home'|'approvals'|'personnel';
-/** Measured for wall time and equivalence only (their budgets are not recorded yet: test/read-cost-ratchets). */
+/** Measured for a group administrator only, in the last describe (the run is opened for them). */
 type WallRoute='audit'|'payrollRun';
+/** Recorded budgets (transactions, statements) for the group administrator at "All companies", default join on: the
+ * audit log, and the processed 2026-11 run of the work-holding company (its payslips) that the last describe opens.
+ * Budgets only go down. Raising one needs an ADR note (docs/plans/2026-11-24-database-read-cost-phase-0-1.md 1.5). */
+const WALL_BUDGETS:Record<WallRoute,{transactions:number;statements:number}>={
+ audit:{transactions:4,statements:31},
+ payrollRun:{transactions:18,statements:60},
+};
 type Route=BudgetRoute|WallRoute;
 /** The processed payroll run /payroll/[batchId] shows (opened in the wall-time describe below). */
 let payrollRunId='';
@@ -369,6 +377,11 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   // COMMIT), so the bound is the join off plus the pooled render's fallbacks.
   expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions+pooled.fallbacks);
   console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,refused:pooled.refused}));
+  // The recorded budget, on the default join (as BUDGETS above), with the same output as the join off.
+  const shared=await render(route,'group','all','default');
+  expect(firstDifference(off.output,shared.output),'without vs default').toBeNull();
+  expect(shared.transactions,`${route} group transactions`).toBeLessThanOrEqual(WALL_BUDGETS[route].transactions);
+  expect(shared.statements,`${route} group statements`).toBeLessThanOrEqual(WALL_BUDGETS[route].statements);
   await statementTime(off);await statementTime(pooled);
   await wallTime(route,'group',['without','default','pool3']);
  },300_000);
