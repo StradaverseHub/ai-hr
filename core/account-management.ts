@@ -115,6 +115,26 @@ export async function manageAccount(ctx:SessionContext,userId:string,command:Acc
  return {password:result.password,delivery};
 }
 
+/** Board 0735d1b7 — a login merged away under its master: end every internal session inside the caller's transaction
+ * (core/login-merge.ts, which already holds the exclusive Access lock; account_management_subject takes the same lock
+ * first, then the subject lock, the order manageAccount uses). Rotates the credential version as suspend does, which
+ * also invalidates challenges and remembered factors, and revokes its sessions. The credential itself is kept, never
+ * deleted, so Undo merge needs no credential change. False when sign-in is not the embedded HR login or the login has
+ * no internal credential; the merge's archived_at already refuses the login at sign-in and on the next page load. */
+export async function endManagedAccountSessionsTx(tx:Tx,ctx:SessionContext,userId:string):Promise<boolean>{
+ if(!internalSelected()||!/^[0-9a-f-]{36}$/i.test(userId))return false;
+ const issuer=internalIssuer(ctx.tenantId);
+ const [identity]=await tx.execute(sql`select app.account_management_subject(${userId}::uuid,${issuer}) subject`) as unknown as {subject:string|null}[];
+ if(!identity?.subject)return false;
+ await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${'internal-auth:'+identity.subject},0))`);
+ const auth=authSql(tx),c=await readRecord<Credential>(auth,`credential:${identity.subject}`,true);
+ if(!c||c.subject!==identity.subject||c.tenantId!==ctx.tenantId||c.issuer!==issuer)return false;
+ c.version=randomUUID();
+ await revokeCredentialsSessions(auth,c.subject);
+ await writeRecord(auth,`credential:${c.subject}`,c,c.subject);
+ return true;
+}
+
 export type ManagedDirectoryAccount=Pick<AccountSummary,'username'|'status'|'activeUntil'|'exemptionUntil'>;
 /** Batched directory projection. A denied identity has no metadata and no account action link.
  * Read-only: an ended authenticator pause shows as required here and is settled by the next locked read. */
@@ -135,7 +155,7 @@ export async function readManagedAccountDirectory(ctx:SessionContext,userIds:str
  });
 }
 /** Security history beyond the account-* commands. Payload fields are an allowlist (reason, expiresAt); no secret is ever read. */
-const HISTORY_EVENTS=['app-user.recovery-exemption-consumed','app-user.recovery-exemption-expired','app-user.logged-in','app-user.password-reset','app-user.mfa-enrolled','app-user.password-unlocked'];
+const HISTORY_EVENTS=['app-user.recovery-exemption-consumed','app-user.recovery-exemption-expired','app-user.logged-in','app-user.password-reset','app-user.mfa-enrolled','app-user.password-unlocked','app-user.merged','app-user.merge-undone'];
 export type AccountHistoryEvent={event_type:string;occurred_at:Date|string;actor_id:string|null;actor_name:string|null;reason:string|null;expires_at:string|null};
 export function readManagedAccountHistory(ctx:SessionContext,userId:string,limit=50){
  const bounded=Math.max(1,Math.min(50,Math.trunc(limit)||50));

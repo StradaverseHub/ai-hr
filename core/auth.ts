@@ -19,7 +19,7 @@ import { keycloakSelected } from '../lib/identity/config';
  */
 import { randomBytes, createHash, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { and, eq, inArray, isNull, ne } from 'drizzle-orm';
+import { and, eq, inArray, isNull, notInArray } from 'drizzle-orm';
 import { client, withPoolWork, withTenant, type SessionContext, type Tx } from '../db/client';
 import { lockAccessConfigurationWriteTx } from './access-configuration-lock';
 import { appInvitation, appUser, roleAssignment, accountEmailDelivery } from '../db/schema';
@@ -29,6 +29,7 @@ import { attemptAccountEmail } from './account-email';
 import { accountEmailReadiness } from '../lib/identity/account-email-readiness';
 import { recoveryEmailSchema,type AccountEmailReadiness,type AccountEmailContext } from '../lib/account-email-model';
 import type {IdentityEmailActor} from '../lib/identity/email-model';
+import {manualSetupPersonIdsTx} from './manual-identity-setup';
 
 /** The WorkOS surface auth services need — injectable so tests never hit the real SDK. */
 export type AuthProvider = {
@@ -153,7 +154,7 @@ export type InviteUserInput = {
  * single-use app_invitation (hash only), records email delivery separately, and logs app-user.invited.
  * Returns the raw token ONCE (so a dev/test can build the activation URL); it is never re-derivable.
  */
-async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput,replacesDeliveryId?:string){
+async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput,replacesDeliveryId?:string,batchJobId?:string){
   assertGroupAdmin(ctx);
   // Invitations are authority inputs: the row trigger only tries the exclusive Access lock.
   await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
@@ -182,7 +183,7 @@ async function createInvitationTx(tx:Tx,ctx:SessionContext,input:InviteUserInput
     role:input.role,emailLocale,personId,tokenHash:hashToken(token),status:'pending',
     expiresAt:sql`now()+(${INVITE_TTL_DAYS}||' days')::interval`,createdBy:ctx.userId??null}).returning({id:appInvitation.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:row.id,
-    eventType:'app-user.invited',actor:actorOf(ctx),payload:{email,role:input.role,emailLocale,companyId:input.companyId??null}});
+    eventType:'app-user.invited',actor:actorOf(ctx),payload:{email,role:input.role,emailLocale,companyId:input.companyId??null,...(batchJobId?{batchJobId}:{})}});
   const [delivery]=await tx.insert(accountEmailDelivery).values({tenantId:ctx.tenantId,kind:'invitation',invitationId:row.id,
     replacesDeliveryId:replacesDeliveryId??null,requestedBy:ctx.userId??null,leaseToken,leaseUntil:sql`now()+interval '90 seconds'`}).returning({id:accountEmailDelivery.id});
   await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'account-email',aggregateId:delivery.id,eventType:'account-email.requested',
@@ -197,12 +198,14 @@ export async function inviteUser(ctx:SessionContext,input:InviteUserInput,provid
 }
 
 /** Explicit retry reissues an immutable invitation, or reserves a fresh operator-authorized recovery. */
-export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledged:boolean,actor?:IdentityEmailActor,provider:AuthProvider=defaultProvider):Promise<void>{
+/** Returns the replacement invitation delivery and its attempt result (board 0735d1b7: the batch results screen),
+ * or undefined for an operator recovery retry. Callers that ignore the value are unaffected. */
+export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledged:boolean,actor?:IdentityEmailActor,provider:AuthProvider=defaultProvider):Promise<{deliveryId:string;outcome:AccountEmailOutcome}|undefined>{
   if(!acknowledged||!/^([0-9a-f]{8}-)([0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id))throw Error('Confirm the account email retry.');
   if(actor){
     if(actor.userId!==ctx.userId||actor.tenantId!==ctx.tenantId)throw Error('Email administrator identity does not match the session.');
     const reserved=await withTenant(ctx,tx=>tx.execute<{id:string;lease_token:string}>(sql`select * from app.account_email_retry_recovery(${id}::uuid,${actor.issuer},${actor.subject})`));
-    if(reserved[0]){await attemptAccountEmail(reserved[0].id,reserved[0].lease_token,provider);return;}
+    if(reserved[0]){await attemptAccountEmail(reserved[0].id,reserved[0].lease_token,provider);return undefined;}
   }
   const created=await withTenant(ctx,async tx=>{
     assertGroupAdmin(ctx);await lockAccessConfigurationWriteTx(tx,ctx.tenantId);await tx.execute(sql`select pg_advisory_xact_lock(hashtextextended(${`account-email-retry:${id}`},0))`);
@@ -216,7 +219,77 @@ export async function retryAccountEmail(ctx:SessionContext,id:string,acknowledge
     await appendEvent(tx,{tenantId:ctx.tenantId,aggregateType:'app-invitation',aggregateId:invitation.id,eventType:'app-user.invitation.revoked',actor:actorOf(ctx),payload:{email:invitation.email}});
     return createInvitationTx(tx,ctx,{email:invitation.email,role:invitation.role,emailLocale:invitation.emailLocale,companyId:invitation.companyId,personId:invitation.personId},id);
   });
-  await attemptAccountEmail(created.deliveryId,created.leaseToken,provider,created.token);
+  let outcome='uncertain' as AccountEmailOutcome;
+  await attemptAccountEmail(created.deliveryId,created.leaseToken,provider,created.token,status=>{outcome=status;});
+  return {deliveryId:created.deliveryId,outcome};
+}
+
+/** What one invitation email attempt ended as (core/account-email.ts attemptAccountEmail onResult). */
+export type AccountEmailOutcome='sent'|'failed'|'skipped'|'uncertain';
+/** Why a batch invitation was not created for a person (board 0735d1b7). Stable codes, translated by the screen. */
+export const ACTIVATION_INVITE_SKIPS=['notCandidate','hasLogin','alreadyInvited','setupInProgress','leftCompany','noEmail','emailInUse'] as const;
+export type ActivationInviteSkip=(typeof ACTIVATION_INVITE_SKIPS)[number];
+export type ActivationInviteResult={outcome:AccountEmailOutcome;reason?:ActivationInviteSkip|string;deliveryId?:string;invitationId?:string};
+
+/**
+ * Board 0735d1b7 — one person of a By Batch Send Invitation job (core/account-invitation-batch-job.ts). In ONE
+ * transaction, under the same group-admin check and exclusive Access lock as a single invitation, the person's
+ * eligibility is checked again (it may have changed since the batch was admitted): still in this tenant, no login,
+ * no pending invitation, no manual account setup in progress, not a leaver, a work email, and no other person's
+ * login or invitation using that email. Anyone who no longer qualifies is SKIPPED with a reason code, never an
+ * error. Otherwise the invitation is created exactly as a single invitation is (createInvitationTx, its audit event
+ * carrying the batch job id). The email is attempted after the commit, outside every lock.
+ *
+ * A re-run of the same person in the same job (the worker crashed after the invitation committed) finds the pending
+ * invitation whose invited event names this job and reports it as 'uncertain' with its delivery, without sending
+ * again: an uncertain external effect is surfaced, never replayed. Nothing here creates or enables a login.
+ */
+export async function inviteActivationCandidate(ctx:SessionContext,input:{personId:string;role:string;companyId:string|null;emailLocale:string;batchJobId:string},provider:AuthProvider=defaultProvider):Promise<ActivationInviteResult>{
+  const uuidRe=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if(!uuidRe.test(input.personId)||!uuidRe.test(input.batchJobId))return {outcome:'skipped',reason:'notCandidate'};
+  type Created=Awaited<ReturnType<typeof createInvitationTx>>;
+  const decided=await withTenant(ctx,async (tx):Promise<{result:ActivationInviteResult}|{created:Created}>=>{
+    assertGroupAdmin(ctx);
+    await lockAccessConfigurationWriteTx(tx,ctx.tenantId);
+    const setup=await manualSetupPersonIdsTx(tx,ctx);
+    const [p]=await tx.execute<{email:string;has_login:boolean;own_invitation:string|null;own_delivery:string|null;own_status:string|null;
+      pending_invitation:boolean;has_left:boolean;email_in_use:boolean}>(sql`
+      select lower(trim(p.primary_email)) as email,
+       exists(select 1 from app_user u where u.tenant_id=p.tenant_id and u.person_id=p.id) as has_login,
+       own.id as own_invitation,own_d.id as own_delivery,own_d.status::text as own_status,
+       exists(select 1 from app_invitation i where i.tenant_id=p.tenant_id and i.person_id=p.id and i.status='pending') as pending_invitation,
+       (exists(select 1 from employment e where e.tenant_id=p.tenant_id and e.person_id=p.id) and not exists(select 1 from employment e
+         where e.tenant_id=p.tenant_id and e.person_id=p.id and e.blacklisted_at is null
+         and (least(e.resignation_date,e.last_working_date,e.terminated_on) is null or current_date<=least(e.resignation_date,e.last_working_date,e.terminated_on)))) as has_left,
+       (coalesce(trim(p.primary_email),'')<>'' and (exists(select 1 from app_invitation i where i.tenant_id=p.tenant_id and lower(i.email)=lower(trim(p.primary_email))
+          and i.status in ('pending','accepted') and i.person_id is distinct from p.id)
+        or exists(select 1 from app_user u join person q on q.id=u.person_id and q.tenant_id=u.tenant_id where u.tenant_id=p.tenant_id
+          and lower(trim(q.primary_email))=lower(trim(p.primary_email)) and q.id<>p.id))) as email_in_use
+      from person p
+      left join lateral (select i.id from app_invitation i join domain_event d on d.tenant_id=i.tenant_id and d.aggregate_type='app-invitation'
+        and d.aggregate_id=i.id and d.event_type='app-user.invited' and d.payload->>'batchJobId'=${input.batchJobId}
+        where i.tenant_id=p.tenant_id and i.person_id=p.id and i.status='pending' order by i.created_at desc limit 1) own on true
+      left join lateral (select d.id,d.status from account_email_delivery d where d.invitation_id=own.id order by d.created_at desc,d.id desc limit 1) own_d on true
+      where p.tenant_id=${ctx.tenantId}::uuid and p.id=${input.personId}::uuid`);
+    if(!p)return {result:{outcome:'skipped',reason:'notCandidate'} as ActivationInviteResult};
+    if(p.own_invitation)return {result:{outcome:'uncertain',invitationId:p.own_invitation,...(p.own_delivery?{deliveryId:p.own_delivery}:{}),
+      reason:p.own_status??'pending'} as ActivationInviteResult};
+    const skip:ActivationInviteSkip|null=p.has_login?'hasLogin':p.pending_invitation?'alreadyInvited':setup.includes(input.personId)?'setupInProgress'
+      :p.has_left?'leftCompany':!p.email||!p.email.includes('@')?'noEmail':p.email_in_use?'emailInUse':null;
+    if(skip)return {result:{outcome:'skipped',reason:skip} as ActivationInviteResult};
+    const created=await createInvitationTx(tx,ctx,{email:p.email,role:input.role,emailLocale:input.emailLocale,companyId:input.companyId,personId:input.personId},undefined,input.batchJobId);
+    return {created};
+  });
+  if('result' in decided)return decided.result;
+  const {created}=decided;
+  let outcome='uncertain' as AccountEmailOutcome;
+  await attemptAccountEmail(created.deliveryId,created.leaseToken,provider,created.token,status=>{outcome=status;});
+  let reason:string|undefined;
+  if(outcome==='failed'){
+    const [row]=await withTenant(ctx,tx=>tx.select({error:accountEmailDelivery.lastError}).from(accountEmailDelivery).where(eq(accountEmailDelivery.id,created.deliveryId)));
+    reason=row?.error??undefined;
+  }
+  return {outcome,invitationId:created.invitationId,deliveryId:created.deliveryId,...(reason?{reason}:{})};
 }
 
 /** Pending invitations visible to the admin (RLS scopes rows to the companies they administer). */
@@ -254,6 +327,35 @@ export function listPendingInvitations(ctx: SessionContext) {
  *     being ended) cannot be guarded here — that needs a check at the point of termination, which is a
  *     separate change; the break-glass SQL is documented in the 0279 migration header.
  */
+/** The guard that keeps the group's own admin screen reachable: at least one OTHER group-wide administrator, not
+ * already blocked, must remain after the listed logins are switched off. Shared by Archive and the login merge
+ * (core/login-merge.ts), inside the caller's transaction under the exclusive Access lock. */
+export async function assertGroupAdminRemainsTx(tx: Tx, switchedOff: readonly string[]): Promise<void> {
+  const [remaining] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(roleAssignment)
+    .innerJoin(appUser, eq(appUser.id, roleAssignment.appUserId))
+    .where(
+      and(
+        isNull(roleAssignment.companyId),
+        sql`${roleAssignment.role} in ('super_admin','hr_admin')`,
+        switchedOff.length ? notInArray(roleAssignment.appUserId, [...switchedOff]) : sql`true`,
+        sql`not app.login_blocked(${appUser.id})`,
+      ),
+    );
+  if (!remaining || remaining.n === 0) {
+    throw new Error('This is the last group administrator — archiving it would lock everyone out.');
+  }
+}
+
+/** The master of a login that is currently merged away (migration 7600), or null. */
+export async function activeLoginMergeMasterTx(tx: Tx, appUserId: string): Promise<string | null> {
+  const rows = await tx.execute<{ master_app_user_id: string }>(
+    sql`select master_app_user_id from app.login_merge_active() where merged_app_user_id=${appUserId}::uuid`,
+  );
+  return rows[0]?.master_app_user_id ?? null;
+}
+
 export async function setAppUserArchived(
   ctx: SessionContext,
   input: { appUserId: string; archived: boolean },
@@ -264,24 +366,12 @@ export async function setAppUserArchived(
     if (ctx.userId && input.appUserId === ctx.userId) {
       throw new Error('You cannot archive your own login.');
     }
-    if (input.archived) {
-      // Any OTHER group-wide admin who is not already blocked keeps the screen reachable.
-      const [remaining] = await tx
-        .select({ n: sql<number>`count(*)::int` })
-        .from(roleAssignment)
-        .innerJoin(appUser, eq(appUser.id, roleAssignment.appUserId))
-        .where(
-          and(
-            isNull(roleAssignment.companyId),
-            sql`${roleAssignment.role} in ('super_admin','hr_admin')`,
-            ne(roleAssignment.appUserId, input.appUserId),
-            sql`not app.login_blocked(${appUser.id})`,
-          ),
-        );
-      if (!remaining || remaining.n === 0) {
-        throw new Error('This is the last group administrator — archiving it would lock everyone out.');
-      }
+    // Board 0735d1b7 — a login merged away under a master is switched on and off only by Undo merge, which restores
+    // its exact earlier state; Archive/Restore would overwrite the archived_at that undo puts back.
+    if (await activeLoginMergeMasterTx(tx, input.appUserId)) {
+      throw new Error('This login was merged into another login. Use Undo merge on its account page to bring it back.');
     }
+    if (input.archived) await assertGroupAdminRemainsTx(tx, [input.appUserId]);
     const [row] = await tx
       .update(appUser)
       .set({ archivedAt: input.archived ? sql`now()` : null })

@@ -1343,56 +1343,71 @@ export async function assignRole(
   ctx: SessionContext,
   p: { appUserId: string; role: Role; companyId?: string },
 ) {
+  return withTenant(ctx, async (tx) => {
+    // Role grants are authority inputs: the row trigger only tries the exclusive Access lock.
+    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
+    return assignRoleTx(tx, ctx, p);
+  });
+}
+
+/** The role-assignment writer inside a caller's transaction that already holds the exclusive Access lock (board
+ * 0735d1b7: a login merge carries the grants HR ticked to the master in the merge's own transaction). */
+export async function assignRoleTx(
+  tx: Tx,
+  ctx: SessionContext,
+  p: { appUserId: string; role: Role; companyId?: string | null },
+) {
   // SCOPABLE_ROLES (hr_admin + the two partners, ADR-0049) consume a company scope. super_admin is
   // inherently group-wide (DB CHECK enforces it); manager/employee scoping isn't implemented — so
   // normalize companyId to null for every other role rather than persist inert, misleading grants.
   // RLS additionally requires the assigner to be a group admin to mint partners (0099 tightening),
   // so this never escalates privilege.
   const companyId = SCOPABLE_ROLES.has(p.role) ? p.companyId || null : null;
-  return withTenant(ctx, async (tx) => {
-    // Role grants are authority inputs: the row trigger only tries the exclusive Access lock.
-    await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
-    const [row] = await tx
-      .insert(roleAssignment)
-      .values({ tenantId: ctx.tenantId, appUserId: p.appUserId, role: p.role, companyId })
-      .returning({ id: roleAssignment.id });
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'role-assignment',
-      aggregateId: row.id,
-      eventType: 'role.assigned',
-      actor: actorOf(ctx),
-      payload: { appUserId: p.appUserId, role: p.role, companyId },
-    });
-    return row;
+  const [row] = await tx
+    .insert(roleAssignment)
+    .values({ tenantId: ctx.tenantId, appUserId: p.appUserId, role: p.role, companyId })
+    .returning({ id: roleAssignment.id });
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'role-assignment',
+    aggregateId: row.id,
+    eventType: 'role.assigned',
+    actor: actorOf(ctx),
+    payload: { appUserId: p.appUserId, role: p.role, companyId },
   });
+  return row;
 }
 
 export async function revokeRole(ctx: SessionContext, p: { roleAssignmentId: string }) {
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
-    const [row] = await tx
-      .select()
-      .from(roleAssignment)
-      .where(eq(roleAssignment.id, p.roleAssignmentId))
-      .limit(1);
-    if (!row) throw new Error('role assignment not found');
-    // Reads are tenant-wide but writes are subtree-gated (migration 0023): a delegated admin can
-    // SELECT a grant they may not DELETE. Use returning() and bail if RLS removed nothing, so we
-    // never log a revoke for a row that still exists.
-    const deleted = await tx
-      .delete(roleAssignment)
-      .where(eq(roleAssignment.id, p.roleAssignmentId))
-      .returning({ id: roleAssignment.id });
-    if (deleted.length === 0) throw new Error('Not permitted to revoke this role assignment');
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'role-assignment',
-      aggregateId: p.roleAssignmentId,
-      eventType: 'role.revoked',
-      actor: actorOf(ctx),
-      payload: { appUserId: row.appUserId, role: row.role },
-    });
+    await revokeRoleTx(tx, ctx, p);
+  });
+}
+
+/** The role-assignment revoke inside a caller's transaction that already holds the exclusive Access lock. */
+export async function revokeRoleTx(tx: Tx, ctx: SessionContext, p: { roleAssignmentId: string }) {
+  const [row] = await tx
+    .select()
+    .from(roleAssignment)
+    .where(eq(roleAssignment.id, p.roleAssignmentId))
+    .limit(1);
+  if (!row) throw new Error('role assignment not found');
+  // Reads are tenant-wide but writes are subtree-gated (migration 0023): a delegated admin can
+  // SELECT a grant they may not DELETE. Use returning() and bail if RLS removed nothing, so we
+  // never log a revoke for a row that still exists.
+  const deleted = await tx
+    .delete(roleAssignment)
+    .where(eq(roleAssignment.id, p.roleAssignmentId))
+    .returning({ id: roleAssignment.id });
+  if (deleted.length === 0) throw new Error('Not permitted to revoke this role assignment');
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'role-assignment',
+    aggregateId: p.roleAssignmentId,
+    eventType: 'role.revoked',
+    actor: actorOf(ctx),
+    payload: { appUserId: row.appUserId, role: row.role },
   });
 }
 
