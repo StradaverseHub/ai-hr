@@ -52,13 +52,13 @@ beforeAll(async()=>{
  // Payment method history as a populated installation holds it: a current row for a third of the large companies'
  // employments, a superseded earlier row for half of those, and a superseded-only history for a few.
  await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source,superseded_at)
-  select ${b.tenantId}::uuid,e.id,'2025-01-01',(array['bank_transfer','cheque','cash'])[1+(row_number() over(order by e.id))::int%3],'fixture',null
+  select ${b.tenantId}::uuid,e.id,'2025-01-01',(array['bank_transfer','cheque','cash'])[1+(row_number() over(order by e.id))::int%3],'maintenance',null
   from employment e where e.company_id=any(${big}::uuid[]) and (('x'||substr(e.id::text,1,8))::bit(32)::int)%3=0`;
  await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source,superseded_at)
-  select h.tenant_id,h.employment_id,'2024-01-01','cash','fixture',now() from employment_payment_method_history h
-  where h.source='fixture' and (('x'||substr(h.employment_id::text,1,8))::bit(32)::int)%2=0`;
+  select h.tenant_id,h.employment_id,'2024-01-01','cash','maintenance',now() from employment_payment_method_history h
+  where h.effective_on='2025-01-01' and h.superseded_at is null and (('x'||substr(h.employment_id::text,1,8))::bit(32)::int)%2=0`;
  await owner.client`insert into employment_payment_method_history(tenant_id,employment_id,effective_on,payment_method,source,superseded_at)
-  select ${b.tenantId}::uuid,e.id,'2024-06-01','cheque','fixture',now() from employment e
+  select ${b.tenantId}::uuid,e.id,'2024-06-01','cheque','maintenance',now() from employment e
   where e.company_id=any(${big}::uuid[]) and (('x'||substr(e.id::text,1,8))::bit(32)::int)%97=1`;
  // Statutory records for every large-company person.
  await owner.client`insert into employee_statutory_my(tenant_id,person_id,ic_number,tax_number,epf_number,socso_number,bank_account_no)
