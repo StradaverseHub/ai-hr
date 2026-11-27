@@ -1,13 +1,13 @@
 import Link from 'next/link';
 import {GeneratePreviewButton} from '../generate-preview-button';
 import {WorkflowRetirementControls} from '../retirement-controls';
-import {attendanceWorkflowSelectedEmployees} from '@/lib/attendance-workflow-config';
+import {attendanceWorkflowChosenEmployees} from '@/lib/attendance-workflow-config';
 import { AttendanceWorkflowStageDescription } from '@/components/attendance-workflow-stage-description';
 import { companyWorkflowHref, copyWorkflowHref, isWorkflowId, previewHistoryHref } from '../navigation';
 import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { attendanceApplicationFilterOptions, getAttendanceWorkflow, getAttendanceWorkflowPreview } from '@/packs/attendance/service';
+import { attendanceWorkflowFormOptions, getAttendanceWorkflow, getAttendanceWorkflowPreview } from '@/packs/attendance/service';
 import { PageHeader, Card, pageWideCls } from '@/components/ui';
 import { attendanceCriteriaGroups, attendanceWorkflowCriteriaFields } from '@/lib/attendance-workflow';
 import { approversOf } from '@/lib/leave-approval-kinds';
@@ -23,7 +23,7 @@ export default async function ViewAttendanceWorkflowPage({ params,searchParams }
     if (!row)
         notFound();
     // Opening the page never recalculates routes: it shows the latest stored Preview Assignment.
-    const [options, latest] = await Promise.all([attendanceApplicationFilterOptions(s, row.companyIds??[row.companyId],attendanceWorkflowSelectedEmployees(row.stages)), getAttendanceWorkflowPreview(s, lineageId, allowedCompanyIds??scopeIds)]);
+    const [options, latest] = await Promise.all([attendanceWorkflowFormOptions(s, row.companyIds??[row.companyId], attendanceWorkflowChosenEmployees(row)), getAttendanceWorkflowPreview(s, lineageId, allowedCompanyIds??scopeIds)]);
     const p = await getTranslations('attendanceWorkflow.previewHistory'), g = await getTranslations('attendanceWorkflow.groups');
     const notice=(await searchParams)?.notice;
     const [employmentTypeLabel,format] = await Promise.all([getTranslations('people.wizard.employmentType'),getFormatter()]);

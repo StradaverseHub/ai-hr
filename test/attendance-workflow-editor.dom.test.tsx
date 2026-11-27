@@ -9,11 +9,12 @@ import th from '../messages/th.json';
 import viLocale from '../messages/vi.json';
 import zh from '../messages/zh.json';
 import type { AttendanceWorkflowInput, AttendanceWorkflowOptions } from '../lib/attendance-workflow';
-const { save, preview, router } = vi.hoisted(() => ({ save: vi.fn(), preview: vi.fn(), router: { push: vi.fn(), refresh: vi.fn() } }));
+const { save, preview, router, searchEmployees, searchApprovers } = vi.hoisted(() => ({ save: vi.fn(), preview: vi.fn(), router: { push: vi.fn(), refresh: vi.fn() }, searchEmployees: vi.fn(), searchApprovers: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router, usePathname: () => '/admin/attendance/approval-workflow/new' }));
-vi.mock('../app/admin/attendance/approval-workflow/actions', () => ({ saveAttendanceWorkflowAction: save, previewAttendanceWorkflowAction: preview }));
+vi.mock('../app/admin/attendance/approval-workflow/actions', () => ({ saveAttendanceWorkflowAction: save, previewAttendanceWorkflowAction: preview, searchAttendanceWorkflowEmployeesAction: searchEmployees, searchAttendanceApproversAction: searchApprovers }));
 import { WorkflowForm } from '../app/admin/attendance/approval-workflow/workflow-form';
 import { __resetUnsavedGuards } from '../lib/unsaved-changes';
+import { attendanceWorkflowConfiguration } from '../lib/attendance-workflow-config';
 const companyId = '00000000-0000-0000-0000-000000000001';
 const options = { companies: [{ id: companyId, name: 'Company A' }], departments: [{ id: 'd1', name: 'Finance' }, { id: 'd2', name: 'People' }], businessUnits: [{ id: 'b1', name: 'Operations' }, { id: 'b2', name: 'Services' }], grades: [{ id: 'g1', name: 'Grade 1' }, { id: 'g2', name: 'Grade 2' }], divisions: [{ id: 'v1', name: 'North' }, { id: 'v2', name: 'South' }] };
 const initial = (): AttendanceWorkflowInput => ({ companyId, applicationType: 'self_overtime', code: 'OVERTIME', name: 'Overtime review', priority: 100, description: '', active: false, criteria: {}, stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }, { name: 'Final review', level: { kind: 'hr_admin', employmentId: null, alternates: [] } }] });
@@ -24,8 +25,10 @@ describe('company workflow editor outcomes', () => {
   it('fixes company/type for creation and saves all four multi-valued criteria without losing values when searching', async () => {
     form(null);
     expect(screen.getByRole('button',{name:'Company'})).toBeEnabled();
-    expect(screen.getByLabelText('Application type')).toBeDisabled();
-    expect(screen.getByLabelText('Application type')).toHaveValue('self_overtime');
+    // 03cb9b74: the fixed application type is read-only text; its value still travels in the saved input.
+    expect(screen.getByLabelText('Application type')).toHaveTextContent('Self Overtime');
+    expect(screen.queryByRole('combobox', { name: 'Application type' })).toBeNull();
+    fireEvent.click(screen.getByText(/^More conditions/, { selector: 'summary' }));
     for (const [label, names] of [['Department', ['Finance', 'People']], ['Business Unit', ['Operations', 'Services']], ['Job Grade', ['Grade 1', 'Grade 2']], ['Division', ['North', 'South']]] as const) {
       fireEvent.click(screen.getByRole('button', { name: label }));
       for (const name of names) { fireEvent.change(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder), { target: { value: name } }); fireEvent.click(screen.getByRole('checkbox', { name })); }
@@ -137,14 +140,23 @@ describe('797ba70b: auto levels and complete assignment controls', () => {
     expect(save.mock.calls[0][1]).toMatchObject({ routingVersion: 2, stages: [{ name: 'Level 1', level: { alternates: [{ kind: 'hr_admin', employmentId: null }] } }, { name: 'Level 2' }] });
   });
   it('shows every added Personnel axis and distinguishes selectable employees by code and name', async () => {
-    form(null, en, { ...options, positions: [{ id: 'p1', name: 'Analyst' }], employees: [{ id: 'e1', name: 'Duplicate name', employeeCode: 'D00001' }, { id: 'e2', name: 'Duplicate name', employeeCode: 'A00001' }], profileFields: { orgBranch: [{ id: 'b', name: 'Branch code' }], orgRegion: [], orgLine: [], orgSection: [], orgTeam: [], orgBase: [], employmentCategory: [] } });
+    searchEmployees.mockResolvedValue({ ok: true, value: { rows: [{ id: 'e1', name: 'Duplicate name', employeeCode: 'D00001', company: 'Company A' }, { id: 'e2', name: 'Duplicate name', employeeCode: 'A00001', company: 'Company A' }], more: false } });
+    form(null, en, { ...options, positions: [{ id: 'p1', name: 'Analyst' }], employees: [], profileFields: { orgBranch: [{ id: 'b', name: 'Branch code' }], orgRegion: [], orgLine: [], orgSection: [], orgTeam: [], orgBase: [], employmentCategory: [] } });
     fireEvent.change(screen.getByLabelText('Workflow code'), { target: { value: 'PERSONNEL' } });
     fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Personnel review' } });
-    for (const key of ['position', 'employmentType', 'branch', 'region', 'line', 'section', 'team', 'base', 'category', 'employees'] as const) expect(screen.getByRole('button', { name: en.attendanceWorkflow[key] })).toBeVisible();
+    // 03cb9b74: the eight organisation conditions sit under "More conditions"; Employee / Employees is a search.
+    for (const key of ['position', 'employmentType', 'employees'] as const) expect(screen.getByRole('button', { name: en.attendanceWorkflow[key] })).toBeVisible();
+    const more = screen.getByText(/^More conditions/, { selector: 'summary' });
+    expect(more.closest('details')).not.toHaveAttribute('open');
+    expect(more).toHaveTextContent('Division, Branch, Region, Line, Section, Team, Base, Category');
+    fireEvent.click(more);
+    for (const key of ['division', 'branch', 'region', 'line', 'section', 'team', 'base', 'category'] as const) expect(screen.getByRole('button', { name: en.attendanceWorkflow[key] })).toBeVisible();
     fireEvent.click(screen.getByRole('button', { name: 'Employee / Employees' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'D00001 · Duplicate name' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'A00001 · Duplicate name' }));
-    fireEvent.keyDown(screen.getByPlaceholderText(en.admin.leave.adjustmentsSearchPlaceholder), { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('checkbox', { name: /D00001 · Duplicate name/ }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /A00001 · Duplicate name/ }));
+    expect(searchEmployees).toHaveBeenCalledWith({ companyIds: [companyId], query: '', after: null });
+    expect(screen.getByText('Matches: Employee / Employees is D00001 · Duplicate name or A00001 · Duplicate name')).toBeVisible();
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' });
     fireEvent.click(screen.getByRole('button', { name: 'Save workflow' })); await waitFor(() => expect(save).toHaveBeenCalled());
     expect(save.mock.calls[0][1].criteria.employeeIds).toEqual(['e1', 'e2']);
   });
@@ -195,4 +207,61 @@ describe('4452ba3c: OR groups, default superior depth and copied workflows',()=>
   await waitFor(()=>expect(save).toHaveBeenCalledTimes(1));
   expect(save.mock.calls[0]).toEqual([null,expect.objectContaining({code:'WF-COPY',priority:7}),false,expect.any(String),{lineageId:'00000000-0000-0000-0000-0000000000aa',version:4}]);
  });
+});
+
+describe('03cb9b74: the redesigned form saves an existing workflow exactly as it was stored', () => {
+  const second = '00000000-0000-0000-0000-000000000002';
+  const [a1, a2, a3, e1, e2, d1, d2, g1, b1] = Array.from({ length: 9 }, (_, i) => `00000000-0000-4000-8000-00000000010${i}`);
+  const stored = { companyId, companyIds: [companyId, second], allCompanies: false, version: 6, applicationType: 'irregularity', code: 'STORED', name: 'Stored workflow', description: 'Kept as saved', priority: 12, active: true };
+  // Stored rows of every routing version, read the way the Edit page reads them (attendanceWorkflowConfiguration).
+  const rows = {
+    v1: { ...stored, routingVersion: 1, criteria: { departmentIds: [d2, d1], gradeIds: [g1] }, stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [{ kind: 'hr_admin', employmentId: null }] } }, { name: 'Final review', level: { kind: 'hr_admin', employmentId: null, alternates: [] } }] },
+    v2: { ...stored, routingVersion: 2, criteria: { groups: [{ businessUnitIds: [b1] }, { orgDivision: ['v2'] }] }, stages: [{ name: 'Level 1', level: { kind: 'direct_manager', employmentId: null, alternates: [] } }, { name: 'Level 2', level: { kind: 'hr_admin', employmentId: null, alternates: [] } }] },
+    v3: { ...stored, routingVersion: 3, criteria: { employeeIds: [e2, e1] }, stages: [{ name: 'Level 1', mode: 'sequential', source: { kind: 'specific_employee', employmentIds: [a2, a1] }, hrAlternative: false }, { name: 'Level 2', mode: 'any_one', source: { kind: 'direct_manager', depth: 2 }, hrAlternative: true }] },
+    v4: { ...stored, routingVersion: 4, criteria: { groups: [{ departmentIds: [d1], employmentTypes: ['contract', 'full_time'], employeeIds: [e1] }, { orgBranch: ['br'], employeeIds: [e2, e1] }] },
+      cc: [{ kind: 'direct_manager', depth: 2 }, { kind: 'specific_employee', employmentIds: [a3] }, { kind: 'custom_email', addresses: ['payroll@example.com', 'ops@example.com'] }],
+      stages: [{ name: 'Level 1', mode: 'all_required', sources: [{ kind: 'direct_manager', depth: 1 }, { kind: 'specific_employee', employmentIds: [a1, a2] }], hrAlternative: false, escalateAfterDays: 4 },
+        { name: 'Level 2', mode: 'any_one', sources: [{ kind: 'direct_manager', depth: 3 }], hrAlternative: true }] },
+  } as const;
+  const catalogues: AttendanceWorkflowOptions = { ...options, companies: [...options.companies, { id: second, name: 'Company B' }], departments: [{ id: d1, name: 'Finance' }, { id: d2, name: 'People' }], grades: [{ id: g1, name: 'Grade 1' }], businessUnits: [{ id: b1, name: 'Operations' }], profileFields: { orgBranch: [{ id: 'br', name: 'Port Klang' }] },
+    employees: [{ id: e1, name: 'Fictional Criteria One', employeeCode: 'C001' }, { id: e2, name: 'Fictional Criteria Two', employeeCode: 'C002' }],
+    approverEmployees: [{ id: a1, name: 'Fictional Approver One', employeeCode: 'A001' }, { id: a2, name: 'Fictional Approver Two', employeeCode: 'A002' }, { id: a3, name: 'Fictional CC Three', employeeCode: 'A003' }] };
+  it.each(Object.keys(rows) as (keyof typeof rows)[])('opens and re-saves a stored %s workflow byte for byte', async version => {
+    const configuration = attendanceWorkflowConfiguration(rows[version] as unknown as Parameters<typeof attendanceWorkflowConfiguration>[0]);
+    const expected = JSON.stringify(configuration);
+    render(<NextIntlClientProvider locale="en" messages={en}><WorkflowForm context={{ companyId, applicationType: 'irregularity' }} initial={configuration} lineageId="00000000-0000-0000-0000-0000000000ee" options={catalogues}/></NextIntlClientProvider>);
+    // Looking around changes nothing: open and close every "More conditions", open and close a people search.
+    for (const summary of screen.getAllByText(/^More conditions/, { selector: 'summary' })) { fireEvent.click(summary); fireEvent.click(summary); }
+    searchEmployees.mockResolvedValue({ ok: true, value: { rows: [], more: false } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Employee / Employees' })[0]);
+    await screen.findByText(en.attendanceWorkflow.noEmployeeMatches);
+    fireEvent.keyDown(screen.getByRole('searchbox'), { key: 'Escape' });
+    expect(screen.queryByText(en.attendanceWorkflow.form.unsaved)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save workflow' }));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(JSON.stringify(save.mock.calls[0][1])).toBe(expected);
+    expect(save.mock.calls[0][0]).toBe('00000000-0000-0000-0000-0000000000ee');
+  });
+  it('labels saved people and summarises each group from the saved choices', () => {
+    const configuration = attendanceWorkflowConfiguration(rows.v4 as unknown as Parameters<typeof attendanceWorkflowConfiguration>[0]);
+    render(<NextIntlClientProvider locale="en" messages={en}><WorkflowForm context={{ companyId, applicationType: 'irregularity' }} initial={configuration} lineageId="00000000-0000-0000-0000-0000000000ee" options={catalogues}/></NextIntlClientProvider>);
+    expect(screen.getByText('Matches: Department is Finance, Employment Type is Contract or Full-time, and Employee / Employees is C001 · Fictional Criteria One')).toBeVisible();
+    expect(screen.getByText(/^Matches: Branch is Port Klang/)).toBeVisible();
+    // A group with an organisation condition opens "More conditions" by itself and counts it.
+    const summaries = screen.getAllByText(/^More conditions/, { selector: 'summary' });
+    expect(summaries[0].closest('details')).not.toHaveAttribute('open');
+    expect(summaries[1].closest('details')).toHaveAttribute('open');
+    expect(summaries[1]).toHaveTextContent('1 set');
+    expect(screen.getByText('1. A001 · Fictional Approver One')).toBeVisible();
+    expect(screen.getByText('1. A003 · Fictional CC Three')).toBeVisible();
+    // Five numbered sections with live counts, and the CC sources in their own section.
+    const index = screen.getByRole('navigation', { name: en.attendanceWorkflow.form.sections });
+    expect(within(index).getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(['#workflow-details', '#workflow-assignment', '#workflow-levels', '#workflow-cc', '#workflow-save']);
+    expect(within(index).getByRole('link', { name: /Who it applies to/ })).toHaveTextContent('2 groups');
+    expect(within(index).getByRole('link', { name: /Approval levels/ })).toHaveTextContent('2 levels');
+    expect(within(screen.getByRole('region', { name: /CC recipients/ })).getByText('CC 3')).toBeVisible();
+    expect(screen.getByText(`${en.attendanceWorkflow.v4.allRequired} – First-Level Direct Superior and 1 more source`)).toBeVisible();
+    fireEvent.change(screen.getByLabelText('Workflow name'), { target: { value: 'Changed' } });
+    expect(screen.getByText(en.attendanceWorkflow.form.unsaved)).toBeVisible();
+  });
 });

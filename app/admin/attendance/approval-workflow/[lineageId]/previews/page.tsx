@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { getFormatter, getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { attendanceApplicationFilterOptions, getAttendanceWorkflow, getAttendanceWorkflowPreview, listAttendanceWorkflowPreviews } from '@/packs/attendance/service';
+import { attendanceWorkflowCompanyNames, getAttendanceWorkflow, getAttendanceWorkflowPreview, listAttendanceWorkflowPreviews } from '@/packs/attendance/service';
 import { Card, PageHeader, pageWideCls, tableWrapCls, tbodyCls, thCls } from '@/components/ui';
 import { attendancePreviewWarningKey, type AttendancePreviewApproverSource, type AttendanceWorkflowPreviewEmployee } from '@/lib/attendance-workflow-preview';
 import { GeneratePreviewButton } from '../../generate-preview-button';
@@ -17,7 +17,7 @@ export default async function AttendanceWorkflowPreviewHistoryPage({ params, sea
   const [history, preview] = await Promise.all([listAttendanceWorkflowPreviews(s, lineageId, scope), getAttendanceWorkflowPreview(s, lineageId, scope, query.id)]);
   if (query.id && !preview) notFound();
   const [t, p, v3, v4, format] = await Promise.all([getTranslations('attendanceWorkflow'), getTranslations('attendanceWorkflow.previewHistory'), getTranslations('attendanceWorkflow.v3'), getTranslations('attendanceWorkflow.v4'), getFormatter()]);
-  const options = preview ? await attendanceApplicationFilterOptions(s, preview.companyIds) : null;
+  const options = preview ? { companies: await attendanceWorkflowCompanyNames(s, preview.companyIds) } : null;
   const when = (value: Date) => format.dateTime(value, { dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Kuala_Lumpur' });
   const sourceLabel = (source: AttendancePreviewApproverSource | null) => !source ? '—' : source.kind === 'direct_manager' ? v3('depthOption', { number: source.depth }) : source.kind === 'specific_employee' ? v3('selectedEmployees') : source.kind === 'hr_admin' ? t('hr') : v4('cc');
   const person = (name: string | null, code: string | null) => [name, code].filter(Boolean).join(' · ');

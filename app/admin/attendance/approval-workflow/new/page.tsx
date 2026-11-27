@@ -2,8 +2,8 @@ import { nextAttendanceWorkflowPriority } from '@/lib/attendance-workflow';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { scopedAdmin } from '@/lib/scope';
-import { attendanceApplicationFilterOptions, getAttendanceWorkflow, listAttendanceWorkflows } from '@/packs/attendance/service';
-import { attendanceWorkflowConfiguration, attendanceWorkflowSelectedEmployees } from '@/lib/attendance-workflow-config';
+import { attendanceWorkflowFormOptions, getAttendanceWorkflow, listAttendanceWorkflows } from '@/packs/attendance/service';
+import { attendanceWorkflowConfiguration, attendanceWorkflowChosenEmployees } from '@/lib/attendance-workflow-config';
 import { PageHeader, pageWideCls } from '@/components/ui';
 import { WorkflowForm } from '../workflow-form';
 import { companyWorkflowHref, isWorkflowId, workflowContext, workflowRoot, type WorkflowQuery } from '../navigation';
@@ -18,8 +18,8 @@ export default async function NewAttendanceWorkflowPage({ searchParams }: { sear
   try { context = typeof query.companyId==='string'?workflowContext({...query,applicationType}, allowedCompanyIds??scopeIds):scopeIds[0]?{companyId:scopeIds[0],applicationType}:null; } catch { notFound(); }
   if (!context) redirect(workflowRoot);
   const [options, workflows] = await Promise.all([
-    attendanceApplicationFilterOptions(s, allowedCompanyIds??scopeIds),
-    listAttendanceWorkflows(s, [context.companyId]),
+    attendanceWorkflowFormOptions(s, allowedCompanyIds??scopeIds),
+    listAttendanceWorkflows(s, [context.companyId], context.applicationType),
   ]);
   const defaultPriority = nextAttendanceWorkflowPriority(workflows
     .filter(workflow => workflow.applicationType === context.applicationType)
@@ -36,6 +36,6 @@ async function copyWorkflowPage(query:WorkflowQuery){
   if(!source||(query.applicationType!==undefined&&query.applicationType!==source.applicationType))notFound();
   const {expectedVersion:_version,...configuration}=attendanceWorkflowConfiguration(source);
   const initial={...configuration,code:'',name:'',description:''};
-  const options=await attendanceApplicationFilterOptions(s,allowedCompanyIds??scopeIds,attendanceWorkflowSelectedEmployees(source.stages));
+  const options=await attendanceWorkflowFormOptions(s,allowedCompanyIds??scopeIds,attendanceWorkflowChosenEmployees(source));
   return <div className={pageWideCls}><PageHeader title={t('create')} description={t('copy.help')} back={{ href: companyWorkflowHref(source.companyId, source.applicationType), label: t('back') }}/><WorkflowForm key={`copy:${source.lineageId}:${source.version}`} initial={initial} lineageId={null} context={{companyId:source.companyId,applicationType:source.applicationType}} options={options} copiedFrom={{lineageId:source.lineageId,version:source.version,code:source.code}}/></div>;
 }

@@ -21,3 +21,22 @@ export function attendanceWorkflowConfiguration(row:{companyId:string;applicatio
 export function attendanceWorkflowSelectedEmployees(stages:AnyAttendanceWorkflowInput['stages']){
  return [...new Set(stages.flatMap(stage=>'sources' in stage?stage.sources:'source' in stage?[stage.source]:[]).flatMap(source=>source.kind==='specific_employee'?source.employmentIds:[]))];
 }
+/** Board 03cb9b74: the employees a saved workflow names, whose labels its pages show without a search — named
+ * approvers of every level and CC source, and the Employee / Employees criterion of every group. Reads a stored row
+ * as it is (any routing version), never validating or reshaping it. */
+export function attendanceWorkflowChosenEmployees(workflow:{stages?:unknown;criteria?:unknown;cc?:unknown}){
+ const strings=(value:unknown)=>Array.isArray(value)?value.filter((id):id is string=>typeof id==='string'):[];
+ const named=(source:unknown)=>source&&typeof source==='object'&&(source as {kind?:unknown}).kind==='specific_employee'?strings((source as {employmentIds?:unknown}).employmentIds):[];
+ const stages=Array.isArray(workflow.stages)?workflow.stages:[];
+ const approverIds=stages.flatMap(stage=>{
+  if(!stage||typeof stage!=='object')return [];
+  const level=stage as {sources?:unknown;source?:unknown};
+  return Array.isArray(level.sources)?level.sources.flatMap(named):named(level.source);
+ });
+ const cc=Array.isArray(workflow.cc)?workflow.cc.flatMap(named):[];
+ const criteria=workflow.criteria&&typeof workflow.criteria==='object'?workflow.criteria as {groups?:unknown}:null;
+ const groups:unknown[]=criteria?Array.isArray(criteria.groups)?criteria.groups:[criteria]:[];
+ const employeeIds=groups.flatMap(group=>group&&typeof group==='object'?strings((group as {employeeIds?:unknown}).employeeIds):[]);
+ return {approverIds:[...new Set([...approverIds,...cc])],employeeIds:[...new Set(employeeIds)]};
+}
+

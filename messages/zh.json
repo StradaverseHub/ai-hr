@@ -28778,7 +28778,11 @@
       "escalationDays": "升级期限（天）",
       "escalationHelp": "按日历天计算，从申请到达此级别的次日开始计。每晚检查会将其转至下一级；绝不会自动批准或拒绝。",
       "escalationInvalid": "请输入 1 到 365 之间的整数天数。",
-      "escalationFinal": "最终级别 – 不再升级"
+      "escalationFinal": "最终级别 – 不再升级",
+      "levelSummary": "{mode} – {source}{others, plural, =0 {} other {，另有 # 个来源}}",
+      "escalationAfter": "如在以下天数后仍无批准或拒绝，自动转至下一级：",
+      "escalationDaysUnit": "天",
+      "ccNumber": "抄送 {number}"
     },
     "chooseCompanies": "选择公司",
     "searchCompanies": "搜索有权管理的公司",
@@ -28821,7 +28825,11 @@
       "groupNumber": "第 {number} 组",
       "remove": "删除第 {number} 组",
       "add": "+ 添加“或”组",
-      "everyone": "所选公司的全部员工"
+      "everyone": "所选公司的全部员工",
+      "summary": "匹配：{conditions}",
+      "condition": "{field}为{values}",
+      "more": "更多条件",
+      "moreSet": "已设置 {count} 项"
     },
     "copy": {
       "action": "复制",
@@ -28887,6 +28895,21 @@
         "login_unusable": "审批人没有可用于此员工公司的唯一登录账号。请让人力资源部更正其登录账号。"
       },
       "pendingActivation": "账户尚未激活 – 申请将等待该审批人"
+    },
+    "form": {
+      "sections": "工作流部分",
+      "details": "工作流详情",
+      "detailsHelp": "为工作流命名，并选择其适用的公司。",
+      "appliesTo": "适用对象",
+      "levelsHelp": "申请按顺序经过各级审批。",
+      "save": "预览并保存",
+      "previewHelp": "保存前，“预览分配”会显示此工作流覆盖的员工以及任何审批路径问题。",
+      "groupCount": "{count} 个组",
+      "levelCount": "{count} 级",
+      "unsaved": "您有未保存的更改"
+    },
+    "list": {
+      "andMore": "及另外 {count} 家"
     }
   },
   "attendanceHistory": {

@@ -1,10 +1,10 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import { createFormatter, createTranslator, NextIntlClientProvider } from 'next-intl';
 import en from '../messages/en.json';
 const companyId = '00000000-0000-0000-0000-000000000001', other = '00000000-0000-0000-0000-000000000002', lineageId = '00000000-0000-0000-0000-000000000003', departmentId = '00000000-0000-0000-0000-000000000004';
-const { service, scope, form } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listRetiredAttendanceWorkflows:vi.fn(), attendanceApplicationFilterOptions: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn(),attendanceWorkflowWarningPage:vi.fn(), getAttendanceWorkflowPreview: vi.fn(), listAttendanceWorkflowPreviews: vi.fn() }, scope: vi.fn(), form: vi.fn() }));
+const { service, scope, form } = vi.hoisted(() => ({ service: { listAttendanceWorkflows: vi.fn(), listRetiredAttendanceWorkflows:vi.fn(), attendanceApplicationFilterOptions: vi.fn(), attendanceWorkflowFormOptions: vi.fn(), attendanceWorkflowCompanyNames: vi.fn(), searchAttendanceApprovers: vi.fn(), searchAttendanceWorkflowEmployees: vi.fn(), getAttendanceWorkflow: vi.fn(), previewAttendanceWorkflow: vi.fn(),attendanceWorkflowWarningPage:vi.fn(), getAttendanceWorkflowPreview: vi.fn(), listAttendanceWorkflowPreviews: vi.fn() }, scope: vi.fn(), form: vi.fn() }));
 vi.mock('../lib/scope', () => ({ scopedAdmin: scope }));
 vi.mock('../packs/attendance/service', () => service);
 vi.mock('next-intl/server', () => ({ getTranslations: async (namespace: string) => createTranslator({ locale: 'en', messages: en, namespace: namespace as 'attendanceWorkflow' }), getFormatter:async()=>createFormatter({locale:'en'}) }));
@@ -19,13 +19,15 @@ import PreviewsPage from '../app/admin/attendance/approval-workflow/[lineageId]/
 const options = { companies: [{ id: companyId, name: 'Company A' }, { id: other, name: 'Company B' }], departments: [{ id: departmentId, name: 'Finance' }], businessUnits: [], grades: [], divisions: [] };
 const row = { companyIds:[companyId], id: 'version', lineageId, companyId, version: 2, code: 'CLOCK', name: 'Clock review', description: '', applicationType: 'irregularity', criteria: { departmentIds: [departmentId] }, stages: [{ name: 'Manager review', level: { kind: 'direct_manager', employmentId: null, alternates: [{ kind: 'hr_admin', employmentId: null }] } }], active: true, priority: 100 };
 const show = (element: React.ReactNode) => render(<NextIntlClientProvider locale="en" messages={en}>{element}</NextIntlClientProvider>);
-beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listRetiredAttendanceWorkflows.mockResolvedValue([]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); service.attendanceWorkflowWarningPage.mockResolvedValue({rows:[],total:0,offset:0,hasMore:false}); service.getAttendanceWorkflowPreview.mockResolvedValue(null); service.listAttendanceWorkflowPreviews.mockResolvedValue([]); });
+beforeEach(() => { vi.clearAllMocks(); scope.mockResolvedValue({ s: { actor: 'scoped admin' }, scopeIds: [companyId, other] }); service.listAttendanceWorkflows.mockResolvedValue([row, { ...row, id: 'ot-version', code: 'OT', applicationType: 'self_overtime' }]); service.listRetiredAttendanceWorkflows.mockResolvedValue([]); service.attendanceApplicationFilterOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)) })); service.attendanceWorkflowFormOptions.mockImplementation(async (_, ids: string[]) => ({ ...options, companies: options.companies.filter(company => ids.includes(company.id)), employees: [], approverEmployees: [] })); service.attendanceWorkflowCompanyNames.mockImplementation(async (_, ids: string[]) => options.companies.filter(company => ids.includes(company.id))); service.getAttendanceWorkflow.mockResolvedValue(row); service.previewAttendanceWorkflow.mockResolvedValue({ total: 0, rows: [], truncated: false }); service.attendanceWorkflowWarningPage.mockResolvedValue({rows:[],total:0,offset:0,hasMore:false}); service.getAttendanceWorkflowPreview.mockResolvedValue(null); service.listAttendanceWorkflowPreviews.mockResolvedValue([]); });
 afterEach(cleanup);
 describe('workflow company navigation and scope', () => {
   it('describes a saved named-person route with per-level guidance rather than legacy manager-only guidance', async () => {
     service.getAttendanceWorkflow.mockResolvedValue({...row,routingVersion:4,cc:[],stages:[{name:'Level 1',mode:'all_required',sources:[{kind:'specific_employee',employmentIds:[other]}],hrAlternative:false}]});
-    service.attendanceApplicationFilterOptions.mockResolvedValue({...options,employees:[],approverEmployees:[{id:other,name:'Fictional named approver',employeeCode:'E00042'}]});
+    service.attendanceWorkflowFormOptions.mockResolvedValue({...options,employees:[],approverEmployees:[{id:other,name:'Fictional named approver',employeeCode:'E00042'}]});
     show(await ViewPage({params:Promise.resolve({lineageId})}));
+    expect(service.attendanceWorkflowFormOptions).toHaveBeenCalledWith(expect.anything(),[companyId],{approverIds:[other],employeeIds:[]});
+    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
     expect(screen.getByText(/E00042 · Fictional named approver/)).toBeVisible();
     expect(screen.getByText(en.attendanceWorkflow.v3.levelHelp)).toBeVisible();
     expect(screen.queryByText(en.attendanceWorkflow.supportedApprovers)).not.toBeInTheDocument();
@@ -42,8 +44,9 @@ describe('workflow company navigation and scope', () => {
   });
   it('keeps bookmarks scoped while loading all permitted choices for shared configuration',async()=>{
     show(await Page({searchParams:Promise.resolve({companyId,applicationType:'irregularity'})}));
-    expect(service.listAttendanceWorkflows).toHaveBeenCalledWith(expect.anything(),[companyId]);
-    expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledWith(expect.anything(),[companyId,other]);
+    expect(service.listAttendanceWorkflows).toHaveBeenCalledWith(expect.anything(),[companyId],'irregularity');
+    expect(service.listRetiredAttendanceWorkflows).toHaveBeenCalledWith(expect.anything(),[companyId],'irregularity');
+    expect(service.attendanceWorkflowCompanyNames).toHaveBeenCalledWith(expect.anything(),[companyId,other]);
     expect(screen.getByText('CLOCK')).toBeVisible();expect(screen.queryByText('OT')).toBeNull();
     expect(screen.queryByText(en.attendanceWorkflow.disableRouting)).toBeNull();
   });
@@ -57,6 +60,7 @@ describe('workflow company navigation and scope', () => {
     await expect(Page({ searchParams: Promise.resolve(query) })).rejects.toThrow('NOT_FOUND');
     await expect(NewPage({ searchParams: Promise.resolve(query) })).rejects.toThrow('NOT_FOUND');
     expect(service.listAttendanceWorkflows).not.toHaveBeenCalled(); expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
+    expect(service.attendanceWorkflowFormOptions).not.toHaveBeenCalled(); expect(service.attendanceWorkflowCompanyNames).not.toHaveBeenCalled();
   });
   it('opens creation directly and offers all permitted company assignments',async()=>{
     show(await NewPage({searchParams:Promise.resolve({applicationType:'self_overtime'})}));
@@ -66,7 +70,7 @@ describe('workflow company navigation and scope', () => {
     show(await ViewPage({ params: Promise.resolve({ lineageId }) }));
     expect(screen.getByRole('link', { name: /Back to workflows/ })).toHaveAttribute('href', `/admin/attendance/approval-workflow?companyId=${companyId}&applicationType=irregularity`);
     cleanup(); show(await EditPage({ params: Promise.resolve({ lineageId }) }));
-    expect(service.attendanceApplicationFilterOptions).toHaveBeenCalledWith(expect.anything(), [companyId,other],[]);
+    expect(service.attendanceWorkflowFormOptions).toHaveBeenCalledWith(expect.anything(), [companyId,other],{approverIds:[],employeeIds:[]});
     expect(form).toHaveBeenCalledWith(expect.objectContaining({ context: { companyId, applicationType: 'irregularity' } }));
   });
   it('rejects malformed lineage before SQL and absent/unscoped lineages before loading options', async () => {
@@ -74,7 +78,7 @@ describe('workflow company navigation and scope', () => {
     expect(service.getAttendanceWorkflow).not.toHaveBeenCalled();
     service.getAttendanceWorkflow.mockResolvedValue(null);
     for (const page of [ViewPage, EditPage]) await expect(page({ params: Promise.resolve({ lineageId }) })).rejects.toThrow('NOT_FOUND');
-    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();
+    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled(); expect(service.attendanceWorkflowFormOptions).not.toHaveBeenCalled();
   });
 });
 
@@ -140,5 +144,44 @@ describe('4452ba3c: Copy Workflow, OR groups and stored Preview History',()=>{
     await expect(PreviewsPage({params:Promise.resolve({lineageId}),searchParams:Promise.resolve({id:'bad'})})).rejects.toThrow('NOT_FOUND');
     service.getAttendanceWorkflow.mockResolvedValue(null);
     await expect(PreviewsPage({params:Promise.resolve({lineageId})})).rejects.toThrow('NOT_FOUND');
+  });
+});
+
+describe('03cb9b74: workflow pages read only what they show',()=>{
+  const third='00000000-0000-0000-0000-000000000007',fourth='00000000-0000-0000-0000-000000000008';
+  it('pins the listing reads: workflows of the tab type and company names, never approver options or employees',async()=>{
+    show(await Page({searchParams:Promise.resolve({applicationType:'self_overtime'})}));
+    expect(service.listAttendanceWorkflows.mock.calls).toEqual([[expect.anything(),[companyId,other],'self_overtime']]);
+    expect(service.listRetiredAttendanceWorkflows.mock.calls).toEqual([[expect.anything(),[companyId,other],'self_overtime']]);
+    expect(service.attendanceWorkflowCompanyNames.mock.calls).toEqual([[expect.anything(),[companyId,other]]]);
+    for(const reader of [service.attendanceApplicationFilterOptions,service.attendanceWorkflowFormOptions,service.searchAttendanceApprovers,service.searchAttendanceWorkflowEmployees,service.getAttendanceWorkflow])expect(reader).not.toHaveBeenCalled();
+    expect(screen.getByText('OT')).toBeVisible();expect(screen.queryByText('CLOCK')).toBeNull();
+  });
+  it('shows two company names and the rest behind "and N more", and the status as a badge',async()=>{
+    const names=[{id:companyId,name:'Company A'},{id:other,name:'Company B'},{id:third,name:'Company C'},{id:fourth,name:'Company D'}];
+    service.attendanceWorkflowCompanyNames.mockResolvedValue(names);
+    service.listAttendanceWorkflows.mockResolvedValue([{...row,companyIds:[companyId,other,third,fourth]},{...row,id:'inactive',lineageId:'00000000-0000-0000-0000-000000000009',code:'PAUSED',active:false}]);
+    show(await Page({searchParams:Promise.resolve({})}));
+    const cell=screen.getByText('Company A, Company B').closest('td')!;
+    const more=within(cell).getByText('and 2 more');
+    expect(more.tagName).toBe('SUMMARY');
+    expect(within(cell).getByText('Company C, Company D')).toBeInTheDocument();
+    expect(screen.getByText(en.attendanceWorkflow.active)).toHaveAttribute('data-ui-badge');
+    expect(screen.getByText(en.attendanceWorkflow.inactive)).toHaveAttribute('data-ui-badge');
+  });
+  it('opens Edit with the labels of the approvers, CC employees and criteria employees the workflow names',async()=>{
+    const a='00000000-0000-0000-0000-0000000000a1',b='00000000-0000-0000-0000-0000000000b2',c='00000000-0000-0000-0000-0000000000c3',d='00000000-0000-0000-0000-0000000000d4';
+    service.getAttendanceWorkflow.mockResolvedValue({...row,routingVersion:4,companyIds:[companyId],criteria:{groups:[{employeeIds:[c]},{departmentIds:[departmentId],employeeIds:[d,c]}]},cc:[{kind:'specific_employee',employmentIds:[b]},{kind:'custom_email',addresses:['hr@example.test']}],stages:[{name:'Level 1',mode:'sequential',sources:[{kind:'direct_manager',depth:1},{kind:'specific_employee',employmentIds:[a,b]}],hrAlternative:false}]});
+    show(await EditPage({params:Promise.resolve({lineageId})}));
+    expect(service.attendanceWorkflowFormOptions).toHaveBeenCalledWith(expect.anything(),[companyId,other],{approverIds:[a,b],employeeIds:[c,d]});
+    cleanup();show(await NewPage({searchParams:Promise.resolve({applicationType:'irregularity',copyFrom:lineageId})}));
+    expect(service.attendanceWorkflowFormOptions).toHaveBeenLastCalledWith(expect.anything(),[companyId,other],{approverIds:[a,b],employeeIds:[c,d]});
+    for(const reader of [service.attendanceApplicationFilterOptions,service.searchAttendanceApprovers,service.searchAttendanceWorkflowEmployees])expect(reader).not.toHaveBeenCalled();
+  });
+  it('reads only company names for Preview History',async()=>{
+    service.getAttendanceWorkflowPreview.mockResolvedValue({id:'00000000-0000-0000-0000-000000000005',lineageId,templateVersion:2,generatedAt:new Date('2026-11-10T06:05:00Z'),totalMatching:0,warningCount:0,truncated:false,generatedBy:'Fictional HR Administrator',companyIds:[companyId],warnings:[],employees:[]});
+    show(await PreviewsPage({params:Promise.resolve({lineageId})}));
+    expect(service.attendanceWorkflowCompanyNames).toHaveBeenCalledWith(expect.anything(),[companyId]);
+    expect(service.attendanceApplicationFilterOptions).not.toHaveBeenCalled();expect(service.attendanceWorkflowFormOptions).not.toHaveBeenCalled();
   });
 });

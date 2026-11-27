@@ -28778,7 +28778,11 @@
       "escalationDays": "Escalation Period (Days)",
       "escalationHelp": "Calendar days, counted from the day after the request reaches this level. A nightly check moves it to the next level; it is never approved or rejected automatically.",
       "escalationInvalid": "Enter a whole number of days from 1 to 365.",
-      "escalationFinal": "Final level – no further escalation"
+      "escalationFinal": "Final level – no further escalation",
+      "levelSummary": "{mode} – {source}{others, plural, =0 {} one { and # more source} other { and # more sources}}",
+      "escalationAfter": "Auto route to the next level if no approval or rejection after",
+      "escalationDaysUnit": "days",
+      "ccNumber": "CC {number}"
     },
     "chooseCompanies": "Choose companies",
     "searchCompanies": "Search permitted companies",
@@ -28821,7 +28825,11 @@
       "groupNumber": "Group {number}",
       "remove": "Remove group {number}",
       "add": "+ Add OR group",
-      "everyone": "All employees of the selected companies"
+      "everyone": "All employees of the selected companies",
+      "summary": "Matches: {conditions}",
+      "condition": "{field} is {values}",
+      "more": "More conditions",
+      "moreSet": "{count} set"
     },
     "copy": {
       "action": "Copy",
@@ -28887,6 +28895,21 @@
         "login_unusable": "The approver has no unique usable login for this employee's company. Ask HR to correct their login."
       },
       "pendingActivation": "Account not activated yet – requests will wait for this approver"
+    },
+    "form": {
+      "sections": "Workflow sections",
+      "details": "Workflow details",
+      "detailsHelp": "Name the workflow and choose the companies it covers.",
+      "appliesTo": "Who it applies to",
+      "levelsHelp": "Requests go through the levels in order.",
+      "save": "Preview and save",
+      "previewHelp": "Preview assignment shows who this workflow will cover, and any route problems, before you save.",
+      "groupCount": "{count, plural, one {# group} other {# groups}}",
+      "levelCount": "{count, plural, one {# level} other {# levels}}",
+      "unsaved": "You have unsaved changes"
+    },
+    "list": {
+      "andMore": "and {count} more"
     }
   },
   "attendanceHistory": {

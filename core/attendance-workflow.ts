@@ -15,6 +15,10 @@ import { canApproveOnBehalfForCompanyTx } from './attendance-on-behalf-permissio
 import { scopeOf } from '../lib/delegation-scope';
 import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
 import { labelUsableByCompany } from './system-labels';
+import { ATTENDANCE_APPLICATION_TYPES, type AttendanceWorkflowOptions } from '../lib/attendance-workflow';
+import { visibleLabelIdsCondition } from './system-labels';
+import { uuidArrayParam } from '../db/sql-arrays';
+import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 import { AttendanceWorkflowError, attendanceScopesOverlap, attendanceCriteriaGroups, attendanceStageLevelNumber, validateAttendanceWorkflow, type AttendanceWorkflowInput, type AttendanceApplicationType, type AttendanceResolvedStage, type AttendanceResolvedApprover, type AttendanceSkippedLevel, type AttendanceCriteriaGroup } from '../lib/attendance-workflow';
 import { ATTENDANCE_PREVIEW_ROW_LIMIT, ATTENDANCE_PREVIEW_HISTORY_LIMIT, ATTENDANCE_SUPERIOR_PROBLEMS, type AttendanceSuperiorProblem, type AttendanceWorkflowPreviewEmployee, type AttendanceWorkflowPreviewWarning } from '../lib/attendance-workflow-preview';
 import { AttendanceLevelError, type AttendanceLevelProblem, type AttendanceV3FrozenLevel } from '../lib/attendance-workflow-v3';
@@ -277,14 +281,22 @@ export async function attendanceWorkflowWarningPage(ctx:SessionContext,lineageId
  return withTenant(ctx,async tx=>{const input=attendanceWorkflowConfiguration(row),warnings:AttendanceWorkflowWarning[]=[];for(const companyId of await configurationCompanies(tx,input)){await adminFor(tx,companyId);warnings.push(...await validateActivation(tx,ctx,{...input,companyId},lineageId,false,false));}return{rows:warnings.slice(offset,offset+50),total:warnings.length,offset,hasMore:offset+50<warnings.length};});
 }
 function manageableInScope(companyIds:string[]){return sql`app.attendance_workflow_all_companies_admin(${template.id}) and app.attendance_workflow_companies(${template.id}) && ARRAY[${sql.join(companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;}
-export function listAttendanceWorkflows(ctx:SessionContext,companyIds:string[]){
- return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNull(template.supersededAt))).orderBy(asc(template.applicationType),asc(template.priority),asc(template.code)):Promise.resolve([]));
+/** An optional application-type filter for the workflow lists, applied in SQL (board 03cb9b74). */
+function ofApplicationType(applicationType?:AttendanceApplicationType){
+ if(applicationType===undefined)return undefined;
+ if(!ATTENDANCE_APPLICATION_TYPES.includes(applicationType))throw new AttendanceWorkflowError('invalid','Choose a valid application type.');
+ return eq(template.applicationType,applicationType);
+}
+export function listAttendanceWorkflows(ctx:SessionContext,companyIds:string[],applicationType?:AttendanceApplicationType){
+ const type=ofApplicationType(applicationType);
+ return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNull(template.supersededAt),type)).orderBy(asc(template.applicationType),asc(template.priority),asc(template.code)):Promise.resolve([]));
 }
 export function getAttendanceWorkflow(ctx:SessionContext,lineageId:string,companyIds:string[],includeRetired=false){
  return withTenant(ctx,async tx=>companyIds.length?(await tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(eq(template.lineageId,lineageId),manageableInScope(companyIds),includeRetired?undefined:isNull(template.supersededAt))).orderBy(desc(template.version)).limit(1))[0]??null:null);
 }
-export function listRetiredAttendanceWorkflows(ctx:SessionContext,companyIds:string[]){
- return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNotNull(template.retiredAt),sql`not exists(select 1 from attendance_workflow_template later where later.tenant_id=${template.tenantId} and later.lineage_id=${template.lineageId} and later.version>${template.version})`)).orderBy(asc(template.code)):Promise.resolve([]));
+export function listRetiredAttendanceWorkflows(ctx:SessionContext,companyIds:string[],applicationType?:AttendanceApplicationType){
+ const type=ofApplicationType(applicationType);
+ return withTenant(ctx,tx=>companyIds.length?tx.select({...templateColumns(),companyIds:assignments,used}).from(template).where(and(manageableInScope(companyIds),isNotNull(template.retiredAt),type,sql`not exists(select 1 from attendance_workflow_template later where later.tenant_id=${template.tenantId} and later.lineage_id=${template.lineageId} and later.version>${template.version})`)).orderBy(asc(template.code)):Promise.resolve([]));
 }
 export async function retireAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number){return removeAttendanceWorkflow(ctx,lineageId,expectedVersion,false);}
 export async function archiveAttendanceWorkflow(ctx:SessionContext,lineageId:string,expectedVersion:number){return removeAttendanceWorkflow(ctx,lineageId,expectedVersion,true);}
@@ -800,12 +812,20 @@ export function hasPendingAttendanceParticipantAssignment(ctx: SessionContext) {
     });
 }
 
+/** Board 03cb9b74: the approver search's company check as one statement instead of one per company (71 round trips
+ * for "All companies"). Same rule as requireAllCompanies: every company exists in the tenant and is administered. */
+async function requireAdministeredCompaniesTx(tx:Tx,ids:readonly string[]){
+ const unique=[...new Set(ids)];
+ if(!unique.length)throw new AttendanceWorkflowError('scope','This shared workflow requires permission for every assigned company.');
+ const [row]=await tx.execute<{administered:number}>(sql`select count(*)::int as administered from company c where c.id = any(${uuidArrayParam(unique)}) and c.tenant_id=app.current_tenant_id() and app.is_admin_for(c.id)`);
+ if((row?.administered??0)!==unique.length)throw new AttendanceWorkflowError('scope','Only an administrator for this company may configure attendance workflows.');
+}
 /** Bounded actor-scoped lookup. Candidate visibility never substitutes for approval authority. */
 export async function searchAttendanceApprovers(ctx:SessionContext,input:{companyIds:string[];query:string;page:number;selectedIds?:string[]}){
  const uuid=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
  if(!input.companyIds.length||input.companyIds.length>100||input.companyIds.some(id=>!uuid.test(id))||typeof input.query!=='string'||input.query.length>100||!Number.isInteger(input.page)||input.page<0||input.page>200||(input.selectedIds??[]).length>100||(input.selectedIds??[]).some(id=>!uuid.test(id)))throw new AttendanceWorkflowError('invalid','Choose valid company and employee search criteria.');
  return withTenant(ctx,async tx=>{
-  await requireAllCompanies(tx,input.companyIds);
+  await requireAdministeredCompaniesTx(tx,input.companyIds);
   const companies=sql`ARRAY[${sql.join(input.companyIds.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]`;
   const pattern='%'+input.query.trim().replace(/[\\%_]/g,'\\$&')+'%';
   const fields=sql`e.id,p.full_name as name,e.employee_code as "employeeCode",c.legal_name as company,
@@ -814,6 +834,105 @@ export async function searchAttendanceApprovers(ctx:SessionContext,input:{compan
   const rows=await tx.execute<{id:string;name:string;employeeCode:string|null;company:string;eligible:boolean}>(sql`select ${fields} from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where ${visible} and (p.full_name ilike ${pattern} or e.employee_code ilike ${pattern}) order by e.employee_code nulls last,p.full_name,e.id limit 51 offset ${input.page*50}`);
   const selected=input.selectedIds?.length?await tx.execute<typeof rows[number]>(sql`select ${fields} from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id join company c on c.id=e.company_id and c.tenant_id=e.tenant_id where ${visible} and e.id in (${sql.join(input.selectedIds.map(id=>sql`${id}::uuid`),sql`, `)}) order by e.id`):[];
   return {rows:rows.slice(0,50),selected,more:rows.length>50};
+ });
+}
+
+/* Board 03cb9b74: the Approval Workflow screens' readers. The pages used to share the Application History filter reader,
+ * which listed every eligible approver of every company in scope (app.attendance_workflow_v3_approver_options, a
+ * SECURITY DEFINER eligibility check per employment and company) and every employment in scope before anything
+ * rendered: 12 s on a 74-company, 2,959-employment group. The listing reads only company names, the form reads its
+ * option lists and the LABELS of what is already chosen, and people are found by the bounded searches below. */
+const UUID_TEXT=/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+/** Same authority as the Application History reader that the workflow pages used before (HR administrator grant). */
+function workflowAdministrator(ctx:SessionContext){
+ const effective=withEffectiveGrants(ctx);
+ if(!hasGrantFor(effective,'hr_admin')&&!hasGrantFor(effective,'super_admin'))throw new AttendanceWorkflowError('scope','Attendance approval workflows require an HR administrator.');
+}
+function checkedIds(ids:readonly string[],limit:number,what:string){
+ const unique=[...new Set(ids)];
+ if(unique.length>limit||unique.some(id=>typeof id!=='string'||!UUID_TEXT.test(id)))throw new AttendanceWorkflowError('invalid',`Invalid ${what} identities.`);
+ return unique;
+}
+export type AttendanceWorkflowCatalogue=Required<Pick<AttendanceWorkflowOptions,'companies'|'departments'|'businessUnits'|'grades'|'divisions'|'positions'|'profileFields'>>;
+const EMPTY_CATALOGUE=():AttendanceWorkflowCatalogue=>({companies:[],departments:[],businessUnits:[],grades:[],divisions:[],positions:[],profileFields:{}});
+/** The one owner of the workflow criteria option lists, shared by the workflow form and Application History: the
+ * companies the actor administers among `companyIds`, and the labels those companies may use. */
+export async function attendanceWorkflowCatalogueTx(tx:Tx,companyIds:readonly string[]):Promise<AttendanceWorkflowCatalogue>{
+ if(!companyIds.length)return EMPTY_CATALOGUE();
+ const companies=await tx.select({id:company.id,name:company.legalName}).from(company).where(and(inArray(company.id,[...companyIds]),sql`app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName));
+ if(!companies.length)return EMPTY_CATALOGUE();
+ const ids=companies.map(c=>c.id);
+ const departments=await tx.select({id:department.id,name:department.name}).from(department).where(and(isNull(department.archivedAt),visibleLabelIdsCondition(department,'department',ids))).orderBy(asc(department.name));
+ const businessUnits=await tx.select({id:businessUnit.id,name:businessUnit.name}).from(businessUnit).where(and(isNull(businessUnit.archivedAt),visibleLabelIdsCondition(businessUnit,'business_unit',ids))).orderBy(asc(businessUnit.name));
+ const grades=await tx.select({id:jobGrade.id,name:jobGrade.name}).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(asc(jobGrade.rank),asc(jobGrade.name));
+ const divisions=await tx.select({id:profileOption.value,name:profileOption.label}).from(profileOption).where(and(eq(profileOption.category,'division'),eq(profileOption.isActive,true))).orderBy(asc(profileOption.sortOrder),asc(profileOption.label));
+ const positions=await tx.select({id:position.id,name:position.title}).from(position).where(and(isNull(position.archivedAt),visibleLabelIdsCondition(position,'position',ids))).orderBy(asc(position.title),asc(position.id));
+ const profileOptions=await tx.select({category:profileOption.category,id:profileOption.value,name:profileOption.label}).from(profileOption).where(and(inArray(profileOption.category,[...EMPLOYMENT_PROFILE_CATEGORIES]),eq(profileOption.isActive,true))).orderBy(asc(profileOption.sortOrder),asc(profileOption.label),asc(profileOption.id));
+ const profileFields:AttendanceWorkflowCatalogue['profileFields']={};
+ for(const option of profileOptions){
+  const category=EMPLOYMENT_PROFILE_CATEGORIES.find(value=>value===option.category);
+  if(!category)continue;
+  const field=CATEGORY_EMPLOYMENT_COLUMN[category]?.[0];
+  if(!field)continue;
+  const key=field as keyof AttendanceCriteriaGroup;
+  const values=profileFields[key]??[];values.push({id:option.id,name:option.name});profileFields[key]=values;
+ }
+ return {companies,departments,businessUnits,grades,divisions,positions,profileFields};
+}
+/** Names of already-chosen named approvers (stages and CC). Bounded by the workflow's participant limits; the same
+ * visibility as before: administered company and Personnel visibility of the employment. */
+export async function selectedAttendanceApproverLabelsTx(tx:Tx,tenantId:string,ids:readonly string[]){
+ const selected=checkedIds(ids,200,'selected employee');
+ if(!selected.length)return [];
+ return tx.execute<{id:string;name:string;employeeCode:string|null}>(sql`select e.id,p.full_name as name,e.employee_code as "employeeCode" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${tenantId}::uuid and e.id = any(${uuidArrayParam(selected)}) and app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view')`).then(rows=>Array.from(rows));
+}
+/** The candidate set of the Employee / Employees criterion: employments (terminated included) of the administered
+ * companies among `companyIds`. The company check runs once per company, not once per employment. */
+const criteriaCandidates=(companyIds:readonly string[])=>sql`e.company_id in (select c.id from company c where c.id = any(${uuidArrayParam(companyIds)}) and app.is_admin_for(c.id))`;
+/** The listing's company names: one statement, administered companies only. */
+export function attendanceWorkflowCompanyNames(ctx:SessionContext,companyIds:readonly string[]){
+ workflowAdministrator(ctx);
+ const ids=checkedIds(companyIds,5000,'company');
+ return withTenant(ctx,async tx=>ids.length?tx.select({id:company.id,name:company.legalName}).from(company).where(and(sql`${company.id} = any(${uuidArrayParam(ids)})`,sql`app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName),asc(company.id)):[]);
+}
+/** Create, Edit, Copy and View Workflow: the option lists plus the labels of the approvers and criteria employees the
+ * workflow already names. No approver pre-list and no list of every employee: both are searched when needed. */
+export function attendanceWorkflowFormOptions(ctx:SessionContext,companyIds:readonly string[],chosen:{approverIds?:readonly string[];employeeIds?:readonly string[]}={}):Promise<AttendanceWorkflowOptions>{
+ workflowAdministrator(ctx);
+ const approverIds=checkedIds(chosen.approverIds??[],200,'selected employee');
+ const employeeIds=checkedIds(chosen.employeeIds??[],10_000,'criteria employee');
+ return withTenant(ctx,async tx=>{
+  const catalogue=await attendanceWorkflowCatalogueTx(tx,companyIds);
+  if(!catalogue.companies.length)return {...catalogue,employees:[],approverEmployees:[]};
+  const approverEmployees=await selectedAttendanceApproverLabelsTx(tx,ctx.tenantId,approverIds);
+  const employees=employeeIds.length?Array.from(await tx.execute<{id:string;name:string;employeeCode:string|null}>(sql`select e.id,p.full_name as name,e.employee_code as "employeeCode"
+   from employment e join person p on p.id=e.person_id
+   where e.id = any(${uuidArrayParam(employeeIds)}) and ${criteriaCandidates(catalogue.companies.map(c=>c.id))}
+   order by p.full_name,e.id`)):[];
+  const [allCompany]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(NULL::uuid) as ok`);
+  return {...catalogue,canManageAllCompanies:allCompany?.ok===true,employees,approverEmployees};
+ });
+}
+export const ATTENDANCE_WORKFLOW_EMPLOYEE_PAGE=50;
+export type AttendanceWorkflowEmployeeCursor={name:string;id:string};
+/** The Employee / Employees criterion search: the same people the form used to list in full, found by Employee ID or
+ * name, ordered by name and id, one keyset page of 50 at a time with a capped "more". */
+export async function searchAttendanceWorkflowEmployees(ctx:SessionContext,input:{companyIds:string[];query:string;after?:AttendanceWorkflowEmployeeCursor|null}){
+ if(!Array.isArray(input.companyIds)||!input.companyIds.length||typeof input.query!=='string'||input.query.length>100)throw new AttendanceWorkflowError('invalid','Choose valid company and employee search criteria.');
+ const companyIds=checkedIds(input.companyIds,5000,'company');
+ const after=input.after??null;
+ if(after!==null&&(typeof after!=='object'||typeof after.name!=='string'||after.name.length>500||typeof after.id!=='string'||!UUID_TEXT.test(after.id)))throw new AttendanceWorkflowError('invalid','Choose valid company and employee search criteria.');
+ workflowAdministrator(ctx);
+ const query=input.query.trim();
+ const pattern='%'+query.replace(/[\\%_]/g,'\\$&')+'%';
+ return withTenant(ctx,async tx=>{
+  const rows=Array.from(await tx.execute<{id:string;name:string;employeeCode:string|null;company:string;terminatedOn:string|null}>(sql`select e.id,p.full_name as name,e.employee_code as "employeeCode",co.legal_name as company,e.terminated_on as "terminatedOn"
+   from employment e join person p on p.id=e.person_id join company co on co.id=e.company_id
+   where ${criteriaCandidates(companyIds)}
+    ${query?sql`and (p.full_name ilike ${pattern} or e.employee_code ilike ${pattern})`:sql``}
+    ${after?sql`and (p.full_name,e.id) > (${after.name}::text,${after.id}::uuid)`:sql``}
+   order by p.full_name,e.id limit ${ATTENDANCE_WORKFLOW_EMPLOYEE_PAGE+1}`));
+  return {rows:rows.slice(0,ATTENDANCE_WORKFLOW_EMPLOYEE_PAGE),more:rows.length>ATTENDANCE_WORKFLOW_EMPLOYEE_PAGE};
  });
 }
 
