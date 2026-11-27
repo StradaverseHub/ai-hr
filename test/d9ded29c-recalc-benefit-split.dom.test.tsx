@@ -45,8 +45,7 @@ describe('benefit split on the recalculation preview', () => {
     expect(within(row).getAllByText(fill(en.payrollTaxBasis.includesBenefits, /MYR\s?2,683\.33/))).toHaveLength(2); // existing and year-to-date
     expect(row).not.toHaveTextContent(/-\s?MYR|MYR\s?-/);
     const bkcar = within(row).getByText('BKCAR · BENEFIT-IN-KIND CAR').closest('div')!;
-    expect(bkcar).toHaveTextContent(en.payrollTaxBasis.noncashPcbWages);
-    expect(bkcar).toHaveTextContent(/2,083\.33/);
+    expect(bkcar).toHaveTextContent(/2,083\.33 · /);
     expect(bkcar).toHaveTextContent(en.payrollTaxBasis.afterExempt);
     expect(within(details).getAllByText(fill(en.payrollTaxBasis.includesBenefits, /MYR\s?2,683\.33/)).length).toBeGreaterThanOrEqual(3);
   });

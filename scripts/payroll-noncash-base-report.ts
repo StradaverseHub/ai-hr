@@ -24,7 +24,7 @@ async function main(){
  if(tenant!==undefined&&!/^[0-9a-f-]{36}$/i.test(tenant)){console.error('--tenant must be a tenant id');process.exit(2);}
  const url=process.env.MIGRATION_DATABASE_URL;
  if(!url){console.error('payroll-noncash-base-report requires MIGRATION_DATABASE_URL.');process.exit(2);}
- const sql=postgres(url,{max:1,connection:{default_transaction_read_only:'on',application_name:'payroll-noncash-base-report'}});
+ const sql=postgres(url,{max:1,connection:{default_transaction_read_only:true,application_name:'payroll-noncash-base-report'}});
  try{
   const tenants=tenant?[tenant]:(await sql<{id:string}[]>`select id::text as id from public.tenant order by id`).map(row=>row.id);
   const rows:NoncashBaseGapRow[]=[];

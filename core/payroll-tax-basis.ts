@@ -212,7 +212,7 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   // additional) plus the taxable BIK/VOLA it owns, counted once in the month and run it belongs to. Both sides of the
   // comparison use that one meaning, whether the earlier figure is a native stamp (bases.pcb less the benefits other runs
   // of the month own), a saved Income Tax Correction or an accepted import projection (cash pcb plus owned benefits).
-  const benefitsOf=(value:{pcbNonCash?:unknown}|null|undefined)=>ownedTaxableNonCash(value?.pcbNonCash);
+  const benefitsOf=(value:TaxBasisValue|null|undefined)=>ownedTaxableNonCash(value?value.pcbNonCash:undefined);
   for(const row of replay){
    const source=included.find(s=>s.id===row.payslipId)!;
    const prior=effective?.get(source.id)?.basis,st=source.statutory;
