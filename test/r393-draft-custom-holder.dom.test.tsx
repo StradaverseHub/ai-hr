@@ -73,7 +73,8 @@ const draftOf = (statutory: EmployeeDraftData['statutory'] = {}): EmployeeDraftD
   profile: { fullName: 'Nadia Yusof', primaryEmail: 'nadia@acme.test', employeeCode: 'ABC00100' },
   employment: { companyId: 'co-1', departmentId: 'dp-1', employmentType: 'full_time', hiredOn: today },
   statutory,
-  payroll: { basicSalary: '3000' },
+  // Board 2c1b2fba — Payment Method is required on a draft; Cash keeps the bank rules out of this file's way.
+  payroll: { basicSalary: '3000', paymentMethod: 'cash' },
 });
 
 let intlErrors: IntlError[] = [];

@@ -137,7 +137,7 @@ describe('atomic Draft activation', () => {
   });
 
   it.each(['new', 'historical'] as const)('keeps optional groups blank and the zero-salary rule for a %s draft, apart from the new-cohort SKBBK default', async cohort => {
-    const data = input({ statutory: {}, family: [], payroll: { basicSalary: '', remarks: 'Quarterly director fees' } });
+    const data = input({ statutory: {}, family: [], payroll: { basicSalary: '', remarks: 'Quarterly director fees', paymentMethod: 'cash' } });
     const { ctx, id } = await held(data);
     const stored = await getEmployeeDraft(ctx, id);
     expect(stored?.data.creationDefaultsVersion).toBe(1);

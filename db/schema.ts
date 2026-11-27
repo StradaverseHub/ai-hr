@@ -9829,6 +9829,26 @@ export const employeeDraft = pgTable(
   ],
 );
 
+/** Board 2c1b2fba (migration 7610) — the Draft Employee page's profile photo. A draft creates no person, so the
+ *  photo waits in this 1:1 side table (bytes never in the draft JSON) and moves to person_photo through
+ *  setPersonPhotoTx inside the activation transaction. Deleted with its draft (ON DELETE CASCADE). Row security:
+ *  visible and writable exactly where its draft is (EXISTS over employee_draft under the caller's own policies). */
+export const employeeDraftPhoto = pgTable(
+  'employee_draft_photo',
+  {
+    id: id(),
+    tenantId: tenantId(),
+    draftId: uuid('draft_id').notNull().unique().references(() => employeeDraft.id, { onDelete: 'cascade' }),
+    content: bytea('content').notNull(),
+    fileName: text('file_name').notNull(),
+    mimeType: text('mime_type').notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    uploadedByUserId: uuid('uploaded_by_user_id').references(() => appUser.id),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).defaultNow().notNull(),
+  },
+);
+
 // 476f23ed — Movement Settings: the configurable catalogue of movement (career) event types.
 //
 // AN OVERLAY, NOT A REPLACEMENT. The built-in kinds (core/movement.ts MOVEMENT_KINDS) stay in code and

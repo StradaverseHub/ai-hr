@@ -56,7 +56,8 @@ afterAll(async () => {
   await closeAll();
 });
 
-/** The four Create fields plus the three Activate needs, and nothing else. */
+/** The four Create fields plus what Activate needs, and nothing else. Board 2c1b2fba made Payment Method
+ *  required on a draft, so the default carries Cash (no bank needed); a case overrides it, or blanks it. */
 const minimal = (payroll: NonNullable<EmployeeDraftData['payroll']> = {}): EmployeeDraftData => ({
   profile: {
     fullName: 'Payroll Tab',
@@ -65,7 +66,7 @@ const minimal = (payroll: NonNullable<EmployeeDraftData['payroll']> = {}): Emplo
     primaryEmail: `pt.${randomUUID().slice(0, 8)}@r393.test`,
   },
   employment: { companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-03-01' },
-  payroll: { basicSalary: '3000', ...payroll },
+  payroll: { basicSalary: '3000', paymentMethod: 'cash', ...payroll },
 });
 
 async function policy(p: { companyId?: string; status?: 'active' | 'inactive' } = {}): Promise<string> {
@@ -112,6 +113,17 @@ describe('§1 Bank Transfer without bank details is named on the Payroll tab', (
     expect(named(base({}, 'cash')), 'cash needs no bank').toBe(false);
     expect(named(base({}, '')), 'not specified needs no bank').toBe(false);
     expect(named({ payroll: { basicSalary: '1' } }), 'a draft with no payment method').toBe(false);
+  });
+
+  it('board 2c1b2fba — Payment Method is REQUIRED: blank or outside the list is named, each real method is not', () => {
+    const payroll = (paymentMethod?: string) => missingByTab({ payroll: { basicSalary: '1', ...(paymentMethod === undefined ? {} : { paymentMethod }) } }).payroll;
+    expect(payroll(), 'never chosen').toContain('paymentMethod');
+    expect(payroll(''), 'Not specified').toContain('paymentMethod');
+    expect(payroll('  '), 'blank').toContain('paymentMethod');
+    expect(payroll('paypal'), 'not one of the three').toContain('paymentMethod');
+    for (const method of ['cash', 'cheque']) expect(payroll(method), method).toEqual([]);
+    // Bank Transfer is a real method; what it still lacks here is the bank, named as before.
+    expect(payroll('bank_transfer')).toEqual(['paymentMethodBank']);
   });
 
   it('ONE predicate: the draft rule and the record writer both call bankTransferLacksBank', () => {
@@ -172,19 +184,31 @@ describe('§2 Payment Method and Payroll Policy land on the activated employment
     expect((await employmentRow(employmentId)).paymentMethod, 'employment.payment_method').toBe('bank_transfer');
   });
 
-  it('a draft with NEITHER field activates exactly as before: NULL, NULL, and no event from either writer', async () => {
+  // Board 2c1b2fba — this case used to activate a draft with NEITHER field (Payment Method "Not specified"). Payment
+  // Method is now required on a draft, so that draft is REFUSED before anything exists; with a method and no policy it
+  // activates on the Monthly default with no event from the policy writer.
+  it('a draft with no Payment Method is refused before hire; with one and no policy, the policy stays NULL', async () => {
     const ctx = adminCtx(b);
+    const blank = await saveEmployeeDraft(ctx, { data: minimal({ paymentMethod: '' }), currentStep: 4 });
+    const before = await employmentCount();
+    await expect(completeEmployeeDraft(ctx, blank.id)).rejects.toMatchObject({
+      code: 'required_fields',
+      fields: expect.arrayContaining([{ tab: 'payroll', field: 'paymentMethod' }]),
+    });
+    expect(await employmentCount(), 'no employment was created').toBe(before);
+    expect(await getEmployeeDraft(ctx, blank.id), 'the draft is kept').not.toBeNull();
+
     const { id } = await saveEmployeeDraft(ctx, { data: minimal(), currentStep: 4 });
     const { employmentId } = await completeEmployeeDraft(ctx, id);
     const emp = await employmentRow(employmentId);
-    expect(emp.paymentMethod, 'Not specified').toBeNull();
+    expect(emp.paymentMethod, 'the chosen method').toBe('cash');
     expect(emp.payrollPolicyId, 'the Monthly default').toBeNull();
     const events = await owner.db
       .select({ eventType: schema.domainEvent.eventType })
       .from(schema.domainEvent)
       .where(and(eq(schema.domainEvent.tenantId, b.tenantId), eq(schema.domainEvent.aggregateId, employmentId)));
     const types = events.map((e) => e.eventType);
-    expect(types).not.toContain('employment.payment-method.changed');
+    expect(types).toContain('employment.payment-method.changed');
     expect(types).not.toContain('employment.payroll-policy.assigned');
     expect(await getEmployeeDraft(ctx, id), 'the draft is gone').toBeNull();
   });

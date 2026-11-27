@@ -384,7 +384,7 @@ describe('V3.1 onboarding database and authorization', () => {
         expect((await onboardingList(admin))[0]!.case.source.fullName).toBe('Updated Hire');
     });
     it('preserves the same case when Personnel activates its draft', async () => {
-        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
+        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Activation Hire', employeeCode: 'ONB-ACT-1', primaryEmail: 'activation@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000', paymentMethod: 'cash' } }, currentStep: 5 });
         const before = (await onboardingList(admin))[0]!;
         const active = await completeEmployeeDraft(admin, saved.id);
         const after = (await onboardingList(admin))[0]!;
@@ -393,7 +393,7 @@ describe('V3.1 onboarding database and authorization', () => {
         expect((await owner.db.select().from(schema.lcOnboardingCaseRevision)).some(r => r.data.personnelStatus === 'Draft')).toBe(true);
     });
     it('reads current active Personnel facts and saved Business Unit without rewriting the case snapshot', async () => {
-        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Projection Hire', employeeCode: 'ONB-PROJ-1', primaryEmail: 'projection@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
+        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Projection Hire', employeeCode: 'ONB-PROJ-1', primaryEmail: 'projection@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000', paymentMethod: 'cash' } }, currentStep: 5 });
         const active = await completeEmployeeDraft(admin, saved.id), before = (await onboardingList(admin))[0]!;
         const [unit] = await owner.db.insert(schema.businessUnit).values({tenantId:b.tenantId,companyId:b.companyId,code:'PROJECTION',name:'Fictional saved unit'}).returning();
         await owner.db.execute(sql`update person set full_name='Current Personnel name',primary_email='current@test.invalid' where id=(select person_id from employment where id=${active.employmentId}::uuid)`);
@@ -443,7 +443,7 @@ describe('V3.1 onboarding database and authorization', () => {
         expect((await onboardingDetail(admin,before.case.id)).case.source.fullName).toBe('New Hire');
     });
     it('retains cancelled snapshots while linking the employment created by later activation', async()=>{
-        const data={profile:{fullName:'Historical cancelled hire',employeeCode:'ONB-CLOSED-1',primaryEmail:'closed@test.invalid',passportNumber:'OLD12345'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000'}};
+        const data={profile:{fullName:'Historical cancelled hire',employeeCode:'ONB-CLOSED-1',primaryEmail:'closed@test.invalid',passportNumber:'OLD12345'},employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5000',paymentMethod:'cash'}};
         const saved=await saveEmployeeDraft(admin,{data,currentStep:5}),before=(await onboardingList(admin))[0]!;
         await onboardingCommand(admin,before.case.id,before.revision,{type:'cancel',reason:'Candidate declined'});
         await saveEmployeeDraft(admin,{id:saved.id,data:{...data,profile:{...data.profile,fullName:'Later active hire',passportNumber:'NEW12345'}},currentStep:5});
@@ -454,7 +454,7 @@ describe('V3.1 onboarding database and authorization', () => {
         const context = await onboardingContext(admin), config = structuredClone(context.config);
         config.checklists[0]!.tasks.push({ id: 'acceptance', name: 'Device acknowledgement', by: 'joiner', group: '', method: 'manual', opens: 1, due: 1, gate: true });
         await onboardingSaveConfig(admin, context.revision, config);
-        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Late account hire', employeeCode: 'LATE-LOGIN-1', primaryEmail: 'late-login@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000' } }, currentStep: 5 });
+        const saved = await saveEmployeeDraft(admin, { data: { profile: { fullName: 'Late account hire', employeeCode: 'LATE-LOGIN-1', primaryEmail: 'late-login@test.invalid' }, employment: { companyId: b.companyId, departmentId: b.deptA, positionId: b.positionId, employmentType: 'full_time', hiredOn: todayInKualaLumpur() }, payroll: { basicSalary: '5000', paymentMethod: 'cash' } }, currentStep: 5 });
         const active = await completeEmployeeDraft(admin, saved.id);
         let row = (await onboardingList(admin))[0]!;
         await onboardingCommand(admin, row.case.id, row.revision, { type: 'saveSubmit', patch: { hiring: 'new_hire', local: { supervisor: 'Manager' }, selected: ['m365'] } });

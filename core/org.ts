@@ -251,6 +251,12 @@ export type HireParams = {
    *  is load-bearing here (it replaces the hire-month lump with the full up-front part-year figure on
    *  ANNUAL). Absent / null ⇒ byte-identical pre-existing grant behaviour. */
   grantLeaveTypes?: { id: string; code: string; yearCycleOverride?: string | null }[];
+  /** Board 2c1b2fba — the STARTING organisation labels (Division, Branch, Region, Line, Section, Team, Base,
+   *  Category), written on the employment row this hire inserts so the `employment.hired` event's
+   *  employmentInformation carries them (never a later information-change event). Each is judged against its
+   *  profile_option catalog (`assertEmploymentInformationLabelsTx`) before the row is written. Absent ⇒ null,
+   *  byte-identical to every hire before this. */
+  employmentInformation?: Partial<Record<'orgDivision'|'orgBranch'|'orgRegion'|'orgLine'|'orgSection'|'orgTeam'|'orgBase'|'employmentCategory', string | null>>;
 };
 
 /**
@@ -474,9 +480,14 @@ export async function hireEmployee(ctx: SessionContext, p: HireParams,
     // insert — at creation the contract starts the day the employment does). provisional_end_on is still
     // written unchanged, because full_time and intern hires depend on it and on the
     // computeReviewWindow fallback that reads it. Non-contract hires are byte-identical to before.
+    // Board 2c1b2fba — the starting organisation labels, judged against their catalogs BEFORE the row exists.
+    const startingLabels=Object.fromEntries(Object.entries(p.employmentInformation??{}).filter(([field,value])=>
+      ['orgDivision','orgBranch','orgRegion','orgLine','orgSection','orgTeam','orgBase','employmentCategory'].includes(field)&&typeof value==='string'&&value.trim()!=='')
+      .map(([field,value])=>[field,(value as string).trim()]));
+    if(Object.keys(startingLabels).length)await assertEmploymentInformationLabelsTx(tx,startingLabels,{},p.companyId);
     const [emp] = await tx
       .insert(employment)
-      .values(hireEmploymentValues(ctx.tenantId, personId, p, employeeCode))
+      .values({...hireEmploymentValues(ctx.tenantId, personId, p, employeeCode),...startingLabels})
       .returning({ id: employment.id });
 
     // R81 (9cbf5e0d): the `status` column is GONE from `assignment` (migration 0331). A hire used to write

@@ -111,7 +111,10 @@ describe('the relabelled fields, in all six locales', () => {
       const panel = within(shownPanel());
       expect(panel.getByText(w.fields.groupJoinDate), `${loc} fields.groupJoinDate`).toBeTruthy();
       expect(panel.getByText(w.hints.groupJoinDate), `${loc} hints.groupJoinDate`).toBeTruthy();
-      expect(panel.getByText(w.fields.directSuperior), `${loc} fields.directSuperior`).toBeTruthy();
+      // Board 2c1b2fba — Direct Superior now has its own card, titled with the record's own heading, which
+      // reads the same as the field caption in every locale; so the words appear twice (heading + caption).
+      expect(panel.getAllByText(w.fields.directSuperior).length, `${loc} fields.directSuperior`).toBeGreaterThan(0);
+      expect(panel.getByText(w.sections.directSuperior, { selector: '[data-ui-section-header]' }), `${loc} sections.directSuperior`).toBeTruthy();
       // The draft says what the record says.
       expect(w.fields.groupJoinDate, `${loc} matches people.detail`).toBe((msgs as Msgs).people.detail.employmentInfo.groupJoinDate);
       expect(w.fields.directSuperior, `${loc} matches people.detail`).toBe((msgs as Msgs).people.detail.directSuperiorLabel);

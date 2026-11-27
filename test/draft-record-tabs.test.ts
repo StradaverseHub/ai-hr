@@ -27,7 +27,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { DRAFT_TABS, missingByTab, openingTab, stepKey, stepNumber } from '../lib/employee-draft-schema';
+import { DRAFT_TABS, missingByTab, nextDraftTab, openingTab, stepKey, stepNumber } from '../lib/employee-draft-schema';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const read = (rel: string) => readFileSync(root + rel, 'utf8');
@@ -38,7 +38,7 @@ const WIZARD = 'app/admin/personnel/new/wizard.tsx';
 const RECORD = 'app/admin/personnel/[employmentId]/page.tsx';
 
 // ── §1 the vocabulary ─────────────────────────────────────────────────────────────────────────────
-describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it is entitled to', () => {
+describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the six it is entitled to', () => {
   it('every DRAFT_TABS key is a tab the activated record actually has', () => {
     // Read from the record's own tab list rather than from a hand-copied array: this is the thing that
     // would rot. If somebody renames `bankStatutory` on the employee screen, a draft tab pointing at the
@@ -53,14 +53,20 @@ describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it i
     for (const k of DRAFT_TABS) expect(recordTabs, `draft tab ${k}`).toContain(k);
   });
 
-  it('the five post-activation tabs and the retired Others tab stay unavailable to a draft', () => {
-    // Four of them describe things that have HAPPENED to an employment, and a draft deliberately has no
-    // employment for them to have happened to. Qualification follows activation too. Others was
-    // retired by 39306a9e on the active record, so it cannot become a draft-only destination.
-    for (const absent of ['careerMovement', 'attendance', 'leave', 'documents', 'qualification', 'others']) {
+  it('the four post-activation tabs and the retired Others tab stay unavailable to a draft', () => {
+    // They describe things that have HAPPENED to an employment, and a draft deliberately has no
+    // employment for them to have happened to. Others was retired by 39306a9e on the active record, so it
+    // cannot become a draft-only destination. Board 2c1b2fba brought QUALIFICATION onto the draft (a
+    // register Activate now writes through `addQualification`), in the reporter's order — Profile,
+    // Employment, Bank & Statutory, Payroll, Qualification — with Family, which was not in that order, last.
+    for (const absent of ['careerMovement', 'attendance', 'leave', 'documents', 'others']) {
       expect(DRAFT_TABS as readonly string[], absent).not.toContain(absent);
     }
-    expect(DRAFT_TABS).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'family']);
+    expect(DRAFT_TABS).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'qualification', 'family']);
+  });
+
+  it('Next walks DRAFT_TABS in order and stops on the last tab (board 2c1b2fba)', () => {
+    expect(DRAFT_TABS.map((k) => nextDraftTab(k))).toEqual(['job', 'bankStatutory', 'payroll', 'qualification', 'family', null]);
   });
 
   it('the ONE completeness rule speaks the tab vocabulary, and the server re-runs that same rule', () => {
@@ -78,6 +84,11 @@ describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it i
     // KEY only: each kept its number, 5 stays retired on Payroll, and Family stays 6.
     expect([stepNumber('profile'), stepNumber('job'), stepNumber('bankStatutory'), stepNumber('payroll'),
       stepNumber('family')]).toEqual([1, 2, 3, 4, 6]);
+    // Board 2c1b2fba — Qualification took the next free number; it sits before Family on screen, so the
+    // numbers are no longer in screen order and nothing already stored moved.
+    expect(stepNumber('qualification')).toBe(7);
+    expect(stepKey(7)).toBe('qualification');
+    expect(stepKey(6)).toBe('family');
     expect(stepKey(5)).toBe('payroll');
     expect(stepKey(2)).toBe('job');
     expect(stepKey(3)).toBe('bankStatutory');
@@ -94,6 +105,8 @@ describe('§1 a draft uses the ACTIVE RECORD\'S tab keys, and only the five it i
     // list carries no `?tab=` at all.
     expect(openingTab(undefined, 3), 'no ?tab= — the stored step decides').toBe('bankStatutory');
     expect(openingTab(undefined, 5), 'the retired step 5 still reopens on Payroll').toBe('payroll');
+    expect(openingTab(undefined, 7), 'board 2c1b2fba — step 7 is Qualification').toBe('qualification');
+    expect(openingTab('qualification', 1)).toBe('qualification');
     // An unknown value is a bookmark, not an instruction: ignored, never an error — including the six
     // tabs a draft does not get, which a link copied off an activated record would name.
     expect(openingTab('attendance', 2), 'a tab a draft never gets').toBe('job');
@@ -140,14 +153,21 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
       statutoryMalaysia: 'statutoryMalaysia',
       identityTax: 'identityTaxCardTitle',
       compensation: 'compensation',
-      // r393 (685d2380 step 2) — the Payroll tab's two new cards. "How This Employee Is Paid" is the
-      // record's own group heading on its Payroll tab; "Payroll policy" is the record's Payroll policy card
-      // title, which lives in the `payrollPolicy` namespace rather than under people.detail — hence the
-      // leading `/`, read from the catalogue ROOT instead.
-      payMethodGroup: 'payMethodGroup',
+      // r393 (685d2380 step 2) — "Payroll policy" is the record's Payroll policy card title, which lives in
+      // the `payrollPolicy` namespace rather than under people.detail — hence the leading `/`, read from the
+      // catalogue ROOT instead. Board 2c1b2fba retired `payMethodGroup`: Payment Method moved into Basic
+      // Salary and the card that carried that heading would have been empty.
       payrollPolicy: '/payrollPolicy.assignTitle',
       // r393 (685d2380 step 3b) — the training levy moved into its own card, the record's Others Statutory.
       othersStatutory: 'othersStatutoryTitle',
+      // Board 2c1b2fba — the record's sections a draft gained, each under the record's own heading.
+      emergencyContact: 'emergencyTitle',
+      directSuperior: 'directSuperiorTitle',
+      costCenterAllocation: '/costAllocations.title',
+      probationGroup: 'employmentInfo.probationGroup',
+      noticeGroup: 'employmentInfo.noticeGroup',
+      payItems: 'payComponentsTitle',
+      qualification: 'qualification.title',
     };
     const dig = (node: unknown, path: string): unknown =>
       path.split('.').reduce<unknown>(
@@ -179,10 +199,12 @@ describe('§2 the draft borrows the record\'s OWN words, in all six locales', ()
     // RETIRED, not deleted (it stays in every catalogue and in the SECTIONS table above, still equal to the
     // record's heading), and the screen must no longer ask for it.
     for (const k of ['personalDetails', 'contactAddress', 'organisation', 'employmentDates', 'bank',
-      'statutoryMalaysia', 'compensation', 'payMethodGroup', 'payrollPolicy', 'othersStatutory']) {
+      'statutoryMalaysia', 'compensation', 'payrollPolicy', 'othersStatutory', 'emergencyContact', 'directSuperior',
+      'costCenterAllocation', 'probationGroup', 'noticeGroup', 'payItems', 'qualification']) {
       expect(src, `t('sections.${k}')`).toContain(`t('sections.${k}')`);
     }
     expect(src, 'the retired Identification & Tax card heading').not.toContain(`t('sections.identityTax')`);
+    expect(src, 'the retired How This Employee Is Paid card heading').not.toContain(`t('sections.payMethodGroup')`);
     expect(src).not.toContain('t(`tabs.${');
     expect(src).not.toContain('t(`sections.${');
   });

@@ -23,14 +23,16 @@ export function employeeDraftActivationEntitlements(snapshot:SessionContext['ent
  if(!snapshot)return snapshot;
  return canonicalEntitlementsForDigest(snapshot);
 }
-const allowed={profile:['fullName','primaryEmail','employeeCode','employeeIdMode','phone'],employment:['companyId','departmentId','employmentType','hiredOn'],statutory:['subjectToSkbbk'],payroll:['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks']} as const;
+const allowed={profile:['fullName','primaryEmail','employeeCode','employeeIdMode','phone'],employment:['companyId','departmentId','employmentType','hiredOn'],statutory:['subjectToSkbbk'],payroll:['basicSalary','monthlyAllowance','payMode','paymentTerm','rateAmount','remarks','paymentMethod']} as const;
 /** A closed supported subset. No nonempty captured field may be silently ignored by this review. */
 export function supportedEmployeeDraftActivationData(value:unknown):value is EmployeeDraftData{
  if(!value||typeof value!=='object'||Array.isArray(value))return false;
  const data=value as Record<string,unknown>;
  for(const [section,contents]of Object.entries(data)){
   if(section==='creationDefaultsVersion'){if(contents!==1)return false;continue;}
-  if(section==='family'){if(!Array.isArray(contents)||contents.length)return false;continue;}
+  // Board 2c1b2fba — the four new registers (like family) are reviewed only when empty; a draft that carries any
+  // entry is a native handoff, because this review does not describe those writes.
+  if(section==='family'||section==='emergencyContacts'||section==='qualifications'||section==='payItems'||section==='costAllocations'){if(!Array.isArray(contents)||contents.length)return false;continue;}
   if(section==='statutory'){if(!contents||typeof contents!=='object'||Array.isArray(contents)||Object.entries(contents).some(([key,v])=>v!==null&&v!==''&&(key!=='subjectToSkbbk'||!['yes','no'].includes(v as string))))return false;continue;}
   if(!Object.hasOwn(allowed,section)||!contents||typeof contents!=='object'||Array.isArray(contents))return false;
   const known=allowed[section as keyof typeof allowed] as readonly string[];
@@ -48,6 +50,8 @@ async function source(tx:Tx,ctx:SessionContext,p:Human){
  await assertWorkforceCompanyTx(tx,ctx,p.companyId,'maintain');
  const [draft]=await tx.execute<Draft>(sql`select d.id,d.data,d.current_step as "currentStep",d.company_id as "companyId",d.reserved_employee_code as "reservedEmployeeCode",d.xmin::text as revision from employee_draft d where d.id=${p.draftId}::uuid and d.tenant_id=${ctx.tenantId}::uuid and d.company_id=${p.companyId}::uuid for update`);
  if(!draft||!draft.reservedEmployeeCode||!supportedEmployeeDraftActivationData(draft.data))return fail();const data=draft.data;
+ // Board 2c1b2fba — a draft photo would be moved onto the person by activation; this review does not describe it.
+ const [photo]=await tx.execute<{present:boolean}>(sql`select exists(select 1 from employee_draft_photo p where p.draft_id=${p.draftId}::uuid and p.tenant_id=${ctx.tenantId}::uuid) as present`);if(photo?.present)return fail();
  if(data.employment?.companyId!==p.companyId||data.profile?.employeeCode!==draft.reservedEmployeeCode||missingForCreation(data).length||missingToCreate(data).length)return fail();
  const [company]=await tx.execute<{name:string;country:string;currency:string;snapshot:unknown}>(sql`select c.legal_name as name,c.country,c.currency,to_jsonb(c) as snapshot from company c where c.id=${p.companyId}::uuid and c.tenant_id=${ctx.tenantId}::uuid and c.archived_at is null and app.is_admin_for(c.id) for share`);if(!company)return fail();
  // This reviewed subset has been traced through the currently registered MY activation owner only.
@@ -79,6 +83,6 @@ export async function reconcileEmployeeDraftActivationSourceTx(tx:Tx,ctx:Session
 export async function readEmployeeDraftActivationChoicesTx(tx:Tx,ctx:SessionContext,selection:unknown){
  // A choice list only reads: the shared Access lock first, so the actor guard joins it (staging, 11 November 2026). Prepare and confirm keep the exclusive lock.
  await lockAccessConfigurationTx(tx,ctx.tenantId);const fresh=await employeeDraftActivationActorTx(tx,ctx),pick=C.Selection.parse(selection??{});await tx.execute(sql`select app.access_workforce_write_lock()`);const lifecycle=await onboardingDraftActivationContextTx(fresh,tx);
- const rows=await tx.execute<{draftId:string;companyId:string;label:string;employeeCode:string|null;data:unknown;country:string}>(sql`select d.id as "draftId",d.company_id as "companyId",d.label,d.reserved_employee_code as "employeeCode",d.data,c.country from employee_draft d join company c on c.id=d.company_id and c.tenant_id=d.tenant_id where d.tenant_id=${fresh.tenantId}::uuid and app.is_admin_for(c.id) and app.access_workforce_company(c.id,'workforce.maintain') and (${pick.companyId??null}::uuid is null or c.id=${pick.companyId??null}::uuid) order by d.updated_at desc,d.id desc limit 26`);
- return C.Choices.parse({kind:'choices',drafts:Array.from(rows).slice(0,25).map(r=>({draftId:r.draftId,companyId:r.companyId,label:r.label,employeeCode:r.employeeCode??'',supported:!lifecycle.willSynchronize&&r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length,unsupportedReason:lifecycle.willSynchronize?'configured_onboarding':r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length?null:'captured_shape',route:'/admin/personnel/new'})),truncated:rows.length>25});
+ const rows=await tx.execute<{draftId:string;companyId:string;label:string;employeeCode:string|null;data:unknown;country:string;hasPhoto:boolean}>(sql`select d.id as "draftId",d.company_id as "companyId",d.label,d.reserved_employee_code as "employeeCode",d.data,c.country,exists(select 1 from employee_draft_photo p where p.draft_id=d.id and p.tenant_id=d.tenant_id) as "hasPhoto" from employee_draft d join company c on c.id=d.company_id and c.tenant_id=d.tenant_id where d.tenant_id=${fresh.tenantId}::uuid and app.is_admin_for(c.id) and app.access_workforce_company(c.id,'workforce.maintain') and (${pick.companyId??null}::uuid is null or c.id=${pick.companyId??null}::uuid) order by d.updated_at desc,d.id desc limit 26`);
+ return C.Choices.parse({kind:'choices',drafts:Array.from(rows).slice(0,25).map(r=>({draftId:r.draftId,companyId:r.companyId,label:r.label,employeeCode:r.employeeCode??'',supported:!lifecycle.willSynchronize&&!r.hasPhoto&&r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length,unsupportedReason:lifecycle.willSynchronize?'configured_onboarding':!r.hasPhoto&&r.country==='MY'&&!!r.employeeCode&&supportedEmployeeDraftActivationData(r.data)&&!missingForCreation(r.data as EmployeeDraftData).length&&!missingToCreate(r.data as EmployeeDraftData).length?null:'captured_shape',route:'/admin/personnel/new'})),truncated:rows.length>25});
 }

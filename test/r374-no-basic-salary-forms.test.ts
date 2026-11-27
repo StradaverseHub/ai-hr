@@ -101,20 +101,24 @@ afterAll(async () => {
 
 // ── §1 the draft rule ─────────────────────────────────────────────────────────────────────────────
 describe('§1 the Create New Employee Payroll tab: blank or zero is legitimate, and asks for a reason', () => {
+  // Board 2c1b2fba — Payment Method became REQUIRED on a draft. Every case below holds a valid one (Cash) so its pin
+  // stays about the AMOUNT; the method's own rule is pinned in test/r393-draft-payroll-tab.test.ts §1.
+  const payrollGaps = (payroll: NonNullable<EmployeeDraftData['payroll']>) =>
+    missingByTab({ payroll: { paymentMethod: 'cash', ...payroll } }).payroll;
   it('a blank amount asks for REMARKS, not for an amount', () => {
-    expect(missingByTab({ payroll: {} }).payroll).toEqual(['remarks']);
-    expect(missingByTab({ payroll: { basicSalary: '' } }).payroll).toEqual(['remarks']);
+    expect(payrollGaps({})).toEqual(['remarks']);
+    expect(payrollGaps({ basicSalary: '' })).toEqual(['remarks']);
     // Whitespace is blankness, not a parse: `Number('   ')` is 0, which is why the rule asks `blank()`
     // and never infers emptiness from the number.
-    expect(missingByTab({ payroll: { basicSalary: '   ' } }).payroll).toEqual(['remarks']);
-    expect(missingByTab({ payroll: { basicSalary: '', remarks: DIRECTOR_REMARK } }).payroll).toEqual([]);
+    expect(payrollGaps({ basicSalary: '   ' })).toEqual(['remarks']);
+    expect(payrollGaps({ basicSalary: '', remarks: DIRECTOR_REMARK })).toEqual([]);
   });
 
   it('an explicit zero does the same — in every spelling HR can type into a number box', () => {
     for (const z of ['0', '0.00', '00', '0.0', '-0']) {
-      expect(missingByTab({ payroll: { basicSalary: z } }).payroll, z).toEqual(['remarks']);
+      expect(payrollGaps({ basicSalary: z }), z).toEqual(['remarks']);
       expect(
-        missingByTab({ payroll: { basicSalary: z, remarks: DIRECTOR_REMARK } }).payroll,
+        payrollGaps({ basicSalary: z, remarks: DIRECTOR_REMARK }),
         `${z} with a remark`,
       ).toEqual([]);
     }
@@ -123,48 +127,46 @@ describe('§1 the Create New Employee Payroll tab: blank or zero is legitimate, 
   it('a NEGATIVE amount is still refused, and a remark does not buy it in', () => {
     // Blank and zero are legitimate; negative never is. A remark is the answer to "why is there no
     // basic", not to "why is the basic below zero" — there is no answer to that second question.
-    expect(missingByTab({ payroll: { basicSalary: '-100' } }).payroll).toEqual(['basicSalary']);
-    expect(missingByTab({ payroll: { basicSalary: '-100', remarks: DIRECTOR_REMARK } }).payroll).toEqual([
+    expect(payrollGaps({ basicSalary: '-100' })).toEqual(['basicSalary']);
+    expect(payrollGaps({ basicSalary: '-100', remarks: DIRECTOR_REMARK })).toEqual([
       'basicSalary',
     ]);
-    expect(missingByTab({ payroll: { basicSalary: '-0.01' } }).payroll).toEqual(['basicSalary']);
+    expect(payrollGaps({ basicSalary: '-0.01' })).toEqual(['basicSalary']);
   });
 
   it('a JUNK amount is still refused — a non-numeric string is not a Director', () => {
     // `money(NaN)` is the STRING "NaN" and Postgres `numeric` ACCEPTS it, which would poison gross,
     // every statutory base, the payslip, the bank file and the agency returns with no error anywhere.
     for (const junk of ['abc', 'RM500', '-', '.', '5,0,0,0.0.0', '1e']) {
-      expect(missingByTab({ payroll: { basicSalary: junk } }).payroll, junk).toEqual(['basicSalary']);
+      expect(payrollGaps({ basicSalary: junk }), junk).toEqual(['basicSalary']);
     }
     // And a remark cannot buy that in either.
-    expect(missingByTab({ payroll: { basicSalary: 'abc', remarks: DIRECTOR_REMARK } }).payroll).toEqual([
+    expect(payrollGaps({ basicSalary: 'abc', remarks: DIRECTOR_REMARK })).toEqual([
       'basicSalary',
     ]);
   });
 
   it('a POSITIVE amount is judged exactly as it was before — nothing changes for a normal hire', () => {
-    expect(missingByTab({ payroll: { basicSalary: '5200' } }).payroll).toEqual([]);
+    expect(payrollGaps({ basicSalary: '5200' })).toEqual([]);
     // Thousands separators and underscores were always stripped; still are.
-    expect(missingByTab({ payroll: { basicSalary: '5,200.50' } }).payroll).toEqual([]);
+    expect(payrollGaps({ basicSalary: '5,200.50' })).toEqual([]);
     // …and a positive amount needs NO remark. This is the half that must not have become stricter.
-    expect(missingByTab({ payroll: { basicSalary: '5200', remarks: '' } }).payroll).toEqual([]);
-    expect(missingByTab({ payroll: { basicSalary: '0.01' } }).payroll).toEqual([]);
+    expect(payrollGaps({ basicSalary: '5200', remarks: '' })).toEqual([]);
+    expect(payrollGaps({ basicSalary: '0.01' })).toEqual([]);
   });
 
   it('the DAILY/HOURLY rate refusal is untouched, and composes with the new rule', () => {
     // r369 kept this blocker on purpose: pay IS rate × time, so there is nothing else that could ever
     // pay this person. A Director with no basic is a different case from a day-rate worker with no rate.
-    expect(missingByTab({ payroll: { basicSalary: '', payMode: 'daily' } }).payroll).toEqual([
+    expect(payrollGaps({ basicSalary: '', payMode: 'daily' })).toEqual([
       'remarks',
       'rateAmount',
     ]);
     expect(
-      missingByTab({ payroll: { basicSalary: '', remarks: DIRECTOR_REMARK, payMode: 'hourly' } }).payroll,
+      payrollGaps({ basicSalary: '', remarks: DIRECTOR_REMARK, payMode: 'hourly' }),
     ).toEqual(['rateAmount']);
     expect(
-      missingByTab({
-        payroll: { basicSalary: '', remarks: DIRECTOR_REMARK, payMode: 'hourly', rateAmount: '25' },
-      }).payroll,
+      payrollGaps({ basicSalary: '', remarks: DIRECTOR_REMARK, payMode: 'hourly', rateAmount: '25' }),
     ).toEqual([]);
   });
 
@@ -183,14 +185,17 @@ describe('§1 the Create New Employee Payroll tab: blank or zero is legitimate, 
     }
   });
 
-  it('the Payroll tab is the ONLY tab this changed — the other four rules are byte-identical', () => {
+  it('the Payroll tab is the ONLY tab this changed — the other rules are byte-identical', () => {
     const m = missingByTab({});
     expect(m.profile).toEqual([]);
     expect(m.job).toEqual(['department', 'employmentType', 'hiredOn']);
     expect(m.bankStatutory).toEqual([]);
     expect(m.family).toEqual([]);
-    // The tab keys and their ORDER map to `employee_draft.current_step` on rows already in production.
-    expect(Object.keys(m)).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'family']);
+    // Board 2c1b2fba — the Qualification tab, which requires nothing.
+    expect(m.qualification).toEqual([]);
+    // Board 2c1b2fba — Qualification sits before Family on screen under the next free step number (7), so no
+    // `employee_draft.current_step` already in production moves (test/employee-draft-family.test.ts §1).
+    expect(Object.keys(m)).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'qualification', 'family']);
   });
 
   it('the Activate gate sees it: a draft complete but for the reason is NOT activatable', () => {
@@ -202,10 +207,10 @@ describe('§1 the Create New Employee Payroll tab: blank or zero is legitimate, 
         employmentType: 'full_time',
         hiredOn: '2026-06-01',
       },
-      payroll: { basicSalary: '' },
+      payroll: { basicSalary: '', paymentMethod: 'cash' },
     };
     expect(missingForCreation(d)).toEqual(['remarks']);
-    expect(missingForCreation({ ...d, payroll: { basicSalary: '', remarks: DIRECTOR_REMARK } })).toEqual([]);
+    expect(missingForCreation({ ...d, payroll: { basicSalary: '', remarks: DIRECTOR_REMARK, paymentMethod: 'cash' } })).toEqual([]);
   });
 });
 
@@ -551,7 +556,8 @@ describe('§4 Activate, against a real database', () => {
       employmentType: 'full_time',
       hiredOn: '2026-06-01',
     },
-    payroll: { ...over },
+    // Board 2c1b2fba — Payment Method is required on a draft; Cash needs no bank, so each case stays about the amount.
+    payroll: { paymentMethod: 'cash', ...over },
   });
 
   /** Row counts read as the OWNER (RLS would answer 0 for a role with no tenant context — CLAUDE.md §5).

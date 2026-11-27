@@ -3229,7 +3229,8 @@
         "profile_invalid": "Hãy kiểm tra thông tin Hồ sơ trước khi kích hoạt.",
         "statutory_invalid": "Hãy kiểm tra thông tin Ngân hàng & Pháp định trước khi kích hoạt.",
         "payroll_invalid": "Hãy kiểm tra thông tin Bảng lương trước khi kích hoạt.",
-        "family_invalid": "Hãy kiểm tra thông tin Gia đình trước khi kích hoạt."
+        "family_invalid": "Hãy kiểm tra thông tin Gia đình trước khi kích hoạt.",
+        "qualification_invalid": "Một bằng cấp trên thẻ Bằng cấp cần được chỉnh sửa."
       },
       "fields": {
         "fullName": "Họ và tên",
@@ -3297,7 +3298,11 @@
         "companyFixed": "Nó quyết định quy tắc mã nhân viên nào được áp dụng và không thể đổi sau khi bản ghi được tạo.",
         "groupJoinDate": "Ngày đầu tiên làm việc tại tập đoàn. Ngày gia nhập của công ty này bắt đầu cùng ngày. Sau khi tạo, cả hai ngày chỉ thay đổi qua sự kiện điều động.",
         "internshipEndDate": "Ngày cuối cùng của kỳ thực tập. Ngày này kích hoạt đợt rà soát kết thúc thực tập.",
-        "paymentMethodBankTransfer": "Chuyển khoản ngân hàng cần tên ngân hàng và số tài khoản ở tab Ngân hàng & Luật định. Cho đến khi có đủ cả hai, danh sách những gì còn cần để Kích hoạt sẽ ghi rõ điều đó."
+        "paymentMethodBankTransfer": "Chuyển khoản ngân hàng cần tên ngân hàng và số tài khoản ở tab Ngân hàng & Luật định. Cho đến khi có đủ cả hai, danh sách những gì còn cần để Kích hoạt sẽ ghi rõ điều đó.",
+        "legacyMonthlyAllowance": "Bản nháp này vẫn còn Phụ cấp hàng tháng từ phiên bản trước của màn hình này. Số tiền được giữ nguyên và được giữ lại khi Kích hoạt; vui lòng chuyển nó thành Khoản mục lương.",
+        "costAllocationEffective": "Có hiệu lực từ Ngày gia nhập tập đoàn khi nhân viên được kích hoạt.",
+        "joinDate": "Bắt đầu cùng ngày với Ngày gia nhập tập đoàn.",
+        "payItems": "Được lưu cùng bản nháp và thiết lập vào bảng lương của nhân viên khi bạn nhấn Kích hoạt."
       },
       "backLabel": "Quay lại Quản lý Nhân sự",
       "title": "Tạo nhân viên mới",
@@ -3347,7 +3352,8 @@
         "bankStatutory": "Ngân hàng & Luật định",
         "payroll": "Lương",
         "family": "Gia đình",
-        "empty": "Không có gì để hiển thị ở đây."
+        "empty": "Không có gì để hiển thị ở đây.",
+        "qualification": "Bằng cấp"
       },
       "sections": {
         "personalDetails": "Thông tin cá nhân",
@@ -3358,9 +3364,15 @@
         "statutoryMalaysia": "Pháp lý (Malaysia)",
         "identityTax": "Nhận dạng & Thuế",
         "compensation": "Lương cơ bản",
-        "payMethodGroup": "Nhân viên này được trả lương như thế nào",
         "payrollPolicy": "Chính sách lương",
-        "othersStatutory": "Quy định khác"
+        "othersStatutory": "Quy định khác",
+        "emergencyContact": "Liên hệ khẩn cấp",
+        "directSuperior": "Cấp trên trực tiếp",
+        "costCenterAllocation": "Phân bổ Trung tâm Chi phí",
+        "probationGroup": "Thông tin thử việc",
+        "noticeGroup": "Thông tin thời gian báo trước",
+        "payItems": "Khoản mục lương",
+        "qualification": "Thông tin bằng cấp"
       },
       "draftStatus": "Nháp — chờ kích hoạt",
       "cancel": "Hủy",
@@ -3376,7 +3388,13 @@
       "directSuperiorNoResults": "Không có nhân viên phù hợp.",
       "probationEndsOn": "Thử việc kết thúc vào {date} — Ngày gia nhập tập đoàn cộng Thời gian thử việc.",
       "probationEndsOnStored": "Thử việc kết thúc vào {date} — ngày kết thúc đã lưu trong bản nháp này. Nhập Thời gian thử việc để tính từ Ngày gia nhập tập đoàn.",
-      "probationEndsNone": "Chưa có ngày kết thúc thử việc. Nhập Thời gian thử việc để tính ngày kết thúc thử việc."
+      "probationEndsNone": "Chưa có ngày kết thúc thử việc. Nhập Thời gian thử việc để tính ngày kết thúc thử việc.",
+      "next": "Tiếp theo",
+      "photoErrorInvalid": "Không thể đọc ảnh. Hãy chọn tệp PNG hoặc JPG và thử lại.",
+      "photoErrorTooLarge": "Ảnh lớn hơn 2 MB. Hãy chọn tệp nhỏ hơn.",
+      "photoErrorType": "Chỉ có thể dùng ảnh PNG hoặc JPG.",
+      "photoErrorPermission": "Bạn không có quyền thay đổi ảnh của bản nháp này.",
+      "photoErrorUnavailable": "Hiện không thể lưu ảnh. Hãy thử lại."
     },
     "duplicates": {
       "title": "Hồ sơ nhân viên có thể bị trùng",

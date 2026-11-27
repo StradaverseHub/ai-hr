@@ -158,6 +158,8 @@ function fullDraft(over: Partial<EmployeeDraftData> = {}): EmployeeDraftData {
       payMode: 'monthly',
       paymentTerm: 'monthly',
       remarks: 'Initial package',
+      // Board 2c1b2fba — Payment Method is required on a draft; Cash needs no bank.
+      paymentMethod: 'cash',
     },
     family: [SPOUSE, CHILD, PARENT],
     ...over,
@@ -186,17 +188,23 @@ describe('§1 what a draft family blocks, and what it deliberately does not', ()
     // 759dfc7d work item 2 renamed the KEYS onto the active record's own tab vocabulary (`employment` →
     // `job`, `statutory` → `bankStatutory`) and deliberately moved NO number: each tab kept the number it
     // already had, which is why a draft written by the old wizard reopens on the tab it was left on.
-    expect(DRAFT_TABS).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'family']);
+    // Board 2c1b2fba — Qualification joined BETWEEN Payroll and Family on screen, under the next free NUMBER (7),
+    // so Family keeps its 6 and is still the last tab; only the numbering is no longer in screen order, which is
+    // why the upper clamp now lands on the highest number (Qualification), not on the last tab.
+    expect(DRAFT_TABS).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'qualification', 'family']);
     expect(stepNumber('profile')).toBe(1);
     expect(stepNumber('job')).toBe(2);
     expect(stepNumber('bankStatutory')).toBe(3);
     expect(stepNumber('payroll')).toBe(4);
     expect(stepNumber('family')).toBe(6);
+    expect(stepNumber('qualification')).toBe(7);
     expect(stepKey(5)).toBe('payroll');
+    expect(stepKey(6)).toBe('family');
+    expect(stepKey(7)).toBe('qualification');
     // …and nothing else moved: every live tab still round-trips, and the clamps still clamp.
     for (const k of DRAFT_TABS) expect(stepKey(stepNumber(k))).toBe(k);
     expect(stepKey(0)).toBe('profile');
-    expect(stepKey(99)).toBe('family');
+    expect(stepKey(99)).toBe('qualification');
   });
 
   it('a draft saved BEFORE this change reopens where its owner left it, not on the new Family tab', async () => {

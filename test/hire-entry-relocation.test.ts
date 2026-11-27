@@ -143,19 +143,21 @@ describe('the dedicated screen carries the whole job', () => {
     // second tab strip cannot drift from the first.
     expect(wizard).toContain("import { ClientTabs } from '@/components/personnel-tabs'");
     expect(wizard).toContain('<ClientTabs');
-    // Five tabs, each labelled by a STATIC key (never `t(`tabs.${k}`)`) so i18n coverage check C sees it,
-    // and test/draft-record-tabs.test.ts pins each value equal to the record's own `people.detail.tabs`.
-    for (const tab of ['profile', 'job', 'bankStatutory', 'payroll', 'family']) {
+    // Six tabs (board 2c1b2fba added Qualification), each labelled by a STATIC key (never
+    // `t(`tabs.${k}`)`) so i18n coverage check C sees it, and test/draft-record-tabs.test.ts pins each value
+    // equal to the record's own `people.detail.tabs`.
+    for (const tab of ['profile', 'job', 'bankStatutory', 'payroll', 'qualification', 'family']) {
       expect(wizard.includes(`t('tabs.${tab}')`), tab).toBe(true);
     }
     // And the four tabs a draft must NOT get — they describe things that have happened to an employment,
     // and a draft has none — are not smuggled in as empty panels.
-    for (const absent of ['careerMovement', 'attendance', 'leave', 'documents', 'qualification', 'others']) {
+    for (const absent of ['careerMovement', 'attendance', 'leave', 'documents', 'others']) {
       expect(wizard.includes(`t('tabs.${absent}')`), absent).toBe(false);
     }
-    // Back and Next went with the sequence they moved along.
+    // Back went with the sequence it moved along. Board 2c1b2fba brought back a NEXT at the foot of each tab,
+    // as navigation only: it moves the shell through its own `selectTab` and never saves or validates.
     expect(wizard).not.toContain("t('back')");
-    expect(wizard).not.toContain("t('next')");
+    expect(wizard).toContain("onClick={() => selectTabRef.current?.(next)}");
   });
 
   it('saves a draft WITHOUT validating, and only validates on Activate', () => {

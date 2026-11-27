@@ -161,7 +161,7 @@ describe('Optional Identity No on the statutory row (35524d1f)', () => {
         employmentType: 'full_time',
         hiredOn: '2026-06-01',
       },
-      payroll: { basicSalary: '4200' },
+      payroll: { basicSalary: '4200', paymentMethod: 'cash' },
       ...over,
     });
 

@@ -167,7 +167,9 @@ describe('r369 §2 · a zero-basic row WITH a reason imports', () => {
     // with the import; blank is an explicit zero, never a fabricated positive wage or numeric NaN.
     expect(IMPORT_COLUMNS.required).not.toContain('basic_salary');
     expect(IMPORT_COLUMNS.optional).toContain('basic_salary');
-    expect(missingByTab({ payroll: { basicSalary: basic, remarks: DIRECTOR_REASON } }).payroll).toEqual([]);
+    // Board 2c1b2fba — the Draft rule now also requires a Payment Method (the import keeps its own optional one), so
+    // the Draft side of this comparison holds Cash and stays about the amount.
+    expect(missingByTab({ payroll: { basicSalary: basic, remarks: DIRECTOR_REASON, paymentMethod: 'cash' } }).payroll).toEqual([]);
     const records = recs(HEADER, [row({ basic_salary: basic, email: 'blank@acme.test', employee_code: 'DIR0009' })]);
     const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
     expect(preview.rows[0].errors).toEqual([]);
@@ -179,7 +181,7 @@ describe('r369 §2 · a zero-basic row WITH a reason imports', () => {
   });
 
   it('a blank basic_salary without a reason is refused before any employee or salary is written', async () => {
-    expect(missingByTab({ payroll: { basicSalary: '' } }).payroll).toEqual(['remarks']);
+    expect(missingByTab({ payroll: { basicSalary: '', paymentMethod: 'cash' } }).payroll).toEqual(['remarks']);
     const records = recs(HEADER, [row({ basic_salary: '', email: 'blank-unconfirmed@acme.test', employee_code: 'DIR0010', [COLUMN]: '' })]);
     const preview = await validateEmployeeImport(a, { companyId: b.companyId, records });
     expect(preview.validCount).toBe(0);expect(preview.rows[0].errors.join(' | ')).toContain(COLUMN);

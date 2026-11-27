@@ -89,6 +89,14 @@ import { resolveEmployeeIdMode, type EmployeeIdRule } from '../lib/employee-id-m
 // persisted enum, on either screen.
 import { mapEpfUiMode, type EpfElectionFields } from '../lib/epf-mode-map';
 import {
+  DRAFT_LIST_LIMITS,
+  DRAFT_ORG_LABEL_FIELDS,
+  draftAssignmentCostCenter,
+  draftChildReliefTable,
+  draftCostAllocations,
+  draftEmergencyContacts,
+  draftPayItems,
+  draftQualifications,
   draftCustomHolder,
   draftEpfCitizenship,
   draftFamily,
@@ -109,15 +117,33 @@ import {
 // core/dependents.ts on purpose: `addDependent` and the materialisation share ONE column mapping, ONE
 // set of normalisers and ONE event, so a field the Personnel screen gains cannot be dropped here.
 import { assertDependentsValid, materialiseDependents, DependentValidationError, type DependentInput, type DependentValidationField } from './dependents';
+// Board 2c1b2fba — the four registers, the organisation labels, the cost-centre allocation and the photo a draft
+// gained. Every one is written by its EXISTING owner inside the activation transaction, after the hire, and every
+// owner refusal it can make is provoked first (missingByTab + the owners' own validators) while nothing exists.
+import { addEmergencyContact, addQualification } from './workforce-registers';
+import { validateEmergencyContactInputTx, EmergencyContactValidationError } from './emergency-contacts';
+import { validateQualificationInputTx, QualificationValidationError } from './qualifications';
+import { saveEmploymentCostAllocations } from './employment-cost-allocations';
+import { CostAllocationError } from '../lib/employment-cost-allocation';
+import { setEmploymentPayComponent } from '../packs/payroll/service';
+import { payComponentAppliesToCompany } from '../lib/pay-component-company';
+import { assertPayComponentReady } from '../lib/pay-component-contract';
+import { assertValidPhoto, setPersonPhotoTx } from './person-photo';
+import { DraftPhotoError, draftPhotoForActivationTx } from './employee-draft-photo';
+import { assertWorkforcePersonTx } from './workforce-access';
+import { ProfileOptionValueError } from './profile-options';
+import { payComponent } from '../db/schema';
+import { z } from 'zod';
 
 /** Safe action boundary: finite reasons and schema field tokens, never captured input values. */
-export const DRAFT_ACTIVATION_CODES=['draft_unavailable','permission','required_fields','invalid_data','company_changed','company_unavailable','reference_invalid','employee_code_invalid','employee_code_not_allowed','profile_invalid','statutory_invalid','payroll_invalid','family_invalid'] as const;
+export const DRAFT_ACTIVATION_CODES=['draft_unavailable','permission','required_fields','invalid_data','company_changed','company_unavailable','reference_invalid','employee_code_invalid','employee_code_not_allowed','profile_invalid','statutory_invalid','payroll_invalid','family_invalid','qualification_invalid'] as const;
 export type DraftActivationValidationCode=typeof DRAFT_ACTIVATION_CODES[number];
 export const DRAFT_ACTIVATION_FIELDS_BY_TAB={
-  profile:['employeeCode','fullName','primaryEmail','dateOfBirth','passport','icNumber','nationality','salutation','religion','race','gender','maritalStatus','personalEmail','permanentState','permanentCountry','correspondenceState','correspondenceCountry'],
-  job:['company','department','position','costCenter','grade','reportingManager','employmentType','hiredOn','provisionalEndOn','confirmationDate','employmentPeriods'],
-  bankStatutory:['bankAccount','customHolderName','customHolderId','epfMode','epfEmployeeRate','epfEmployerRate','epfEmployeeAmount','epfEmployerAmount','epfManualReason','taxResidency','epfCitizenship','subjectToHrdf'],
-  payroll:['basicSalary','monthlyAllowance','remarks','rateAmount','payMode','paymentTerm','paymentMethod','paymentMethodBank','payrollPolicyId'],
+  profile:['employeeCode','fullName','primaryEmail','dateOfBirth','passport','icNumber','nationality','salutation','religion','race','gender','maritalStatus','personalEmail','permanentState','permanentCountry','correspondenceState','correspondenceCountry','emergencyContacts','photo'],
+  job:['company','department','position','costCenter','grade','reportingManager','employmentType','hiredOn','provisionalEndOn','confirmationDate','employmentPeriods','costAllocation','orgDivision','orgBranch','orgRegion','orgLine','orgSection','orgTeam','orgBase','employmentCategory'],
+  bankStatutory:['bankAccount','customHolderName','customHolderId','epfMode','epfEmployeeRate','epfEmployerRate','epfEmployeeAmount','epfEmployerAmount','epfManualReason','taxResidency','epfCitizenship','subjectToHrdf','bankPayeeResidency','childReliefTable'],
+  payroll:['basicSalary','monthlyAllowance','remarks','rateAmount','payMode','paymentTerm','paymentMethod','paymentMethodBank','payrollPolicyId','payItems'],
+  qualification:['qualifications'],
   family:['familyMemberName','familyMemberRelationship','familyMemberDate','gender','marriageStatus','childReliefCategory','childReliefPercentage'],
 } as const satisfies Record<DraftTabKey,readonly string[]>;
 export type DraftActivationField=typeof DRAFT_ACTIVATION_FIELDS_BY_TAB[DraftTabKey][number];
@@ -149,7 +175,19 @@ export function draftActivationValidation(error:unknown):DraftActivationProblem|
     const field=error.field;
     return activationProblem('family_invalid','family',typeof field==='string'&&Object.hasOwn(familyFields,field)?familyFields[field]:'familyMemberRelationship');
   }
+  // Board 2c1b2fba — the new owners' typed refusals, each to the control that names it.
+  if(error instanceof EmergencyContactValidationError)return activationProblem('profile_invalid','profile','emergencyContacts');
+  if(error instanceof QualificationValidationError)return activationProblem('qualification_invalid','qualification','qualifications');
+  if(error instanceof CostAllocationError)return activationProblem('invalid_data','job','costAllocation');
+  if(error instanceof DraftPhotoError)return activationProblem('profile_invalid','profile','photo');
+  if(error instanceof ProfileOptionValueError){
+    const field=ORG_LABEL_BY_CATEGORY[error.category];
+    if(field)return activationProblem('invalid_data','job',field);
+    if(error.category==='relationship')return activationProblem('profile_invalid','profile','emergencyContacts');
+    return null;
+  }
   if(!(error instanceof Error))return null;
+  if(PAY_ITEM_ERRORS.has(error.name))return activationProblem('payroll_invalid','payroll','payItems');
   const simple:Record<string,DraftActivationProblem>={
     InvalidICError:activationProblem('profile_invalid','profile','icNumber'),
     PassportRequiredError:activationProblem('profile_invalid','profile','passport'),
@@ -175,6 +213,17 @@ export function draftActivationValidation(error:unknown):DraftActivationProblem|
   if(error.message.startsWith('Employee ID ') && (error.message.endsWith('already in use')||error.message.endsWith('reserved by a draft employee record')))return activationProblem('employee_code_invalid','profile','employeeCode');
   return null;
 }
+const ORG_LABEL_BY_CATEGORY:Record<string,DraftActivationField|undefined>={division:'orgDivision',branch:'orgBranch',region:'orgRegion',line:'orgLine',section:'orgSection',team:'orgTeam',base:'orgBase',category:'employmentCategory'};
+/** The pay item writer's typed refusals (core/pay-components.ts, lib/pay-component-contract.ts, core/pay-component-company.ts), by name. */
+const PAY_ITEM_ERRORS=new Set(['FixedTransactionDateError','UnsupportedFixedCurrencyError','FixedTransactionAmountError','FixedTransactionOverlapError','FixedTransactionBackwardsError','FixedTransactionMidMonthError','FixedTransactionPaidError','FixedTransactionCycleError','PayComponentCompanyError','PayComponentCalculationPendingError']);
+/** Board 2c1b2fba — the four registers' shape at the activation boundary: bounded arrays of objects whose cells are
+ *  strings, or booleans for the named checkbox keys. Anything else is refused before any write. */
+const DRAFT_LISTS={
+  emergencyContacts:{tab:'profile',field:'emergencyContacts',checks:[] as string[]},
+  qualifications:{tab:'qualification',field:'qualifications',checks:['isHighest']},
+  payItems:{tab:'payroll',field:'payItems',checks:['prorate']},
+  costAllocations:{tab:'job',field:'costAllocation',checks:[] as string[]},
+} as const satisfies Record<keyof typeof DRAFT_LIST_LIMITS,{tab:DraftTabKey;field:DraftActivationField;checks:readonly string[]}>;
 function activationData(raw:unknown):EmployeeDraftData {
   const fail=(tab:DraftTabKey,field:DraftActivationField):never=>{throw new DraftActivationValidationError('invalid_data',[{tab,field}]);};
   if(!raw || typeof raw!=='object'||Array.isArray(raw))return fail('profile','fullName');
@@ -193,6 +242,14 @@ function activationData(raw:unknown):EmployeeDraftData {
     for(const member of data.family) {
       if(!member||typeof member!=='object'||Array.isArray(member))return fail('family','familyMemberName');
       for(const [key,cell] of Object.entries(member))if(cell!=null && typeof cell!==(checks.has(key)?'boolean':'string'))return fail('family','familyMemberName');
+    }
+  }
+  for(const [list,shape] of Object.entries(DRAFT_LISTS)){
+    const value=data[list];if(value==null)continue;
+    if(!Array.isArray(value)||value.length>DRAFT_LIST_LIMITS[list as keyof typeof DRAFT_LIST_LIMITS])return fail(shape.tab,shape.field);
+    for(const row of value){
+      if(!row||typeof row!=='object'||Array.isArray(row))return fail(shape.tab,shape.field);
+      for(const [key,cell] of Object.entries(row))if(cell!=null&&typeof cell!==((shape.checks as readonly string[]).includes(key)?'boolean':'string'))return fail(shape.tab,shape.field);
     }
   }
   return data as EmployeeDraftData;
@@ -1045,8 +1102,11 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   const employeeCodeToIssue = reservedCode ?? (decision.mode === 'manual' ? typedCode : undefined);
   if(employeeCodeToIssue)try{requireEmployeeCode(employeeCodeToIssue);}catch{throw new DraftActivationValidationError('employee_code_invalid',[{tab:'profile',field:'employeeCode'}]);}
 
+  // Board 2c1b2fba — the ASSIGNMENT's single cost centre is the allocation's only row when that row is 100%
+  // (today's behaviour, and what Payroll's filter, the Personnel export and analytics read); otherwise none.
+  const assignmentCostCenterId=draftAssignmentCostCenter(data);
   // Lock selected references; canonical shared-label eligibility remains the authority.
-  const references=[['department',str(e.departmentId),department,'department'],['position',str(e.positionId),position,'position'],['cost_center',str(e.costCenterId),costCenter,'costCenter']] as const;
+  const references=[['department',str(e.departmentId),department,'department'],['position',str(e.positionId),position,'position'],['cost_center',assignmentCostCenterId,costCenter,'costAllocation']] as const;
   for(const [kind,referenceId,table,field] of references) {
     if(!referenceId)continue;
     if(!UUID_RE.test(referenceId))throw new DraftActivationValidationError('reference_invalid',[{tab:'job',field}]);
@@ -1115,6 +1175,51 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   const family = draftFamilyToDependents(data);
   await assertDependentsValid(ctx, family,tx);
 
+  // ── Board 2c1b2fba — the new sections, judged BEFORE anything is created ──────────────────────────
+  // `missingForCreation` above already refused every shape gap (names, dates, percentages, one Primary, one
+  // Highest, overlaps, bounds). What needs the database is asked of the owners' own validators here, so a refusal
+  // names the right tab while nothing exists; the single transaction is still the guarantee that a later owner
+  // refusal leaves nothing behind and the held Employee ID with the draft.
+  const contacts = draftEmergencyContacts(data).map(draftContactInput);
+  for (const contact of contacts) await validateEmergencyContactInputTx(tx, null, contact);
+  const qualifications = draftQualifications(data).map(draftQualificationInput);
+  for (const qualification of qualifications) await validateQualificationInputTx(tx, qualification);
+  const allocationRows = draftCostAllocations(data).map((r) => ({ costCenterId: (r.costCenterId ?? '').trim(), percentage: (r.percentage ?? '').trim() }));
+  for (const row of allocationRows) {
+    // The allocation owner parses ids with zod's strict uuid; ask the same question here, before the hire.
+    if (!z.uuid().safeParse(row.costCenterId).success) throw new DraftActivationValidationError('reference_invalid', [{ tab: 'job', field: 'costAllocation' }]);
+    const [active] = await tx.select({ id: costCenter.id }).from(costCenter).where(and(eq(costCenter.id, row.costCenterId), eq(costCenter.tenantId, ctx.tenantId), isNull(costCenter.archivedAt))).for('share');
+    if (!active || !(await labelUsableByCompany(tx, ctx.tenantId, 'cost_center', row.costCenterId, companyId)))
+      throw new DraftActivationValidationError('reference_invalid', [{ tab: 'job', field: 'costAllocation' }]);
+  }
+  // Pay items appear only where Payroll is switched on and are IGNORED otherwise (the Payroll policy rule above).
+  const payItems = payrollOn ? draftPayItems(data).map((it) => draftPayItemInput(it, hiredOn)) : [];
+  if (payItems.length) {
+    const ids = [...new Set(payItems.map((it) => it.componentId))];
+    if (ids.some((componentId) => !UUID_RE.test(componentId))) throw new DraftActivationValidationError('payroll_invalid', [{ tab: 'payroll', field: 'payItems' }]);
+    const components = await tx.select({ id: payComponent.id, code: payComponent.code, pendingInputKind: payComponent.pendingInputKind, appliedCompanyIds: payComponent.appliedCompanyIds, archivedAt: payComponent.archivedAt })
+      .from(payComponent).where(and(eq(payComponent.tenantId, ctx.tenantId), inArray(payComponent.id, ids)));
+    for (const componentId of ids) {
+      const component = components.find((c) => c.id === componentId);
+      if (!component || component.archivedAt || !payComponentAppliesToCompany(component, companyId)) throw new DraftActivationValidationError('payroll_invalid', [{ tab: 'payroll', field: 'payItems' }]);
+      assertPayComponentReady(component);
+    }
+  }
+  const photo = await draftPhotoForActivationTx(tx, ctx, id);
+  if (photo) {
+    try { assertValidPhoto(photo.mimeType, photo.content); } catch { throw new DraftPhotoError('invalid'); }
+  }
+  // The starting organisation labels, judged by `hireEmployee` against their catalogs before its row is written.
+  const employmentInformation = Object.fromEntries(DRAFT_ORG_LABEL_FIELDS.flatMap((field) => {
+    const value = str(e[field]);
+    return value ? [[field, value]] : [];
+  })) as Partial<Record<(typeof DRAFT_ORG_LABEL_FIELDS)[number], string>>;
+
+  // Board 2c1b2fba — bank payee residency (judged by `missingByTab`: one of the two choices) and the declared
+  // child-relief grid, carried only while the mode is "Auto (from table)", the grid the record shows.
+  const payeeResidencyRaw = str(s.bankPayeeResidency);
+  const payeeResidency = payeeResidencyRaw === 'resident' || payeeResidencyRaw === 'non_resident' ? payeeResidencyRaw : undefined;
+  const childReliefGrid = (s.childReliefMode ?? '').trim() === 'auto_table' ? (draftChildReliefTable(s) ?? undefined) : undefined;
   const types = await listLeaveTypes(ctx,{},tx);
   const { employmentId, personId } = await hireEmployee(ctx, {
     // r393 (685d2380 step 3b) — the hire-time selection takes only resident / non_resident; an incentive
@@ -1143,8 +1248,10 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
     companyId,
     departmentId: str(e.departmentId)!,
     positionId: str(e.positionId),
-    costCenterId: str(e.costCenterId),
+    costCenterId: assignmentCostCenterId,
     gradeId: str(e.gradeId) ?? null,
+    // Board 2c1b2fba — starting values on the hired employment row (and so in `employment.hired`).
+    ...(Object.keys(employmentInformation).length ? { employmentInformation } : {}),
     reportingManagerEmploymentId: str(e.reportingManagerEmploymentId),
     employmentType: (str(e.employmentType) ?? 'full_time') as 'full_time' | 'part_time' | 'contract' | 'intern',
     hiredOn,
@@ -1167,7 +1274,7 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // r393 (685d2380 step 3b) — the five EPF box keys likewise count only through what the category USES: a
   // rate left in a box after switching to Auto lands nowhere (`mapEpfUiMode` nulls it), so it must not
   // conjure a row on its own.
-  if (icNumber || hasAnyStatutory(withoutUnusedEpfBoxes(withoutCustomHolder(s), epfElection)) || holderOn) {
+  if (icNumber || hasAnyStatutory(withoutChildReliefGrid(withoutUnusedEpfBoxes(withoutCustomHolder(s), epfElection))) || holderOn || childReliefGrid !== undefined) {
     const currentStatutory=s.subjectToSkbbk===undefined?await pack.statutory.get(ctx,personId,tx):null;
     await pack.statutory.set(ctx, {
       personId,
@@ -1237,12 +1344,14 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // as it always did (the four columns stay at their defaults: false / null). It is a partial-but-total
   // write of the bank columns too, so it is handed the SAME bank name and account number just stored.
   // Judged before `hireEmployee` (the pre-flight above), so it cannot refuse here.
-  if (holderOn) {
+  // Board 2c1b2fba — and for a chosen bank payee residency, whose only writer is this same setter.
+  if (holderOn || payeeResidency !== undefined) {
     await pack.statutory.setBank(ctx, {
       personId,
       bankName: str(s.bankName) ?? null,
       bankAccountNo: str(s.bankAccountNo) ?? null,
       ...holder,
+      ...(payeeResidency !== undefined ? { bankPayeeResidency: payeeResidency } : {}),
     },tx);
   }
 
@@ -1310,11 +1419,12 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   const employerBearsTax = boolOrUndef(s.employerBearsTax);
   const taxScheme = taxNone ? (residency === 'non_resident' ? 'non_resident' : 'resident') : (residency ?? 'resident');
   const scopedTax = !taxNone && INCENTIVE_TAX_SCHEMES.has(taxScheme);
-  if (Object.values(taxReliefs).some((v) => v !== undefined) || employerBearsTax !== undefined || explicitResidency) {
+  if (Object.values(taxReliefs).some((v) => v !== undefined) || employerBearsTax !== undefined || explicitResidency || childReliefGrid !== undefined) {
     await pack.statutory.setTax(ctx, {
       personId,
       ...(scopedTax ? { employmentId, expectedCompanyId: companyId } : {}),
       ...taxReliefs,
+      ...(childReliefGrid !== undefined ? { childReliefTable: childReliefGrid } : {}),
       employerBearsTax,
       // Pass-through of everything this setter would otherwise reset to a default.
       taxNumber: str(s.taxNumber) ?? null,
@@ -1463,6 +1573,28 @@ async function completeEmployeeDraftTx(tx:Tx,ctx:SessionContext,id:string):Promi
   // member or tax-owner refusal keeps the Draft/number and rolls back all preceding hire facts.
   await materialiseDependents(ctx, { personId, members: family },tx);
 
+  // ── Board 2c1b2fba — the new sections, each through its existing owner, in this transaction ─────────
+  // Photo: the record's owner write (`person.photo.set`, no PII), after the record's own authority check. The draft
+  // row's deletion below removes the draft photo (ON DELETE CASCADE).
+  if (photo) {
+    await assertWorkforcePersonTx(tx, ctx, personId, 'maintain');
+    await setPersonPhotoTx(tx, ctx, { personId, content: photo.content, fileName: photo.fileName, mimeType: photo.mimeType, sizeBytes: photo.sizeBytes });
+  }
+  // Emergency contacts — `addEmergencyContact` (Workforce maintain on the person; `emergency-contact.added`).
+  // Primary last, so the owner's single-primary transfer cannot demote the one HR chose.
+  for (const contact of [...contacts].sort((a, b) => Number(a.priority === 'primary') - Number(b.priority === 'primary'))) {
+    await addEmergencyContact(ctx, { personId, ...contact }, tx);
+  }
+  // Qualifications — `addQualification` (Workforce maintain on the employment; at most one Highest).
+  for (const qualification of qualifications) await addQualification(ctx, { employmentId, ...qualification }, tx);
+  // Cost Center Allocation — `saveEmploymentCostAllocations`, effective from the Group Join Date, revision 0 of a
+  // brand-new employment, the employee-import composition (`writeNewEmployeeCostAllocationsTx`) with HR's own source.
+  if (allocationRows.length) {
+    await saveEmploymentCostAllocations(ctx, { employmentId, effectiveDate: hiredOn, expectedRevision: 0, operation: 'replace', rows: allocationRows }, { existingTx: tx, source: 'manual' });
+  }
+  // Pay items — `setEmploymentPayComponent`, exactly as an item added on the record (Payroll pack facade).
+  for (const item of payItems) await setEmploymentPayComponent(ctx, { employmentId, ...item }, tx);
+
   // Only now: the draft has become an employee, so it stops existing as a draft. THE RESERVATION GOES
   // WITH IT — deleting the row releases the held code, and it must, because the employment now carries
   // that same code and two live claims on one ID is the state the hold exists to prevent. Deliberately
@@ -1539,6 +1671,51 @@ export function draftFamilyToDependents(data: EmployeeDraftData): DependentInput
       childReliefPercentage: numOrUndef(m.childReliefPercentage) ?? null,
     }),
   );
+}
+
+/** Board 2c1b2fba — one draft emergency contact as `EmergencyContactInput` ('' ⇒ null; priority defaults to 'other'). */
+function draftContactInput(c: ReturnType<typeof draftEmergencyContacts>[number]) {
+  return {
+    fullName: (c.fullName ?? '').trim(),
+    relationship: str(c.relationship) ?? null,
+    mobilePhone: str(c.mobilePhone) ?? null,
+    homePhone: str(c.homePhone) ?? null,
+    address: str(c.address) ?? null,
+    remarks: str(c.remarks) ?? null,
+    priority: str(c.priority) ?? 'other',
+  };
+}
+/** Board 2c1b2fba — one draft qualification as `QualificationInput`. */
+function draftQualificationInput(q: ReturnType<typeof draftQualifications>[number]) {
+  return {
+    qualification: (q.qualification ?? '').trim(),
+    description: str(q.description) ?? null,
+    fromYm: str(q.fromYm) ?? null,
+    toYm: str(q.toYm) ?? null,
+    institute: str(q.institute) ?? null,
+    major: str(q.major) ?? null,
+    graduationDate: str(q.graduationDate) ?? null,
+    result: str(q.result) ?? null,
+    isHighest: q.isHighest === true,
+  };
+}
+/** Board 2c1b2fba — one draft pay item as the writer's input. The amount is the typed ringgit figure, parsed once;
+ *  nothing here computes money. A blank start is the Group Join Date (the screen's default). */
+function draftPayItemInput(it: ReturnType<typeof draftPayItems>[number], hiredOn: string) {
+  return {
+    componentId: (it.componentId ?? '').trim(),
+    amount: Number((it.amount ?? '').replace(/[,_]/g, '').trim()),
+    effectiveFrom: str(it.effectiveFrom) ?? hiredOn,
+    effectiveTo: str(it.effectiveTo) ?? null,
+    currency: 'MYR',
+    prorateOverride: typeof it.prorate === 'boolean' ? it.prorate : null,
+    remarks: str(it.remarks) ?? null,
+  };
+}
+/** Board 2c1b2fba — the declared child-relief grid keys never decide whether a statutory row is created on their
+ *  own; the grid is carried only under "Auto (from table)" (`childReliefGrid`). */
+function withoutChildReliefGrid(s: EmployeeDraftStatutory): EmployeeDraftStatutory {
+  return Object.fromEntries(Object.entries(s).filter(([key]) => !key.startsWith('childReliefTable_'))) as EmployeeDraftStatutory;
 }
 
 /** The statutory section without its four custom-holder keys — they count toward "is there a statutory

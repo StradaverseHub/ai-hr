@@ -1,3 +1,18 @@
+# Board 2c1b2fba: Draft Employee page photo side table, 28 November 2026
+
+Reserve `7610_employee_draft_photo`, journal index `11010`, timestamp `1795495007610`, SQL SHA-256
+`d4bcb4fd840325c924d88353d1149ce347630df56c02ab69950ebe29f6ebffb3`. Assigned by the 27 November board batch coordinator
+(slots 7590-7620 are allocated to this batch; 7580 `claude/prod-slow-pages` is reserved ahead of it). Built on main
+240adad5c. A fresh fetch of every remote branch (28 November 2026) found 7580 and 7590 held by other branches and no
+branch holding 7600-7620. Recheck both installations' watermarks and any competing reservation at admission.
+
+Creates `public.employee_draft_photo` (one row per draft, `draft_id` unique, FK to `employee_draft` ON DELETE CASCADE,
+bytea content, PNG/JPEG and 1 B to 2 MB checks), its `(tenant_id, draft_id)` index, ENABLE and FORCE row security, one
+policy `employee_draft_photo_rls` (FOR ALL TO ai_hr_app: the tenant and an EXISTS over `employee_draft` under the
+caller's own draft policies), REVOKE ALL FROM PUBLIC and SELECT, INSERT, UPDATE, DELETE to `ai_hr_app`. No existing
+table, row, policy or function changes; the table starts empty. Policy timing evidence:
+`test/employee-draft-photo-7610.test.ts`. This entry carries no deployment authority.
+
 # Board 5084d02e: Form TP3 Excel import job and Import Log, 26 November 2026
 
 Reserve `7570_tp3_import_job`, journal index `10970`, timestamp `1795495007570`, SQL SHA-256

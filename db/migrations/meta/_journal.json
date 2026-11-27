@@ -8184,6 +8184,13 @@
       "when": 1795495007570,
       "tag": "7570_tp3_import_job",
       "breakpoints": true
+    },
+    {
+      "idx": 11010,
+      "version": "7",
+      "when": 1795495007610,
+      "tag": "7610_employee_draft_photo",
+      "breakpoints": true
     }
   ]
 }

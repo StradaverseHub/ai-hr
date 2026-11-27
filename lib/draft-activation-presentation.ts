@@ -17,7 +17,8 @@ export const DRAFT_ACTIVATION_MESSAGE_KEYS = {
   "profile_invalid": "people.wizard.activationValidation.profile_invalid",
   "statutory_invalid": "people.wizard.activationValidation.statutory_invalid",
   "payroll_invalid": "people.wizard.activationValidation.payroll_invalid",
-  "family_invalid": "people.wizard.activationValidation.family_invalid"
+  "family_invalid": "people.wizard.activationValidation.family_invalid",
+  "qualification_invalid": "people.wizard.activationValidation.qualification_invalid"
 } as const satisfies Record<ValidationResult['code'],string>;
 type FieldPresentation={fieldId:string}|{key:string}|{conditional:'provisionalEnd'};
 /** Each owner pointer names an actual visible descriptor or an explicit composite input group. */
@@ -73,6 +74,12 @@ export const DRAFT_ACTIVATION_FIELD_PRESENTATION = {
     },
     "passport": {
       "key": "people.wizard.fields.passport"
+    },
+    "emergencyContacts": {
+      "key": "people.detail.emergencyTitle"
+    },
+    "photo": {
+      "fieldId": "profile.personal_details.photo"
     }
   },
   "job": {
@@ -108,6 +115,33 @@ export const DRAFT_ACTIVATION_FIELD_PRESENTATION = {
     },
     "employmentPeriods": {
       "key": "people.wizard.validationFields.employmentPeriods"
+    },
+    "costAllocation": {
+      "key": "costAllocations.title"
+    },
+    "orgDivision": {
+      "fieldId": "employment.additional_organisation_labels.orgdivision"
+    },
+    "orgBranch": {
+      "fieldId": "employment.additional_organisation_labels.orgbranch"
+    },
+    "orgRegion": {
+      "fieldId": "employment.additional_organisation_labels.orgregion"
+    },
+    "orgLine": {
+      "fieldId": "employment.additional_organisation_labels.orgline"
+    },
+    "orgSection": {
+      "fieldId": "employment.additional_organisation_labels.orgsection"
+    },
+    "orgTeam": {
+      "fieldId": "employment.additional_organisation_labels.orgteam"
+    },
+    "orgBase": {
+      "fieldId": "employment.additional_organisation_labels.orgbase"
+    },
+    "employmentCategory": {
+      "fieldId": "employment.additional_organisation_labels.employmentcategory"
     }
   },
   "bankStatutory": {
@@ -146,6 +180,12 @@ export const DRAFT_ACTIVATION_FIELD_PRESENTATION = {
     },
     "bankAccount": {
       "key": "people.wizard.fields.bankAccount"
+    },
+    "bankPayeeResidency": {
+      "fieldId": "bank_statutory.bank_information.bankpayeeresidency"
+    },
+    "childReliefTable": {
+      "key": "people.detail.childReliefModeAutoTable"
     }
   },
   "payroll": {
@@ -175,6 +215,14 @@ export const DRAFT_ACTIVATION_FIELD_PRESENTATION = {
     },
     "paymentMethodBank": {
       "key": "people.wizard.fields.paymentMethodBank"
+    },
+    "payItems": {
+      "key": "people.detail.payComponentsTitle"
+    }
+  },
+  "qualification": {
+    "qualifications": {
+      "key": "people.detail.qualification.title"
     }
   },
   "family": {

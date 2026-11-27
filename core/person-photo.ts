@@ -30,7 +30,8 @@ export {PHOTO_MAX_BYTES} from '../lib/profile-photo-limits';
 export const ALLOWED_PHOTO_MIME = ['image/png', 'image/jpeg'] as const;
 
 /** Fail-closed photo validation (empty / oversized / disallowed MIME). */
-function assertValidPhoto(mimeType: string, content: Buffer): void {
+/** Exported for the draft photo (board 2c1b2fba): one validator for both tables. */
+export function assertValidPhoto(mimeType: string, content: Buffer): void {
   if (content.byteLength === 0) throw new Error('Empty file');
   if (content.byteLength > PHOTO_MAX_BYTES) throw new Error('Photo exceeds 2 MB');
   if (profilePhotoMime(content)!==mimeType || !(ALLOWED_PHOTO_MIME as readonly string[]).includes(mimeType)) {
@@ -58,7 +59,8 @@ export function profilePhotoMime(content:Buffer):'image/png'|'image/jpeg'|null{
  if(content.length>=3&&content[0]===255&&content[1]===216&&content[2]===255)return 'image/jpeg';
  return null;
 }
-async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;content:Buffer;fileName:string;mimeType:string;sizeBytes:number}){
+/** Exported for Draft activation (board 2c1b2fba), which authorizes the person first in its own transaction. */
+export async function setPersonPhotoTx(tx:Tx,ctx:SessionContext,p:{personId:string;content:Buffer;fileName:string;mimeType:string;sizeBytes:number}){
     await lockProfileEditPolicyTx(tx,ctx.tenantId);
     await lockPersonPhotoTx(tx,ctx,p.personId);
     await tx

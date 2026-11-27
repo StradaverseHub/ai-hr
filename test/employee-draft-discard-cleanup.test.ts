@@ -25,7 +25,7 @@ async function user(base=b){const userId=await createAppUser(base.tenantId,null,
 async function draft(who=ctx,base=b,configured=false){
  if(configured)await createConfig(who,{companyId:base.companyId,prefix:'CLEAN',startNumber:10,numberLength:4,increment:3,allowManualOverride:true});
  const d=await createEmployeeDraftWithReservedCode(who,{companyId:base.companyId,fullName:'Fictional cleanup draft',primaryEmail:randomUUID()+'@fixture.test',...(!configured?{employeeIdMode:'manual' as const,employeeCode:'CLEAN-'+randomUUID().slice(0,8)}:{})});
- const data={profile:{fullName:'Fictional cleanup draft',primaryEmail:randomUUID()+'@fixture.test',employeeCode:d.employeeCode,employeeIdMode:configured?'auto':'manual'},employment:{companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'3000',monthlyAllowance:'100',payMode:'monthly',paymentTerm:'monthly',remarks:'Fictional captured input'}};
+ const data={profile:{fullName:'Fictional cleanup draft',primaryEmail:randomUUID()+'@fixture.test',employeeCode:d.employeeCode,employeeIdMode:configured?'auto':'manual'},employment:{companyId:base.companyId,departmentId:base.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'3000',monthlyAllowance:'100',payMode:'monthly',paymentTerm:'monthly',remarks:'Fictional captured input',paymentMethod:'cash'}};
  await saveEmployeeDraft(who,{id:d.id,data,currentStep:4});return{...d,data,companyId:base.companyId};
 }
 /** Closed SQL preparation creates actual caller-bound pending rows and obeys existing per-USER

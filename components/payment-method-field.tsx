@@ -25,7 +25,16 @@ import { personnelControl,personnelFormChoices,personnelFormLabel } from '@/lib/
 
 type Mode =
   | { mode: 'form'; defaultValue: string | null | undefined; disabled?: boolean }
-  | { mode: 'controlled'; value: string | null | undefined; onChange: (paymentMethod: string) => void };
+  | {
+      mode: 'controlled';
+      value: string | null | undefined;
+      onChange: (paymentMethod: string) => void;
+      /** Board 2c1b2fba — the draft employee page requires a Payment Method before Activate: the same red
+       *  asterisk `components/ui.tsx` `Field` draws, with its localised accessible name. Presentation only;
+       *  `missingByTab` is the rule. Form mode (the record) is untouched. */
+      markRequired?: boolean;
+      requiredAriaLabel?: string;
+    };
 
 export function PaymentMethodField(props: Mode) {
   const t = useTranslations('people.detail');
@@ -34,7 +43,14 @@ export function PaymentMethodField(props: Mode) {
   const label=personnelFormLabel(fieldId,(key,fallback)=>key.startsWith('people.detail.')?t(key.slice(14)):fallback);
   return (
     <>
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-xs font-medium text-muted-foreground">
+        {label}
+        {props.mode === 'controlled' && props.markRequired && (
+          <span className="ml-0.5 text-destructive" aria-label={props.requiredAriaLabel}>
+            *
+          </span>
+        )}
+      </span>
       <div className="flex gap-2">
         <select
           {...personnelControl(fieldId,mode)}
@@ -42,6 +58,7 @@ export function PaymentMethodField(props: Mode) {
             ? { defaultValue: props.defaultValue ?? '', disabled: !!props.disabled }
             : {
                 'aria-label': label,
+                ...(props.markRequired ? { 'aria-required': true } : {}),
                 value: props.value ?? '',
                 onChange: (e: React.ChangeEvent<HTMLSelectElement>) => props.onChange(e.target.value),
               })}

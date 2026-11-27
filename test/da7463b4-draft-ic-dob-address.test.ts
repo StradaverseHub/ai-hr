@@ -248,7 +248,7 @@ describe('da7463b4 — a draft becomes an employee carrying both addresses', () 
   const draft = (profile: Record<string, string>): EmployeeDraftData => ({
     profile: { fullName: 'Aminah Draft', primaryEmail: `aminah.${Date.now()}@draft.test`, employeeIdMode: 'manual', employeeCode: `D${Date.now()}`, ...profile },
     employment: { companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-03-01' },
-    payroll: { basicSalary: '4000' },
+    payroll: { basicSalary: '4000', paymentMethod: 'cash' },
   });
 
   const personOf = async (employmentId: string) => {

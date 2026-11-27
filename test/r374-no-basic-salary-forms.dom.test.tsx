@@ -79,7 +79,9 @@ const OPTIONS = {
 const nearlyDone = (payroll: EmployeeDraftData['payroll'] = {}): EmployeeDraftData => ({
   profile: { fullName: 'Datuk Rahim', primaryEmail: 'rahim@acme.test', employeeCode: 'ABC00100' },
   employment: { companyId: 'co-1', departmentId: 'dp-1', employmentType: 'full_time', hiredOn: '2026-09-10' },
-  payroll,
+  // Board 2c1b2fba — Payment Method is required on a draft; set here so the Activate button still speaks
+  // about the salary box alone.
+  payroll: { paymentMethod: 'cash', ...payroll },
 });
 
 const wrap = (data: EmployeeDraftData) =>

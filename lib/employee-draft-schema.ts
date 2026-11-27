@@ -39,7 +39,7 @@ import { isCalendarDate } from './calendar-date';
 import { resolveEmployeeIdMode, type EmployeeIdRule } from './employee-id-mode';
 import { copyPermanentToCorrespondence } from './address-blocks';
 import { addEmploymentPeriod, EMPLOYMENT_PERIOD_UNITS } from './employment-period';
-import { bankTransferLacksBank } from './payment-methods';
+import { bankTransferLacksBank, isPaymentMethod } from './payment-methods';
 import { customHolderGaps, type CustomHolder } from './custom-holder';
 
 export type EmployeeDraftProfile = {
@@ -206,7 +206,26 @@ export type EmployeeDraftEmployment = {
   noticeBeforeConfirmationUnit?: string;
   noticeAfterConfirmationValue?: string;
   noticeAfterConfirmationUnit?: string;
+  /**
+   * Board 2c1b2fba — THE EIGHT ORGANISATION LABELS the record's Organisation card carries (Division,
+   * Branch, Region, Line, Section, Team, Base, Category). Catalog-backed (`profile_option`), offered from
+   * the SAME catalogs the record reads, and judged at Activate by `assertEmploymentInformationLabelsTx`.
+   * They land as STARTING values on the employment row `hireEmployee` writes, so the `employment.hired`
+   * event's employmentInformation carries them — never a later information-change event.
+   */
+  orgDivision?: string;
+  orgBranch?: string;
+  orgRegion?: string;
+  orgLine?: string;
+  orgSection?: string;
+  orgTeam?: string;
+  orgBase?: string;
+  employmentCategory?: string;
 };
+
+/** Board 2c1b2fba — the organisation label keys, in the record's display order. */
+export const DRAFT_ORG_LABEL_FIELDS = ['orgDivision', 'orgBranch', 'orgRegion', 'orgLine', 'orgSection', 'orgTeam', 'orgBase', 'employmentCategory'] as const;
+export type DraftOrgLabelField = (typeof DRAFT_ORG_LABEL_FIELDS)[number];
 
 /** The period units `setEmploymentInfo` accepts (core/org.ts `EMPLOYMENT_PERIOD_UNITS`), restated here
  *  so the client-side rule below and the shared field group can both read them without importing a
@@ -354,7 +373,44 @@ export type EmployeeDraftStatutory = {
   customHolderName?: string;
   enableCustomHolderId?: string;
   customHolderId?: string;
+  /**
+   * Board 2c1b2fba — BANK PAYEE RESIDENCY, the Bank Information card's select: 'resident' | 'non_resident'
+   * | blank (not recorded). Lands through `pack.statutory.setBank`, its only writer, after the statutory row
+   * exists. Never inferred from tax residency or citizenship, exactly as on the record.
+   */
+  bankPayeeResidency?: string;
+  /**
+   * Board 2c1b2fba — THE DECLARED CHILD-RELIEF TABLE (the five LHDN categories × 100% / 50%), the grid the
+   * record's Income Tax (PCB) card shows under "Auto (from table)". Stored as the raw box strings under
+   * `childReliefTable_<category>_<share>` so every value in this section stays a string; written through
+   * `pack.statutory.setTax` (`childReliefTable`) at Activate, and only while the mode is 'auto_table'.
+   */
+  [key: `childReliefTable_${string}`]: string | undefined;
 };
+
+/** Board 2c1b2fba — the declared child-relief grid's categories, in the record's row order. */
+export const DRAFT_CHILD_RELIEF_CATEGORIES = ['under_18', 'study_preu', 'study_tertiary', 'disabled', 'disabled_study'] as const;
+export type DraftChildReliefCategory = (typeof DRAFT_CHILD_RELIEF_CATEGORIES)[number];
+export const draftChildReliefKey = (category: DraftChildReliefCategory, share: 'full' | 'half') =>
+  `childReliefTable_${category}_${share}` as const;
+
+/** The grid as `setTax` takes it ({category: {full, half}}), whole numbers ≥ 0; blank = 0. Returns null
+ *  when a box holds something that is not a whole number of zero or more (named by `missingByTab`). */
+export function draftChildReliefTable(s: EmployeeDraftStatutory | undefined): Record<DraftChildReliefCategory, { full: number; half: number }> | null {
+  const out = {} as Record<DraftChildReliefCategory, { full: number; half: number }>;
+  for (const category of DRAFT_CHILD_RELIEF_CATEGORIES) {
+    const cell = { full: 0, half: 0 };
+    for (const share of ['full', 'half'] as const) {
+      const raw = (s?.[draftChildReliefKey(category, share)] ?? '').trim();
+      if (raw === '') continue;
+      const n = Number(raw);
+      if (!Number.isInteger(n) || n < 0 || n > 99) return null;
+      cell[share] = n;
+    }
+    out[category] = cell;
+  }
+  return out;
+}
 
 /**
  * r393 (685d2380 step 3a) — the draft's four holder strings as the setter's shape. A tick is 'yes' only
@@ -505,6 +561,60 @@ export type EmployeeDraftFamilyMember = {
   childReliefPercentage?: string;
 };
 
+/**
+ * Board 2c1b2fba — THE FOUR REGISTERS A DRAFT GAINED, each held in the blob until Activate creates the
+ * person / employment they belong to, exactly as `family` is. They sit at the TOP LEVEL of the blob rather
+ * than inside `employment` / `payroll` because every value inside a section is a string (activation shape
+ * checks, `hasAnyStatutory`), and a list is not. Each field set is the owner writer's input, name for name.
+ *
+ * `key` is a UI-only row key, as on family members. Strings throughout (raw control values); `isHighest`
+ * and `prorate` are the two checkboxes and are booleans.
+ */
+export type EmployeeDraftEmergencyContact = {
+  key?: string;
+  fullName?: string;
+  relationship?: string;
+  mobilePhone?: string;
+  homePhone?: string;
+  address?: string;
+  remarks?: string;
+  /** 'primary' | 'secondary' | 'other' (EMERGENCY_CONTACT_PRIORITIES). */
+  priority?: string;
+};
+export type EmployeeDraftQualification = {
+  key?: string;
+  qualification?: string;
+  description?: string;
+  fromYm?: string;
+  toYm?: string;
+  institute?: string;
+  major?: string;
+  graduationDate?: string;
+  result?: string;
+  isHighest?: boolean;
+};
+export type EmployeeDraftPayItem = {
+  key?: string;
+  componentId?: string;
+  /** Ringgit as typed; parsed once, at Activate. LLMs never compute it; the writer stores it. */
+  amount?: string;
+  currency?: string;
+  /** true / false = override the component's own proration; absent = follow the component. */
+  prorate?: boolean;
+  effectiveFrom?: string;
+  effectiveTo?: string;
+  remarks?: string;
+};
+export type EmployeeDraftCostAllocation = {
+  key?: string;
+  costCenterId?: string;
+  /** Percent as typed ('60', '33.33'); `percentageHundredths` judges it. */
+  percentage?: string;
+};
+
+/** Board 2c1b2fba — list bounds. Saves stay unvalidated otherwise; Activate refuses a longer list. */
+export const DRAFT_LIST_LIMITS = { emergencyContacts: 20, qualifications: 30, payItems: 50, costAllocations: 100 } as const;
+
 export type EmployeeDraftData = {
   /** Server-owned creation-default cohort; absent on historical drafts. */
   creationDefaultsVersion?: 1;
@@ -514,7 +624,49 @@ export type EmployeeDraftData = {
   payroll?: EmployeeDraftPayroll;
   /** Item 759dfc7d — the Family tab's records, held here until Activate creates the person they belong to. */
   family?: EmployeeDraftFamilyMember[];
+  /** Board 2c1b2fba — Profile › Emergency contact. Written by `addEmergencyContact` at Activate. */
+  emergencyContacts?: EmployeeDraftEmergencyContact[];
+  /** Board 2c1b2fba — the Qualification tab. Written by `addQualification` at Activate. */
+  qualifications?: EmployeeDraftQualification[];
+  /** Board 2c1b2fba — Payroll › Pay items. Written by `setEmploymentPayComponent` at Activate. */
+  payItems?: EmployeeDraftPayItem[];
+  /** Board 2c1b2fba — Employment › Cost Center Allocation, effective from the Group Join Date. Written by
+   *  `saveEmploymentCostAllocations` at Activate. A legacy `employment.costCenterId` is shown as one row at
+   *  100% (`draftCostAllocations`) and only replaces it when HR saves. */
+  costAllocations?: EmployeeDraftCostAllocation[];
 };
+
+/** Board 2c1b2fba — one defensive list reader for the four registers, the `draftFamily` rule. */
+function draftList<T extends object>(value: unknown): T[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((m): m is T => !!m && typeof m === 'object' && !Array.isArray(m));
+}
+export const draftEmergencyContacts = (data: EmployeeDraftData) => draftList<EmployeeDraftEmergencyContact>(data.emergencyContacts);
+export const draftQualifications = (data: EmployeeDraftData) => draftList<EmployeeDraftQualification>(data.qualifications);
+export const draftPayItems = (data: EmployeeDraftData) => draftList<EmployeeDraftPayItem>(data.payItems);
+/**
+ * The draft's cost-centre allocation rows. When the draft has never carried the list, a LEGACY single
+ * `employment.costCenterId` reads as one row at 100% so HR can check it; it is not persisted as a list
+ * until Save (the screen holds what this returns and Save writes the screen's state).
+ */
+export function draftCostAllocations(data: EmployeeDraftData): EmployeeDraftCostAllocation[] {
+  if (Array.isArray(data.costAllocations)) return draftList<EmployeeDraftCostAllocation>(data.costAllocations);
+  const legacy = (data.employment?.costCenterId ?? '').trim();
+  return legacy ? [{ key: 'legacy', costCenterId: legacy, percentage: '100' }] : [];
+}
+/**
+ * The single cost centre the ASSIGNMENT is created with: Payroll's cost-centre filter, the Personnel
+ * export, analytics and the payroll comparison report all read `assignment.cost_center_id`, never the
+ * allocation set. So it is passed to `hireEmployee` ONLY when the allocation is exactly one cost centre at
+ * 100% — today's behaviour — and the two can never disagree.
+ */
+export function draftAssignmentCostCenter(data: EmployeeDraftData): string | undefined {
+  const rows = draftCostAllocations(data);
+  if (rows.length !== 1) return undefined;
+  const id = (rows[0].costCenterId ?? '').trim();
+  const pct = (rows[0].percentage ?? '').trim();
+  return id && /^100(?:\.0{1,2})?$/.test(pct) ? id : undefined;
+}
 
 /**
  * The draft's family list, defensively. `data` is jsonb and therefore opaque to SQL and to the type
@@ -562,7 +714,10 @@ export function draftFamily(data: EmployeeDraftData): EmployeeDraftFamilyMember[
  * into every draft row on production and renaming them would orphan the lot. The tab key names the
  * SCREEN section; the data key names the STORED section; `missingByTab` is where the two meet.
  */
-export const DRAFT_TABS = ['profile', 'job', 'bankStatutory', 'payroll', 'family'] as const;
+// Board 2c1b2fba — QUALIFICATION JOINS, between Payroll and Family. The reporter's order is Profile →
+// Employment → Bank & Statutory → Payroll → Qualification; Family was not in it, so it comes last. The
+// Next button walks exactly this list. The STORED step numbers below do not move (qualification gets 7).
+export const DRAFT_TABS = ['profile', 'job', 'bankStatutory', 'payroll', 'qualification', 'family'] as const;
 export type DraftTabKey = (typeof DRAFT_TABS)[number];
 
 /**
@@ -591,6 +746,8 @@ const STEP_NUMBERS: Record<DraftTabKey, number> = {
   bankStatutory: 3,
   payroll: 4,
   family: 6,
+  // Board 2c1b2fba — the next free number. 5 stays retired (the old Review step).
+  qualification: 7,
 };
 
 /** 1-based step number ↔ tab key. `current_step` on the row is this number. */
@@ -600,14 +757,24 @@ export function stepNumber(key: DraftTabKey): number {
 export function stepKey(n: number): DraftTabKey {
   const exact = DRAFT_TABS.find((k) => STEP_NUMBERS[k] === n);
   if (exact) return exact;
-  const first = DRAFT_TABS[0];
-  const last = DRAFT_TABS[DRAFT_TABS.length - 1];
+  // Board 2c1b2fba — judged in NUMBER order, not screen order: since Qualification (7) sits before Family
+  // (6) on screen, the screen list is no longer ascending.
+  const byNumber = [...DRAFT_TABS].sort((a, b) => STEP_NUMBERS[a] - STEP_NUMBERS[b]);
+  const first = byNumber[0];
+  const last = byNumber[byNumber.length - 1];
   if (n <= STEP_NUMBERS[first]) return first;
   if (n >= STEP_NUMBERS[last]) return last;
   // A number INSIDE the range that names no tab — today only the retired `review` slot. Resolve it to
   // the last tab before it, so a draft parked on a step that no longer exists reopens where it has been
   // reopening rather than jumping forward onto whatever inherited its number.
-  return [...DRAFT_TABS].reverse().find((k) => STEP_NUMBERS[k] < n) ?? first;
+  return [...byNumber].reverse().find((k) => STEP_NUMBERS[k] < n) ?? first;
+}
+
+/** Board 2c1b2fba — the tab the Next button moves to, or null on the last tab. Navigation only: it saves
+ *  nothing and validates nothing, and every tab stays directly clickable. */
+export function nextDraftTab(key: DraftTabKey): DraftTabKey | null {
+  const i = DRAFT_TABS.indexOf(key);
+  return i >= 0 && i < DRAFT_TABS.length - 1 ? DRAFT_TABS[i + 1] : null;
 }
 
 /**
@@ -828,6 +995,14 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
     }
   }
 
+  // Board 2c1b2fba — emergency contacts: none is required; one somebody DID add needs a name, at most one
+  // may be Primary, and the list is bounded. `addEmergencyContact` makes the same refusals, after the hire.
+  const contacts = draftEmergencyContacts(data);
+  if (contacts.length > DRAFT_LIST_LIMITS.emergencyContacts || contacts.some((c) => blank(c.fullName)) ||
+    contacts.filter((c) => (c.priority ?? '').trim() === 'primary').length > 1 ||
+    contacts.some((c) => !blank(c.priority) && !['primary', 'secondary', 'other'].includes((c.priority ?? '').trim())))
+    profile.push('emergencyContacts');
+
   const job: string[] = [];
   if (blank(e.departmentId)) job.push('department');
   if (blank(e.employmentType)) job.push('employmentType');
@@ -866,6 +1041,10 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
     }) ||
     periodUnits.some((u) => !blank(u) && !(DRAFT_PERIOD_UNITS as readonly string[]).includes((u ?? '').trim()));
   if (badPeriod) job.push('employmentPeriods');
+  // Board 2c1b2fba — Cost Center Allocation: optional; rows somebody added need a cost centre and a
+  // percentage above 0 and at most 100 (two decimals), each cost centre once, at most 100% in total. The
+  // SAME rule `normalizedAllocationRows` refuses with when `saveEmploymentCostAllocations` runs.
+  if (costAllocationGap(draftCostAllocations(data))) job.push('costAllocation');
 
   // Bank & Statutory has no REQUIRED field of its own — every value on it is optional in the writers
   // that consume it. The one rule it does carry is the importer's: bank name and account number are
@@ -877,6 +1056,12 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   // SAME rule `pack.statutory.setBank` refuses with, which runs only after `hireEmployee` has committed.
   for (const gap of customHolderGaps(draftCustomHolder(s)))
     bankStatutory.push(gap === 'name' ? 'customHolderName' : 'customHolderId');
+  // Board 2c1b2fba — bank payee residency is one of the two choices or blank; the declared child-relief
+  // grid holds whole numbers of zero or more (judged only while it is the grid the mode uses).
+  if (!blank(s.bankPayeeResidency) && !['resident', 'non_resident'].includes((s.bankPayeeResidency ?? '').trim()))
+    bankStatutory.push('bankPayeeResidency');
+  if ((s.childReliefMode ?? '').trim() === 'auto_table' && draftChildReliefTable(s) === null)
+    bankStatutory.push('childReliefTable');
   // r393 (685d2380 step 3b) — the EPF election and the income tax residency, judged by the PACK'S OWN
   // rules (see DraftStatutoryRules) on the same trimmed strings Activate hands the writers. Each is a
   // refusal `pack.statutory.set` / the scoped tax write would make after `hireEmployee` has committed.
@@ -946,6 +1131,19 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   // to be provoked here, where it costs nothing.
   if ((pay.paymentMethod ?? '').trim() === 'bank_transfer' && bankTransferLacksBank(s))
     payroll.push('paymentMethodBank');
+  // Board 2c1b2fba — PAYMENT METHOD IS REQUIRED ON A DRAFT. Blank ("Not specified") or anything that is not
+  // Bank Transfer, Cheque or Cash keeps Activate switched off. This is the Draft Employee page's rule; the
+  // employee Excel import keeps its own (optional) rule.
+  if (!isPaymentMethod((pay.paymentMethod ?? '').trim())) payroll.push('paymentMethod');
+  // Board 2c1b2fba — pay items: optional; a line somebody added needs an item, an amount above zero, a start
+  // date on or after the Group Join Date, an end not before its start, and no overlap with another line for
+  // the same item. The writer (`setEmploymentPayComponent`) would otherwise supersede or refuse after hire.
+  if (payItemGap(draftPayItems(data), hiredOnIso)) payroll.push('payItems');
+
+  // Board 2c1b2fba — Qualification: optional; a record somebody added needs a qualification, valid YYYY-MM
+  // periods and graduation date, From not after To, and at most one Highest.
+  const qualification: string[] = [];
+  if (qualificationGap(draftQualifications(data))) qualification.push('qualifications');
 
   // ── Family (item 759dfc7d) ──────────────────────────────────────────────────────────────────────
   // NO FAMILY MEMBER IS REQUIRED — most new joiners have nothing to record here, and a tab that
@@ -971,7 +1169,67 @@ export function missingByTab(data: EmployeeDraftData, rules?: DraftStatutoryRule
   }
   const family = [...familySet];
 
-  return { profile, job, bankStatutory, payroll, family };
+  return { profile, job, bankStatutory, payroll, qualification, family };
+}
+
+const YM_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** Board 2c1b2fba — true when the allocation rows cannot be saved as they stand (see `missingByTab`). */
+export function costAllocationGap(rows: EmployeeDraftCostAllocation[]): boolean {
+  if (rows.length > DRAFT_LIST_LIMITS.costAllocations) return true;
+  const ids = new Set<string>();
+  let total = 0;
+  for (const r of rows) {
+    const id = (r.costCenterId ?? '').trim();
+    if (!id || ids.has(id)) return true;
+    ids.add(id);
+    const v = (r.percentage ?? '').trim();
+    if (!/^(?:0|[1-9]\d{0,2})(?:\.\d{1,2})?$/.test(v)) return true;
+    const [whole, fraction = ''] = v.split('.');
+    const h = Number(whole) * 100 + Number(fraction.padEnd(2, '0'));
+    if (h <= 0 || h > 10000) return true;
+    total += h;
+  }
+  return total > 10000;
+}
+
+/** Board 2c1b2fba — true when a pay item line cannot be written as it stands. `hiredOn` is the draft's
+ *  ISO Group Join Date (null when it is itself outstanding — then the start-date rule waits for it). */
+export function payItemGap(items: EmployeeDraftPayItem[], hiredOn: string | null): boolean {
+  if (items.length > DRAFT_LIST_LIMITS.payItems) return true;
+  for (const [i, it] of items.entries()) {
+    if (blank(it.componentId)) return true;
+    const amount = Number((it.amount ?? '').replace(/[,_]/g, '').trim());
+    if (blank(it.amount) || !Number.isFinite(amount) || amount <= 0) return true;
+    const from = (it.effectiveFrom ?? '').trim() || hiredOn || '';
+    if (!isCalendarDate(from)) return true;
+    if (hiredOn && from < hiredOn) return true;
+    const to = (it.effectiveTo ?? '').trim();
+    if (to && (!isCalendarDate(to) || to < from)) return true;
+    if (!blank(it.currency) && (it.currency ?? '').trim() !== 'MYR') return true;
+    for (const other of items.slice(i + 1)) {
+      if ((other.componentId ?? '').trim() !== (it.componentId ?? '').trim()) continue;
+      const oFrom = (other.effectiveFrom ?? '').trim() || hiredOn || '';
+      const oTo = (other.effectiveTo ?? '').trim() || '9999-12-31';
+      if (from <= oTo && oFrom <= (to || '9999-12-31')) return true;
+    }
+  }
+  return false;
+}
+
+/** Board 2c1b2fba — true when a qualification record cannot be written as it stands. */
+export function qualificationGap(rows: EmployeeDraftQualification[]): boolean {
+  if (rows.length > DRAFT_LIST_LIMITS.qualifications) return true;
+  if (rows.filter((q) => q.isHighest === true).length > 1) return true;
+  for (const q of rows) {
+    if (blank(q.qualification)) return true;
+    const from = (q.fromYm ?? '').trim(), to = (q.toYm ?? '').trim(), grad = (q.graduationDate ?? '').trim();
+    if ((from && !YM_RE.test(from)) || (to && !YM_RE.test(to))) return true;
+    if (grad && !isCalendarDate(grad)) return true;
+    if (from && to && from > to) return true;
+    if (from && grad && grad.slice(0, 7) < from) return true;
+  }
+  return false;
 }
 
 /**

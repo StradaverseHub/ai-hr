@@ -1,6 +1,8 @@
 {
  "app/admin/audit/page.tsx": "test/route-read-budget.test.ts",
  "app/admin/personnel/[employmentId]/cp38-actions.ts#deleteCp38Action": "test/cp38-read-budget-038c304b.test.ts",
+ "app/admin/personnel/new/actions.ts#removeDraftPhotoAction": "test/employee-draft-photo-7610.test.ts",
+ "app/admin/personnel/new/actions.ts#uploadDraftPhotoAction": "test/employee-draft-photo-7610.test.ts",
  "app/approvals/page.tsx": "test/route-read-budget.test.ts",
  "app/page.tsx": "test/route-read-budget.test.ts",
  "app/payroll/[batchId]/page.tsx": "test/route-read-budget.test.ts",

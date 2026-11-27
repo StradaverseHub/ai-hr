@@ -113,7 +113,7 @@ async function main() {
   if(icClash.length)throw new Error('The fictional activation IC is already used; preserve the database and inspect its journey state.');
   function baseData(key:string,companyKey='Main'):EmployeeDraftData {
     return {profile:{fullName:`Activation15 Draft ${key}`,primaryEmail:`activation15-draft-${key.toLowerCase()}@demo.test`,employeeIdMode:'auto'},
-      employment:{companyId:companies[companyKey],departmentId:departments[companyKey],employmentType:'full_time',hiredOn:'2026-03-01'},payroll:{basicSalary:'3500'},family:[]};
+      employment:{companyId:companies[companyKey],departmentId:departments[companyKey],employmentType:'full_time',hiredOn:'2026-03-01'},payroll:{basicSalary:'3500',paymentMethod:'cash'},family:[]};
   }
   const rich=baseData('Fictional Shaair');
   rich.profile={...rich.profile,fullName:'Activation15 Fictional Shaair',primaryEmail:'activation15-fictional-shaair@demo.test',preferredName:'Fictional Shaair',nationality:'Malaysian',icNumber:'900101010046',dateOfBirth:'1990-01-01',gender:'female',maritalStatus:'married',phone:'001234567890',personalEmail:'activation15-fictional-personal@demo.test',permanentAddressLine1:'0001 Fictional Lane',permanentPostcode:'00120',permanentCity:'Fictional City',sameAsPermanent:'yes'};

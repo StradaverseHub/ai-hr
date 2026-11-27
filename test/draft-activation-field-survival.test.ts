@@ -152,6 +152,19 @@ const LANDS: Record<string, Record<string, string | null>> = {
     noticeBeforeConfirmationUnit: 'employment.notice_before_confirmation_unit',
     noticeAfterConfirmationValue: 'employment.notice_after_confirmation_value',
     noticeAfterConfirmationUnit: 'employment.notice_after_confirmation_unit',
+    // ── board 2c1b2fba ──────────────────────────────────────────────────────────────────────────
+    // The eight organisation labels. Catalog-backed (profile_option), judged by
+    // `assertEmploymentInformationLabelsTx` and written by `hireEmployee` itself as STARTING values on the
+    // employment row (so `employment.hired` carries them). Not set in §2's draft because each needs a seeded
+    // catalog row; test/board-2c1b2fba-draft-activation.test.ts activates all eight and reads every column back.
+    orgDivision: 'employment.org_division (board-2c1b2fba-draft-activation)',
+    orgBranch: 'employment.org_branch (board-2c1b2fba-draft-activation)',
+    orgRegion: 'employment.org_region (board-2c1b2fba-draft-activation)',
+    orgLine: 'employment.org_line (board-2c1b2fba-draft-activation)',
+    orgSection: 'employment.org_section (board-2c1b2fba-draft-activation)',
+    orgTeam: 'employment.org_team (board-2c1b2fba-draft-activation)',
+    orgBase: 'employment.org_base (board-2c1b2fba-draft-activation)',
+    employmentCategory: 'employment.employment_category (board-2c1b2fba-draft-activation)',
   },
   EmployeeDraftStatutory: {
     bankName: 'employee_statutory_my.bank_name',
@@ -216,6 +229,11 @@ const LANDS: Record<string, Record<string, string | null>> = {
     customHolderName: 'employee_statutory_my.custom_holder_name',
     enableCustomHolderId: 'employee_statutory_my.enable_custom_holder_id',
     customHolderId: 'employee_statutory_my.custom_holder_id',
+    // ── board 2c1b2fba ──────────────────────────────────────────────────────────────────────────
+    // Bank payee residency lands through the same `pack.statutory.setBank` as the holder above. (The declared
+    // child-relief grid is an index signature, `childReliefTable_<category>_<share>`, so §1 does not see it as
+    // a named field; it lands through `pack.statutory.setTax` only under "Auto (from table)".)
+    bankPayeeResidency: 'employee_statutory_my.bank_payee_residency',
   },
   EmployeeDraftPayroll: {
     basicSalary: 'compensation.basic_salary',
@@ -369,6 +387,8 @@ function everyField(): EmployeeDraftData {
       customHolderName: 'Farah Aziz (spouse payee)',
       enableCustomHolderId: 'yes',
       customHolderId: '920314-14-6688',
+      // board 2c1b2fba — not the column default (null), and not what tax residency would suggest either.
+      bankPayeeResidency: 'non_resident',
     },
     payroll: {
       basicSalary: '5200',
@@ -632,6 +652,7 @@ describe('§2 activate a draft with every field set, and read every landing back
     expect(stat.customHolderName, 'employee_statutory_my.custom_holder_name').toBe('Farah Aziz (spouse payee)');
     expect(stat.enableCustomHolderId, 'employee_statutory_my.enable_custom_holder_id').toBe(true);
     expect(stat.customHolderId, 'employee_statutory_my.custom_holder_id').toBe('920314-14-6688');
+    expect(stat.bankPayeeResidency, 'employee_statutory_my.bank_payee_residency').toBe('non_resident');
 
     const [comp] = await owner.db
       .select()
@@ -699,7 +720,7 @@ describe('§2 activate a draft with every field set, and read every landing back
         phone: '+60 12-000 0001',
       },
       employment: { companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-03-01' },
-      payroll: { basicSalary: '3000' },
+      payroll: { basicSalary: '3000', paymentMethod: 'cash' },
     });
     const statOf = async (employmentId: string) => {
       const [emp] = await owner.db
