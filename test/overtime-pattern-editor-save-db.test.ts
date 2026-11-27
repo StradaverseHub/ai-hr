@@ -67,8 +67,8 @@ beforeEach(async()=>{
  const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'OT',name:'OT fixture',kind:'allowance'}).returning();earningId=earning.id;
 });
 
-describe('editor saves never take hidden Overtime Pattern values from the browser (b31981c0)',()=>{
- it('keeps companies, currency, duration policies, rates and advanced fields byte-identical when editing an existing draft',async()=>{
+describe('editor saves never take hidden Overtime Pattern values from the browser (b31981c0, amended by 4197534a)',()=>{
+ it('keeps currency, duration policies, rates and advanced fields byte-identical and takes the companies from Eligibility',async()=>{
   const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Second fictional OT employer',country:'MY',currency:'MYR'});
   const saved=await saveOvertimePatternDraft(ctx,{draft:{code:'OT_'+randomUUID().slice(0,8),creationCompanyId:b.companyId,companyIds:[b.companyId,other.id],name:'Saved fictional pattern',description:'Fixture',definition:hiddenHeavy()}});
   const before=await stored(saved.versionId);
@@ -77,7 +77,8 @@ describe('editor saves never take hidden Overtime Pattern values from the browse
   const result=await saveOvertimeDraftAction({patternId:saved.patternId,versionId:saved.versionId,expectedRevision:saved.revision,draft:tampered(other.id)});
   expect(result).toMatchObject({ok:true,value:{patternId:saved.patternId,versionId:saved.versionId}});
   const after=await stored(saved.versionId);
-  expect(after.companies).toEqual(before.companies);
+  // 4197534a: the company set is chosen in Eligibility; the creation company stays the hidden permission anchor.
+  expect(after.companies).toEqual([other.id]);
   expect(after.pattern.creationCompanyId).toBe(b.companyId);expect(after.pattern.code).toBe(before.pattern.code);
   expect(after.version.name).toBe('Edited fictional name');expect(after.version.revision).toBe(before.version.revision+1);
   const {eligibility:afterEligibility,...afterHidden}=after.version.definition as unknown as Record<string,unknown>,{eligibility:_beforeEligibility,...beforeHidden}=before.version.definition as unknown as Record<string,unknown>;
@@ -86,21 +87,23 @@ describe('editor saves never take hidden Overtime Pattern values from the browse
   expect(afterHidden).toMatchObject({currency:{code:'SGD',minorScale:2},eligibilityBasis:'session',durationAllocation:'latest'});
   const audits=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,saved.patternId)).orderBy(asc(s.domainEvent.id));
   expect(audits.at(-1)).toMatchObject({eventType:'overtime.draft.saved',payload:expect.objectContaining({versionId:saved.versionId})});
-  expect([...(audits.at(-1)!.payload as {companyIds:string[]}).companyIds].sort()).toEqual([b.companyId,other.id].sort());
+  expect([...(audits.at(-1)!.payload as {companyIds:string[]}).companyIds]).toEqual([other.id]);
  });
- it('files a new pattern under the single selected company with its currency, and refuses several companies without writing',async()=>{
+ it('files a new pattern under the first chosen company with its currency, refuses mixed currencies and a duplicate code without writing',async()=>{
   const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Third fictional OT employer',country:'MY',currency:'SGD'});
   actAs(ctx,[b.companyId,other.id]);
-  expect(await saveOvertimeDraftAction({starterKey:'ot15',draft:tampered(other.id)})).toEqual({ok:false,code:'invalid',notice:'chooseOneCompany'});
+  expect(await saveOvertimeDraftAction({starterKey:'ot15',draft:{...(tampered(other.id) as object),companyIds:[b.companyId,other.id]} as never})).toEqual({ok:false,code:'invalid',reason:'mixedCurrency'});
   expect(await owner.db.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(eq(s.overtimePattern.tenantId,b.tenantId))).toEqual([]);
-  actAs(ctx,[other.id]);
-  const result=await saveOvertimeDraftAction({starterKey:'ot15',draft:tampered(b.companyId)});
+  const result=await saveOvertimeDraftAction({starterKey:'ot15',draft:tampered(other.id)});
   expect(result.ok).toBe(true);if(!result.ok)throw new Error('Expected a saved draft');
   const created=await stored(result.value.versionId);
   expect(created.pattern.creationCompanyId).toBe(other.id);expect(created.companies).toEqual([other.id]);expect(created.pattern.code).toBe('BROWSER_CODE');
   expect(created.version.activatedAt).toBeNull();
   expect(created.version.definition).toMatchObject({currency:{code:'SGD',minorScale:2},eligibilityBasis:'day',durationAllocation:'earliest',paymentCap:null,eligibility:edited});
   expect((created.version.definition as unknown as OvertimePattern).rates.map(rate=>rate.name)).toEqual(['OT 1.5']);
+  // The code is unique (case-insensitive) among patterns that are not deleted, with a plain message naming it.
+  expect(await saveOvertimeDraftAction({draft:{...(tampered(other.id) as object),code:'browser_code'} as never})).toEqual({ok:false,code:'conflict',reason:'duplicateCode',values:{code:'browser_code'}});
+  expect(await owner.db.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(eq(s.overtimePattern.tenantId,b.tenantId))).toHaveLength(1);
  });
  it('refuses a caller without authority over every saved company, or outside the pattern, and changes nothing',async()=>{
   const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Fourth fictional OT employer',country:'MY',currency:'MYR'});

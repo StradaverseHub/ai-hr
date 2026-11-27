@@ -88,6 +88,8 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10960,version:'7',when:1795495007560,tag:'7560_payroll_recalc_pending',breakpoints:true},
  // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
  {idx:10970,version:'7',when:1795495007570,tag:'7570_tp3_import_job',breakpoints:true},
+ // Board 4197534a — the Overtime Pattern draft's planned Eligibility (nullable column and its reference trigger).
+ {idx:11020,version:'7',when:1795495007620,tag:'7620_overtime_pattern_planned_eligibility',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

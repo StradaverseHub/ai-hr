@@ -511,6 +511,8 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10960,when:1795495007560,tag:'7560_payroll_recalc_pending'},
  // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
  {idx:10970,when:1795495007570,tag:'7570_tp3_import_job'},
+ // Board 4197534a — the Overtime Pattern draft's planned Eligibility (nullable column and its reference trigger).
+ {idx:11020,when:1795495007620,tag:'7620_overtime_pattern_planned_eligibility'},
 ] as const;
 // Final pending 2109/2126 bytes reviewed from engine 128bc2539; no applied-prefix hashes change.
 const APPROVED_UPGRADE_HASHES:Record<string,string>={
@@ -547,6 +549,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7550_payroll_group_tax_opening':'a1b8c2d3e074f5a67943c13b0d999f285ba42377bbcc5e5245897dba5409d491',
  '7560_payroll_recalc_pending':'2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f',
  '7570_tp3_import_job':'3a1388043be5589123fd925c5bae120d933a7dd23e3f8d0747cd4b083692ef79',
+ '7620_overtime_pattern_planned_eligibility':'6faf85476c67e873dfabde8a28130eab8be54ed3d5ae5fdaf579cebfe514356d',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',
  '7080_job_run_deterministic_order':'7f7b01ba1053bd6a39e8c5f04f50ae429e6553c04fb420d79318b0ba80bad736',
@@ -993,6 +996,8 @@ async function table(db:Database,name:string):Promise<Row[]>{return (await db.cl
  * may hold a value there. migrateApprovedUpgrade proves each column present and null on every row once its
  * migration is applied; a retained row is then compared without it (withoutCombinedReleaseNulls). */
 export const COMBINED_RELEASE_NULL_COLUMNS:readonly {tag:string;table:string;columns:readonly string[]}[]=Object.freeze([
+ // 4197534a: a draft's planned Eligibility; NULL (no planned Eligibility) on every existing overtime pattern version.
+ {tag:'7620_overtime_pattern_planned_eligibility',table:'overtime_pattern_version',columns:['planned_eligibility']},
  // bc6b5490: the CP38 last-month amount; NULL (the monthly amount throughout) on every existing record.
  {tag:'7540_employee_cp38_history_last_month',table:'employee_cp38',columns:['last_month_amount']},
  {tag:'7390_custom_pcb_selection',table:'employment_tax_selection_my',columns:['custom_pcb_amount','custom_pcb_rate']},

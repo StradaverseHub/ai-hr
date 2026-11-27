@@ -8184,6 +8184,13 @@
       "when": 1795495007570,
       "tag": "7570_tp3_import_job",
       "breakpoints": true
+    },
+    {
+      "idx": 11020,
+      "version": "7",
+      "when": 1795495007620,
+      "tag": "7620_overtime_pattern_planned_eligibility",
+      "breakpoints": true
     }
   ]
 }

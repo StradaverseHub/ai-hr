@@ -1,4 +1,10 @@
 {
+ "app/admin/attendance/settings/overtime-patterns/actions.ts#activateOvertimePatternAction": "test/overtime-pattern-read-budget-4197534a.test.ts",
+ "app/admin/attendance/settings/overtime-patterns/actions.ts#cancelOvertimeAssignmentAction": "test/overtime-pattern-read-budget-4197534a.test.ts",
+ "app/admin/attendance/settings/overtime-patterns/actions.ts#deleteOvertimePatternAction": "test/overtime-pattern-read-budget-4197534a.test.ts",
+ "app/admin/attendance/settings/overtime-patterns/actions.ts#editOvertimePatternAction": "test/overtime-pattern-read-budget-4197534a.test.ts",
+ "app/admin/attendance/settings/overtime-patterns/actions.ts#previewOvertimeEligibilityAction": "test/overtime-pattern-read-budget-4197534a.test.ts",
+ "app/admin/attendance/settings/overtime-patterns/page.tsx": "test/overtime-pattern-read-budget-4197534a.test.ts",
  "app/admin/audit/page.tsx": "test/route-read-budget.test.ts",
  "app/admin/personnel/[employmentId]/cp38-actions.ts#deleteCp38Action": "test/cp38-read-budget-038c304b.test.ts",
  "app/approvals/page.tsx": "test/route-read-budget.test.ts",

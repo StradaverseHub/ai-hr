@@ -7,8 +7,8 @@ const mocks=vi.hoisted(()=>({scope:vi.fn(),sample:vi.fn(),employee:vi.fn(),calcu
 vi.mock('next/cache',()=>({revalidatePath:mocks.revalidate}));
 vi.mock('../lib/scope',()=>({scopedAdmin:mocks.scope}));
 vi.mock('../packs/attendance/service',()=>({
- OvertimeOwnerError:class extends Error {constructor(readonly code:string,message:string){super(message);}},
- saveOvertimePatternDraft:mocks.saveDraft,getOvertimePattern:mocks.detail,overtimePatternWorkspaceCompanies:mocks.companies,saveOvertimePatternAssignment:vi.fn(),closeOvertimePatternAssignment:vi.fn(),overtimePatternSetup:vi.fn(),previewOvertimePatternEmployee:mocks.employee,previewOvertimePatternSample:mocks.sample,calculateOvertimePatternDay:mocks.calculate,readOvertimePatternCalculation:mocks.read,
+ OvertimeOwnerError:class extends Error {constructor(readonly code:string,message:string,readonly detail?:unknown){super(message);}},
+ saveOvertimePatternDraft:mocks.saveDraft,getOvertimePattern:mocks.detail,overtimePatternWorkspaceCompanies:mocks.companies,cancelOvertimePatternAssignment:vi.fn(),previewOvertimePatternEligibility:vi.fn(),activateOvertimePatternWithEligibility:vi.fn(),forkOvertimePatternDraft:vi.fn(),archiveOvertimePattern:vi.fn(),closeOvertimePatternAssignment:vi.fn(),overtimePatternSetup:vi.fn(),previewOvertimePatternEmployee:mocks.employee,previewOvertimePatternSample:mocks.sample,calculateOvertimePatternDay:mocks.calculate,readOvertimePatternCalculation:mocks.read,
 }));
 vi.mock('../packs/payroll/service',()=>({overtimePatternTransferOptions:mocks.options,transferOvertimePatternToPayroll:mocks.transfer,OvertimePayrollError:class extends Error {constructor(readonly code:string){super('Finite financial refusal');}}}));
 import {OvertimePayrollError} from '../packs/payroll/service';
@@ -108,52 +108,63 @@ describe('Overtime UI server entry points',()=>{
  });
 });
 
-/** b31981c0: the simplified editor hides companies, currency, duration policies, rates and lifecycle. The action must
- * derive every hidden value on the server, so a browser that still posts them (or tampers with them) changes nothing. */
-describe('Overtime editor save derives every hidden value on the server',()=>{
+/** Board 4197534a (amends b31981c0): the companies are chosen in Eligibility and posted; the pack re-checks them. Of the
+ * definition only the day types and the Overtime Settings table come from the browser; every other definition field
+ * comes from the saved draft or the starting template, and a saved definition the table cannot express is kept
+ * byte-for-byte. Saves keep the app frame: no revalidatePath, the editor navigates to the returned address. */
+describe('Overtime editor save derives hidden values on the server and takes companies from Eligibility',()=>{
  const owning='00000000-0000-4000-8000-0000000000a1',second='00000000-0000-4000-8000-0000000000a2',patternId='00000000-0000-4000-8000-0000000000b1',draftVersionId='00000000-0000-4000-8000-0000000000b2';
+ const earning='00000000-0000-4000-8000-0000000000e1';
  function saved():OvertimePattern {const p=fictionalPattern();return {...p,currency:{code:'SGD',minorScale:2},eligibilityBasis:'session',durationAllocation:'latest',rates:p.rates.map(rate=>({...rate,accumulation:'session' as const,tiers:rate.tiers.map(tier=>({...tier,mapping:{...tier.mapping,currency:'SGD'}}))})),durationRounding:{mode:'down',step:'15'},moneyRounding:{stage:'line',mode:'halfEven'}};}
  function detail(definition:unknown=saved(),overrides:Record<string,unknown>={}) {return {pattern:{id:patternId,tenantId,kind:'formula',code:'SAVED-CODE',creationCompanyId:owning,archivedAt:null,revision:4},versions:[{id:draftVersionId,patternId,revision:6,activatedAt:null,companyIds:[owning,second],definition,name:'Saved name',description:'Saved',...overrides}],assignments:[],writable:true};}
  const companies=[{id:owning,name:'Owning fictional company',currency:'MYR',minorScale:2},{id:second,name:'Second fictional company',currency:'MYR',minorScale:2}];
- function tampered() {
+ const planned={v:1,criteria:{gradeId:['00000000-0000-4000-8000-0000000000d1']},employmentIds:[],priority:100,from:'2099-12-01'};
+ const settings={rows:[{from:'0:00',to:'2:00',rate:'1.5',restRate:'2',phRate:'3',rounding:'down',roundTo:'0:15'},{from:'2:00',to:'',rate:'2',restRate:'',phRate:'3',rounding:'none',roundTo:''}],monthlyHours:'208',earningItemId:earning};
+ function posted(extra:Record<string,unknown>={}) {
   const definition={...fictionalPattern(),currency:{code:'MYR',minorScale:2},eligibilityBasis:'day',durationAllocation:'earliest',rates:[],paymentCap:{id:'cap',type:'literal',unit:'money',currency:'MYR',value:'1'},eligibility:{id:'edited',type:'selection',field:'dayType',operator:'in',values:['workday']}};
-  return {code:'BROWSER-CODE',name:'Edited name',description:'Edited description',definition,creationCompanyId:second,companyIds:[second]} as never;
+  return {code:'BROWSER-CODE',name:'Edited name',description:'Edited description',definition,creationCompanyId:second,companyIds:[second],plannedEligibility:planned,...extra} as never;
  }
  beforeEach(()=>{mocks.scope.mockResolvedValue({s:{tenantId,userId:'verified-user'},scopeIds:[owning]});mocks.detail.mockResolvedValue(detail());mocks.companies.mockResolvedValue(companies);mocks.saveDraft.mockResolvedValue({patternId,versionId:draftVersionId,revision:7});});
- it('keeps saved companies, currency, duration policies, rates and advanced fields on an existing draft and ignores posted ones',async()=>{
+ it('keeps the saved identity and every hidden field of a definition the table cannot show, and takes companies and Eligibility from the post',async()=>{
   const before=structuredClone(saved());
-  const result=await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:tampered()});
-  expect(result).toEqual({ok:true,value:{patternId,versionId:draftVersionId,revision:7}});
-  expect(mocks.saveDraft).toHaveBeenCalledOnce();const [ctx,input]=mocks.saveDraft.mock.calls[0];
-  expect(ctx).toEqual({tenantId,userId:'verified-user'});
+  const result=await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:posted({settings})});
+  expect(result).toEqual({ok:true,value:{patternId,versionId:draftVersionId,revision:7,navigate:`/admin/attendance/settings/overtime-patterns?pattern=${patternId}&version=${draftVersionId}&saved=7`}});
+  const [ctx,input]=mocks.saveDraft.mock.calls[0];expect(ctx).toEqual({tenantId,userId:'verified-user'});
   expect(input).toMatchObject({patternId,versionId:draftVersionId,expectedRevision:6});
-  expect(input.draft.creationCompanyId).toBe(owning);expect(input.draft.companyIds).toEqual([owning,second]);expect(input.draft.code).toBe('SAVED-CODE');
-  expect(input.draft.name).toBe('Edited name');expect(input.draft.description).toBe('Edited description');
+  expect(input.draft.creationCompanyId).toBe(owning);expect(input.draft.companyIds).toEqual([second]);expect(input.draft.code).toBe('SAVED-CODE');
+  expect(input.draft.plannedEligibility).toEqual(planned);expect(input.draft.name).toBe('Edited name');
   const {eligibility,...hidden}=input.draft.definition,{eligibility:_savedEligibility,...savedHidden}=before;
   expect(JSON.stringify(hidden)).toBe(JSON.stringify(savedHidden));
   expect(eligibility).toEqual({id:'edited',type:'selection',field:'dayType',operator:'in',values:['workday']});
-  expect(mocks.revalidate).toHaveBeenCalledOnce();
+  expect(mocks.revalidate).not.toHaveBeenCalled();
  });
- it('expands a saved starter seed server-side and fills only its blank currency from the owning company',async()=>{
+ it('writes the Overtime Settings table onto a starting template with the owner-decided duration policies',async()=>{
   mocks.detail.mockResolvedValue(detail(overtimeStarterSeed('ot20')));
-  await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:tampered()});
-  const definition=mocks.saveDraft.mock.calls[0][1].draft.definition,expected=prepareOvertimeStarter('ot20','day','earliest');
-  expect(definition.currency).toEqual({code:'MYR',minorScale:2});expect(definition.rates).toEqual(expected.rates);
-  expect(definition.paymentCap).toBeNull();expect(definition).toMatchObject({eligibilityBasis:'day',durationAllocation:'earliest'});
+  await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:posted({settings})});
+  const definition=mocks.saveDraft.mock.calls[0][1].draft.definition;
+  expect(definition).toMatchObject({currency:{code:'MYR',minorScale:2},eligibilityBasis:'day',durationAllocation:'earliest',paymentCap:null,durationRounding:null});
+  expect(definition.rates.map((rate:{id:string})=>rate.id)).toEqual(['ot_normal','ot_rest','ot_holiday']);
+  expect(definition.rates[1].tiers.map((tier:{payment:{multiplier:{value:string}}})=>tier.payment.multiplier.value)).toEqual(['2','2']);
+  expect(definition.rates[2].tiers[0]).toMatchObject({from:'0',to:'120',rounding:{step:'15',mode:'down'},mapping:{earningItemId:earning,currency:'MYR'}});
+  expect(definition.rates[0].tiers[0].payment.rate.divisorMinutes.value).toBe('12480');
  });
- it('derives the company and its currency for a new pattern from the single server-selected company',async()=>{
-  mocks.scope.mockResolvedValue({s:{tenantId,userId:'verified-user'},scopeIds:[second]});
-  await saveOvertimeDraftAction({starterKey:'ot15',draft:tampered()});
-  const input=mocks.saveDraft.mock.calls[0][1];expect(input.patternId).toBeUndefined();expect(input.versionId).toBeUndefined();
-  expect(input.draft).toMatchObject({code:'BROWSER-CODE',creationCompanyId:second,companyIds:[second],name:'Edited name'});
-  expect(input.draft.definition).toMatchObject({currency:{code:'MYR',minorScale:2},eligibilityBasis:'day',durationAllocation:'earliest',paymentCap:null});
+ it('files a new pattern under the first chosen company, or the company selection when none is chosen yet',async()=>{
+  mocks.scope.mockResolvedValue({s:{tenantId,userId:'verified-user'},scopeIds:[owning,second]});
+  await saveOvertimeDraftAction({starterKey:'ot15',draft:posted({companyIds:[second,owning]})});
+  const input=mocks.saveDraft.mock.calls[0][1];expect(input.patternId).toBeUndefined();
+  expect(input.draft).toMatchObject({code:'BROWSER-CODE',creationCompanyId:second,companyIds:[second,owning]});
   expect(input.draft.definition.rates).toEqual(prepareOvertimeStarter('ot15','day','earliest').rates);
-  await saveOvertimeDraftAction({draft:tampered()});expect(mocks.saveDraft.mock.calls[1][1].draft.definition.rates).toEqual([]);
+  await saveOvertimeDraftAction({draft:posted({companyIds:[]})});
+  expect(mocks.saveDraft.mock.calls[1][1].draft).toMatchObject({creationCompanyId:owning,companyIds:[]});
  });
- it.each([['several selected',[owning,second]],['none administrable',['00000000-0000-4000-8000-0000000000ff']]] as const)('refuses a new pattern with %s companies and writes nothing',async(_label,scopeIds)=>{
-  mocks.scope.mockResolvedValue({s:{tenantId,userId:'verified-user'},scopeIds:[...scopeIds]});
-  expect(await saveOvertimeDraftAction({draft:tampered()})).toEqual({ok:false,code:'invalid',notice:'chooseOneCompany'});
-  expect(mocks.saveDraft).not.toHaveBeenCalled();expect(mocks.revalidate).not.toHaveBeenCalled();
+ it('asks for a company when neither Eligibility nor the company selection has one, and writes nothing',async()=>{
+  mocks.scope.mockResolvedValue({s:{tenantId,userId:'verified-user'},scopeIds:['00000000-0000-4000-8000-0000000000ff']});
+  expect(await saveOvertimeDraftAction({draft:posted({companyIds:[]})})).toEqual({ok:false,code:'invalid',notice:'chooseOneCompany'});
+  expect(mocks.saveDraft).not.toHaveBeenCalled();
+ });
+ it('refuses a posted company outside the administrator scope before any write',async()=>{
+  expect(await saveOvertimeDraftAction({draft:posted({companyIds:['00000000-0000-4000-8000-0000000000ff']})})).toEqual({ok:false,code:'permission'});
+  expect(mocks.saveDraft).not.toHaveBeenCalled();
  });
  it.each([
   ['a changed revision','stale',{},{expectedRevision:5}],
@@ -163,20 +174,18 @@ describe('Overtime editor save derives every hidden value on the server',()=>{
   ['an unsupported starter','invalid',{},{patternId:undefined,versionId:undefined,starterKey:'ot99'}],
  ] as const)('refuses %s before any write',async(_label,code,version,input)=>{
   mocks.detail.mockResolvedValue(detail(saved(),version));
-  const result=await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:tampered(),...input} as never);
+  const result=await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:posted(),...input} as never);
   expect(result).toMatchObject({ok:false,code});expect(mocks.saveDraft).not.toHaveBeenCalled();expect(mocks.revalidate).not.toHaveBeenCalled();
  });
- it('treats an invisible or foreign pattern as unavailable and keeps the owner permission refusal',async()=>{
-  mocks.detail.mockResolvedValue(null);
-  expect(await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:tampered()})).toEqual({ok:false,code:'unavailable'});expect(mocks.saveDraft).not.toHaveBeenCalled();
-  mocks.detail.mockResolvedValue(detail());mocks.saveDraft.mockRejectedValue(new OvertimeOwnerError('permission','Outside administrator scope'));
-  expect(await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:tampered()})).toEqual({ok:false,code:'permission'});
-  expect(mocks.revalidate).not.toHaveBeenCalled();
+ it('passes a plain duplicate-code refusal through with its code, never raw text',async()=>{
+  mocks.saveDraft.mockRejectedValue(new (OvertimeOwnerError as unknown as new(code:string,message:string,detail:unknown)=>Error)('conflict','Pattern Code OT001 already exists.',{reason:'duplicateCode',values:{code:'OT001'}}));
+  expect(await saveOvertimeDraftAction({draft:posted()})).toEqual({ok:false,code:'conflict',reason:'duplicateCode',values:{code:'OT001'}});
  });
- it('refuses an unauthenticated or non-administrator caller before reading or writing anything',async()=>{
-  mocks.scope.mockRejectedValue(new Error('authorization-refused'));
-  await expect(saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:tampered()})).rejects.toThrow('authorization-refused');
-  expect(mocks.detail).not.toHaveBeenCalled();expect(mocks.companies).not.toHaveBeenCalled();expect(mocks.saveDraft).not.toHaveBeenCalled();
+ it('treats an invisible or foreign pattern as unavailable and refuses an unauthenticated caller before reading',async()=>{
+  mocks.detail.mockResolvedValue(null);
+  expect(await saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:posted()})).toEqual({ok:false,code:'unavailable'});expect(mocks.saveDraft).not.toHaveBeenCalled();
+  mocks.scope.mockRejectedValue(new Error('authorization-refused'));mocks.detail.mockClear();
+  await expect(saveOvertimeDraftAction({patternId,versionId:draftVersionId,expectedRevision:6,draft:posted()})).rejects.toThrow('authorization-refused');
+  expect(mocks.detail).not.toHaveBeenCalled();expect(mocks.saveDraft).not.toHaveBeenCalled();
  });
 });
-

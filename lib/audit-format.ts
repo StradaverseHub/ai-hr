@@ -100,6 +100,8 @@ const AGGREGATE: Record<string, { label: string; href?: (id: string) => string; 
   'holiday-group-holiday': { label: 'Holiday calendar entry' },
   attendance: { label: 'Attendance' },
   'attendance-correction': { label: 'Attendance correction' },
+  // 4197534a — Overtime Patterns (drafts, activation, Eligibility, deletion) are recorded on this aggregate.
+  'overtime-pattern': { label: 'Overtime pattern', href: (id) => `/admin/attendance/settings/overtime-patterns?pattern=${id}&mode=view`, adminOnly: true },
   'profile-change': { label: 'Profile change' },
   'payroll-batch': { label: 'Payroll batch', href: (id) => `/payroll/${id}`, adminOnly: true },
   payslip: { label: 'Payslip' },
@@ -200,6 +202,8 @@ const AGGREGATE_MODULE: Record<string, string> = {
   // 23390097 — roster writes (single cell, row Edit, and one row per upload) carry before/after. Same
   // reason: the plan promises they appear under Attendance in the Audit Trail.
   'roster-assignment': 'attendance',
+  // 4197534a — the plan promises each Overtime Pattern deletion appears in the Audit Trail under Attendance.
+  'overtime-pattern': 'attendance',
   'payroll-batch': 'payroll',
   payslip: 'payroll',
   compensation: 'payroll',

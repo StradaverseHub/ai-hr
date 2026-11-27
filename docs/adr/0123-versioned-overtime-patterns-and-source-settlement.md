@@ -78,6 +78,32 @@ The reporter-approved b31981c0 plan hides, for one phase, the editor controls fo
 
 The editor save action derives every hidden value on the server and never from the browser: an existing draft keeps its saved creation company, affected companies and every definition field except eligibility; a new draft belongs to the single company in the server-side company selection (otherwise it is refused without a write), takes that company's currency and canonical precision, and stores the existing editor defaults `eligibilityBasis: 'day'` and `durationAllocation: 'earliest'`. This is a temporary departure from "the backend chooses neither": the editor currently exposes no activation, and any future activation path must re-establish an explicit earliest/latest and day/session choice (or record an owner decision) before a draft carrying these defaults can be activated.
 
+### Amendment — 4197534a one Pattern Code for many companies (27 November 2026; owner to confirm)
+
+Recorded from the reporter-approved plan of board item 4197534a (Attendance > Settings > Overtime Patterns, revision 1,
+approved on the feedback board; built 27 November 2026). This closes the b31981c0 note above that a future activation
+path must re-establish the duration choices or record an owner decision. **The owner should confirm this addendum**:
+the decision below is taken from the approved plan text, not from a separate owner ruling.
+
+- Patterns built in the editor's Overtime Settings table are activated with `eligibilityBasis: 'day'` (overtime is
+  counted once per working day) and `durationAllocation: 'earliest'`. No time-of-day bands are offered, so the
+  allocation cannot change an amount. The starting templates (OT 1.5, OT 2.0, OT 3.0, OT 0.0) keep these defaults.
+- The hourly basis is the recorded calculation base (basic salary plus fixed monthly allowance) divided by the monthly
+  hours HR enters in Overtime Settings (for example 208). The system never chooses that number; a pattern cannot be
+  activated without it and a payroll item.
+- The table maps to three rates, one per kind of day (working day; off and rest day; public holiday), each with the same
+  marginal hour rows and per-row rounding; a blank rest/off day or PH rate uses the OT Rate
+  (`lib/overtime-pattern-settings.ts`). A saved definition the table cannot express is shown read-only and kept
+  byte-for-byte.
+- One pattern holds many companies: the company set is chosen in Eligibility (one currency per pattern), and the
+  creation company is only a hidden permission anchor. Eligibility (criteria, optional named employees, Applies from,
+  priority) is kept on the draft (`overtime_pattern_version.planned_eligibility`, migration 7620) and becomes ordinary
+  assignment rows on activation; named employees outrank groups and an equal-priority overlap is refused. Preview uses
+  the same pure resolver as the calculation. Delete archives (refused while assignments or a Schedule Group Overtime
+  Setting use the pattern) and frees the code; history is retained.
+- Schedule Group Overtime Settings (`attendance_group_policy_revision`) keep precedence over assignments for their
+  employees in this phase.
+
 ## Options considered
 
 | Option | Consequence |
