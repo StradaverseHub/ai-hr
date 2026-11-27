@@ -3369,12 +3369,23 @@ export function payrollRunOutstandingCounts(
       select o.batch_id,elem #>> '{}' as eid from ${payrollRunOutstanding} o join runs r on r.id=o.batch_id
       cross join lateral jsonb_array_elements(case when jsonb_typeof(o.employment_ids)='array' then o.employment_ids else '[]'::jsonb end) elem
       where jsonb_typeof(elem)='string'),
+     -- 27 Nov 2026: probing payslip once per mark element and again per stored element, with the id parsed inside the
+     -- join, let the stored-id anti-join read every payslip of the run per element (on a large-group fixture, 938 rows
+     -- x 400 loops, each under payslip row security). Each distinct (run, employee) is now probed once, by the run and
+     -- employment index, with the id parsed beforehand. owed is unchanged: marked employees who have a payslip on the
+     -- run, together with stored employees who have none.
+     candidates as materialized (
+      select c.batch_id,c.eid,
+       case when c.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then c.eid::uuid end as emp,
+       bool_or(c.marked) as marked,bool_or(not c.marked) as stored
+      from (select m.batch_id,m.eid,true as marked from mark_ids m union all select s.batch_id,s.eid,false from stored_ids s) c
+      group by c.batch_id,c.eid),
+     probed as materialized (
+      select c.batch_id,c.eid,c.marked,c.stored,
+       exists (select 1 from ${payslip} p where p.batch_id=c.batch_id and p.employment_id=c.emp) as paid
+      from candidates c),
      owed as (
-      select m.batch_id,m.eid from mark_ids m where exists (select 1 from ${payslip} p where p.batch_id=m.batch_id
-       and p.employment_id=case when m.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then m.eid::uuid end)
-      union
-      select s.batch_id,s.eid from stored_ids s where not exists (select 1 from ${payslip} p where p.batch_id=s.batch_id
-       and p.employment_id=case when s.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then s.eid::uuid end)),
+      select p.batch_id,p.eid from probed p where (p.marked and p.paid) or (p.stored and not p.paid)),
      taxed as materialized (select t.batch_id,t.eid from ${runTaxSkippedSql(sql`select id from runs`)} t),
      -- a1a80747 r3 — what the run owes, as the list counts it: the owed set once known, the mark's own set before.
      base as (
