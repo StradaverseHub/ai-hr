@@ -139,6 +139,14 @@ describe('slow-page readers at large-group scale',()=>{
     from employment e`));
    expect(methods.length,name).toBeGreaterThan(0);
    expect(methods.filter(m=>m.now!==m.before),`${name} payment method projection`).toEqual([]);
+   // Cost of each form alone over every visible employment, as the caller.
+   const nowSql=sql`select count(${employmentPaymentMethodOnSql(sql`e.id`,'2026-11-27',sql`e.payment_method::text`)}) from employment e`;
+   const beforeSql=sql`select count(case when exists(select 1 from employment_payment_method_history h where h.employment_id=e.id and h.tenant_id=app.current_tenant_id()) then
+      (select h.payment_method from employment_payment_method_history h where h.employment_id=e.id and h.tenant_id=app.current_tenant_id()
+       and h.superseded_at is null and h.effective_on<='2026-11-27'::date order by h.effective_on desc limit 1)
+     else e.payment_method::text end) from employment e`;
+   for(const [form,q] of [['now',nowSql],['before',beforeSql],['now',nowSql],['before',beforeSql]] as const)
+    await timed(`${name} payment method ${form}`,ctx,()=>withTenant(ctx,tx=>tx.execute(q)));
    // The filter lists against the select-distinct queries they replace (7580), for every area.
    const types=await timed(`${name} audit types`,ctx,()=>auditAggregateTypes(ctx)) as {aggregateType:string}[];
    const legacyTypes=await withTenant(ctx,tx=>tx.selectDistinct({aggregateType:schema.domainEvent.aggregateType}).from(schema.domainEvent)
