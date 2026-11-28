@@ -1481,6 +1481,11 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_group_tax_opening(uuid,text,uuid[])',app:true},
    // 7570 (board 5084d02e): the Form TP3 Import Log read, bounded by app.is_admin_for over each job's companies.
    {fn:'app.tp3_import_log(uuid[],uuid,timestamp with time zone,uuid,integer)',app:true},
+   // 7600 (board 0735d1b7): login merge facts and their record/undo writers; each checks app.is_group_admin() in the tenant.
+   {fn:'app.login_merge_record(uuid,uuid,text,text,timestamp with time zone,jsonb,text)',app:true},
+   {fn:'app.login_merge_undo_record(uuid,text)',app:true},
+   {fn:'app.login_merge_active()',app:true},
+   {fn:'app.login_merge_facts(uuid)',app:true},
    // 7620 (board 4197534a): the planned-Eligibility reference trigger function; triggers need no EXECUTE grant.
    {fn:'app.check_overtime_planned_eligibility()',app:false},
   ];
