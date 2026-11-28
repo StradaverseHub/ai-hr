@@ -8191,6 +8191,13 @@
       "when": 1795495007580,
       "tag": "7580_slow_page_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 10990,
+      "version": "7",
+      "when": 1795495007590,
+      "tag": "7590_payroll_group_tax_opening_noncash_base",
+      "breakpoints": true
     }
   ]
 }

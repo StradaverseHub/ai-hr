@@ -427,7 +427,9 @@ it('invalidates an eligible open run when only owned noncash taxability changes 
  await owner.client`insert into payslip(tenant_id,batch_id,employment_id,basic_salary,gross_pay,other_deductions,total_deductions,net_pay,employer_cost,statutory) values(${b.tenantId}::uuid,${open.batchId}::uuid,${employee}::uuid,5000,5000,0,10,4990,5000,'{"pcb":10,"lp":0,"bases":{"pcb":5000},"componentLines":[]}'::jsonb)`;
  await owner.client`update payroll_batch set status='processed',employee_count=1 where id=${open.batchId}::uuid`;
  await owner.db.update(schema.payComponent).set({includedInPcb:false}).where(eq(schema.payComponent.code,'BIK_OWNED'));
- const preview=await previewTaxBasisRecalculation(ctx,selection());expect(preview.eligibleCount).toBe(1);expect(preview.employees[0].months.every(month=>month.payrollInputsChanged&&month.beforeTaxable===month.taxable)).toBe(true);
+ const preview=await previewTaxBasisRecalculation(ctx,selection());expect(preview.eligibleCount).toBe(1);
+ // d9ded29c — the owned BIK 400.00 was taxable in each saved month and is now not subject to PCB: before = cash + 400.00, after = cash.
+ expect(preview.employees[0].months.every(month=>month.payrollInputsChanged&&month.beforeBenefits===400&&month.benefits===0&&month.beforeTaxable===Math.round((month.taxable+400)*100)/100&&month.difference===-400)).toBe(true);
  await confirm(preview);const [marked]=await owner.db.select().from(schema.payrollBatch).where(eq(schema.payrollBatch.id,open.batchId));expect(marked.needsRecalcAt).not.toBeNull();expect(marked.recalcEmploymentIds).toContain(employee);
  for(const saved of original)expect((await owner.db.select().from(schema.payslip).where(eq(schema.payslip.id,saved.id)))[0]).toEqual(saved);
 });

@@ -109,3 +109,27 @@ limit, missing months), attached outside the preview hash. Totals cross companie
 `app.payroll_group_tax_opening` (migration 7550), gated by payroll administration of the selected or run company; no
 payslip line leaves it. Payrolls already processed are not changed by themselves; reprocessing the affected month
 applies the opening. EA/CP8A, CP39 and Form E stay per company.
+
+## Amendment, 27 November 2026: a saved basis's taxable benefits are part of its PCB base (board d9ded29c)
+
+The reporter approved plan revision 1 of board item d9ded29c, which the owner asked to be built on 27 November 2026. A
+saved basis (`TaxBasisValue` version 1: a correction revision, an accepted import projection, or a reprocess replay)
+records `pcb` as cash normal plus additional remuneration, with the month's taxable BIK/VOLA in its `pcbNonCash`
+snapshot. Live payroll's `bases.pcb` includes those benefits. Every consumer of the effective basis now reads one
+meaning: the effective `bases.pcb` is the saved cash `pcb` plus the cumulative taxable BIK/VOLA of the snapshot the basis
+is read with (after any owned-source recomposition across cycles), so the prior-month fold adds each record's own taxable
+benefits to later-month YTD exactly once. This is what "the owned saved amount remains usable for later-month YTD" above
+requires; before this amendment the benefits were dropped for imported, reviewed and group-company months. Exempt parts
+and annual exemption limits are applied by the country pack exactly as before.
+
+The stored representation does not change: `payroll_tax_basis_revision.basis` keeps its `version = 1` CHECK, no payslip,
+revision or import byte is rewritten, and `EffectiveTaxBasis.basis` still returns the saved value. The approved plan
+proposed a version 2 basis; it was not adopted because the revision table only admits version 1 and one read-time rule
+covers saved and new values alike. The group-company opening definer applies the same rule (migration 7590, replacing
+the 7550 body under a guard). Recalculate Income Tax Value compares and displays a month's taxable income in the same
+meaning on both sides (cash plus the benefits the record owns), so a native month with a benefit no longer previews a
+negative difference and an existing correction does not become "ready" because of the representation; the preview shows
+the cash and benefit split. Payroll that runs after the release deducts more PCB for the affected employees, catching up
+through the normal monthly formula. That consequence follows the report-first rule above: before release an operator
+runs the read-only affected-employee report (`scripts/payroll-noncash-base-report.ts`) on the target installation and
+hands the list to the owner and the reporter; deploying the change remains separately authorized.

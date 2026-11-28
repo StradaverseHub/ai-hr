@@ -172,6 +172,25 @@ export function readPcbNonCash(value: unknown): PcbNonCashSnapshot | null {
   return v;
 }
 
+/** Board d9ded29c — ONE MEANING FOR THE PCB BASE. Live payroll stamps `bases.pcb` as the month's cash remuneration
+ *  (normal + additional) PLUS the month's cumulative taxable BIK/VOLA (core/payroll.ts statBases.pcb), and the prior-month
+ *  fold takes Y = bases.pcb - (cumulative - owned). A saved historical tax basis (an Income Tax Correction revision or an
+ *  accepted import projection, `TaxBasisValue` version 1) records `pcb` as cash only, with the benefits beside it in
+ *  `pcbNonCash`. Read back as a PCB base, it must carry the same benefits, or the fold drops them from Y. This is that
+ *  read: the saved cash base plus the cumulative taxable benefits of the snapshot it is read with. No stored value
+ *  changes; a basis without a readable snapshot has no benefits to add. Exempt parts never enter (`cumulative` is the
+ *  taxable figure, after annual exemption limits). */
+export function pcbBaseWithNonCash(cashPcb: number, pcbNonCash: unknown): number {
+  const nc = readPcbNonCash(pcbNonCash);
+  return nc ? round(cashPcb + nc.cumulative.bik + nc.cumulative.vola) : cashPcb;
+}
+/** Board d9ded29c — the taxable BIK/VOLA a saved record itself owns (counted once, in the month and run it belongs to):
+ *  what the prior-month fold adds to Y for it. Zero without a readable snapshot. */
+export function ownedTaxableNonCash(pcbNonCash: unknown): number {
+  const nc = readPcbNonCash(pcbNonCash);
+  return nc ? round(nc.owned.bik + nc.owned.vola) : 0;
+}
+
 /** Rebuild saved noncash snapshots from exact, ordered owned sources. No rates or taxability are inferred. */
 export function createNonCashOwnershipReplay(prefixComplete=true){
  let period='',complete=prefixComplete;const annual={bik:0,vola:0};let monthOpening={bik:0,vola:0,complete:prefixComplete};

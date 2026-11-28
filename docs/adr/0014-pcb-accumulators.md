@@ -56,3 +56,17 @@ the spec's Exhibit 5 worked example to the sen (Jan/Feb RM110.00, Mar RM108.20, 
   drifts on regenerate/amend and needs its own repair tooling. Rejected.
 - **Steady-state retained with a "variable pay" warning**: leaves bonuses, raises and mid-year
   joiners mis-deducted against the law we claim to implement. Rejected.
+
+## Amendment, 27 November 2026: one meaning for a prior month's PCB base (board d9ded29c)
+
+Y accumulates `bases.pcb`, the figure PCB was charged on, less the benefits other runs of the month own
+(`foldPriorSlipIntoAccumulators`). Live payroll stamps that base as cash remuneration plus the month's cumulative taxable
+BIK/VOLA. A month read through a saved historical tax basis (an Income Tax Correction revision or an accepted imported
+payroll-history projection, ADR-0167) records its base as cash only, with the benefits beside it in `pcbNonCash`; read
+as the whole base, it silently dropped those benefits from Y, from Σ(Y−K) and therefore from later PCB. From this
+amendment the canonical effective-basis reader (`core/payroll-tax-basis-read.ts`, `effectiveTaxBasisPcb`) and the group
+opening definer (migration 7590) read such a month's base as its saved cash base plus the cumulative taxable BIK/VOLA of
+the snapshot it is read with, so each taxable benefit enters Y once, in the month and run that owns it. An imported or
+reviewed month with no benefit snapshot is a known zero for the accumulated BIK/VOLA disclosure; a native slip written
+before the snapshot existed stays "not recorded". No formula, rate, table, exemption limit, stored payslip, revision or
+import changes; payroll that runs after the release catches up any under-deduction through the normal monthly formula.

@@ -4,7 +4,7 @@ import {maintenanceTaxInput} from '../lib/payroll-history-maintenance-tax-input'
 import {effectiveHistoryItems} from '../lib/payroll-history-maintenance-lineage';
 import type {HistoryRevisionRow} from '../lib/payroll-history-revisions';
 import {importedTaxInput,SYSTEM_BASIC_TAX_SETTING,type ImportedTaxSetting} from '../lib/payroll-import-tax-input';
-import {readPcbNonCash,nonCashComparisonInputs} from '../localization/noncash-benefits';
+import {readPcbNonCash,nonCashComparisonInputs,ownedTaxableNonCash} from '../localization/noncash-benefits';
 import {resolveTaxOpeningEvidence} from '../lib/payroll-tax-opening-evidence';
 import {readTaxOpeningRowsTx,resolveTaxOpeningRow} from './payroll-tax-opening';
 import {summarizeExemptionLedger,taxOpeningDigestRow,type TaxOpeningRow} from '../lib/payroll-tax-opening-tp3';
@@ -207,13 +207,20 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
   // A fresh correction may explicitly supersede a stale source. It must still be exactly reconstructible.
   try{effective=cache.effective!==undefined?cache.effective:await readEffectiveTaxBasesTx(tx,ctx,included.map(s=>s.id));}catch(error){if(!(error instanceof PayrollTaxBasisError)||!error.message.startsWith('Saved payroll changed')&&!error.message.startsWith('Imported wage inputs require review'))throw error;}
   const superseded=cache.superseded??await supersededTaxBasisRowsTx(tx,included.map(slip=>slip.id));
-  const months:TaxBasisMonth[]=[];let ytdTaxable=0,ytdExempt=0;
+  const months:TaxBasisMonth[]=[];let ytdTaxable=0,ytdExempt=0,ytdBenefits=0;
+  // d9ded29c — a month's taxable income is what payroll's year-to-date fold takes for this record: its cash (normal +
+  // additional) plus the taxable BIK/VOLA it owns, counted once in the month and run it belongs to. Both sides of the
+  // comparison use that one meaning, whether the earlier figure is a native stamp (bases.pcb less the benefits other runs
+  // of the month own), a saved Income Tax Correction or an accepted import projection (cash pcb plus owned benefits).
+  const benefitsOf=(value:TaxBasisValue|null|undefined)=>ownedTaxableNonCash(value?value.pcbNonCash:undefined);
   for(const row of replay){
    const source=included.find(s=>s.id===row.payslipId)!;
    const prior=effective?.get(source.id)?.basis,st=source.statutory;
    const imported=object(st.importedTaxBasis)&&st.importedTaxBasis.state==='ready'?validatedTaxBasis(st.importedTaxBasis.basis):null;
    const previous=prior??imported;
-   const beforeTaxable=previous?.pcb??(object(st.bases)?money(st.bases.pcb):null),beforeExempt=previous?money(previous.exempt):object(st.exemptionUsed)?round(Object.entries(st.exemptionUsed).filter(([code])=>code.startsWith('PCB_')).reduce((n,[,v])=>n+(money(v)??0),0)):null;
+   const nativeBase=object(st.bases)?money(st.bases.pcb):null,nativeNc=readPcbNonCash(st.pcbNonCash);
+   const beforeBenefits=previous?benefitsOf(previous):nativeBase===null?null:nativeNc?round(nativeNc.owned.bik+nativeNc.owned.vola):0;
+   const beforeTaxable=previous?round(previous.pcb+beforeBenefits!):nativeBase===null?null:nativeNc?round(nativeBase-(nativeNc.cumulative.bik+nativeNc.cumulative.vola-nativeNc.owned.bik-nativeNc.owned.vola)):nativeBase,beforeExempt=previous?money(previous.exempt):object(st.exemptionUsed)?round(Object.entries(st.exemptionUsed).filter(([code])=>code.startsWith('PCB_')).reduce((n,[,v])=>n+(money(v)??0),0)):null;
    const exempt=money(row.basis.exempt);if(exempt===null)fail('The country pack did not return exact exemption evidence.');
    const old=(superseded.get(source.id)??[]).map(id=>({id}));
    const items=row.basis.items.map((item,index)=>{const saved=previous?.items[index];return {...item,previousTreatment:saved?.code===item.code&&saved.amount===item.amount?saved.latestTreatment:item.previousTreatment};});
@@ -223,27 +230,30 @@ async function employeeTx(tx:Tx,ctx:SessionContext,selection:TaxBasisSelection,w
      ...(openingInfo&&openingInfo.source!=='saved_payslip'?{openingExemptionSource:openingInfo.source}:{}),
      ...(openingInfo?{openingExemption:openingInfo}:{}),
      ...(Object.keys(groupUsed).length||tp3Replaced?{groupOpeningExemption:{used:groupUsed,tp3Replaced}}:{})};
-   ytdTaxable=round(ytdTaxable+basis.pcb);ytdExempt=round(ytdExempt+exempt);
+   const benefits=benefitsOf(basis),taxable=round(basis.pcb+benefits);
+   ytdTaxable=round(ytdTaxable+taxable);ytdExempt=round(ytdExempt+exempt);ytdBenefits=round(ytdBenefits+benefits);
    const beforeNormal=previous?.normal??(object(st.pcbNonCash)?money(st.pcbNonCash.cashNormal):null);
    const beforeAdditional=previous?.additional??money(source.bonus);
-   const payrollInputsChanged=round(basis.pcb-(beforeTaxable??Number(source.gross)))!==0
+   const payrollInputsChanged=round(taxable-(beforeTaxable??Number(source.gross)))!==0
     ||beforeNormal!==null&&round(Number(basis.normal)-Number(beforeNormal))!==0
     ||beforeAdditional!==null&&round(Number(basis.additional)-Number(beforeAdditional))!==0
     ||hash(previous?.exemptionUsed??(object(st.exemptionUsed)?st.exemptionUsed:{}))!==hash(basis.exemptionUsed)
     ||round(Number(previous?.lp??st.lp??0))!==round(Number(basis.lp??0))
     ||hash(nonCashInputs(previous?.pcbNonCash??st.pcbNonCash))!==hash(nonCashInputs(basis.pcbNonCash));
-   months.push({payrollInputsChanged,payslipId:source.id,period:source.period,sourceHash:hashes.get(source.id)!,beforeTaxable,taxable:basis.pcb,difference:beforeTaxable===null?null:round(basis.pcb-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,items:basis.items,basis});
+   months.push({payrollInputsChanged,payslipId:source.id,period:source.period,sourceHash:hashes.get(source.id)!,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,ytdTaxable,ytdExempt,benefits,beforeBenefits,ytdBenefits,items:basis.items,basis});
   }
   const comparison=(basis:TaxBasisValue)=>({pcb:basis.pcb,normal:basis.normal,additional:basis.additional,exempt:basis.exempt,lp:basis.lp,nonCash:nonCashInputs(basis.pcbNonCash),exemptionUsed:basis.exemptionUsed,settings:importedTaxSettingEvidence(basis.appliedSettings),rulesState:basis.rulesState,rulesEvidence:basis.rulesEvidence,openingExemptionSource:comparableOpeningSource(basis.openingExemptionSource),items:basis.items.map(({previousTreatment,name,...item})=>item)});
   const changed=months.some(month=>{const source=included.find(slip=>slip.id===month.payslipId)!,stamp=source.statutory.importedTaxBasis;const previous=effective?.get(month.payslipId)?.basis??(object(stamp)&&stamp.state==='ready'?{...validatedTaxBasis(stamp.basis),appliedSettings:stamp.settings,rulesState:stamp.rulesState,rulesEvidence:stamp.rulesEvidence}:null);return !previous||hash(comparison(previous))!==hash(comparison(month.basis));});
   const beforeTaxable=months.some(m=>m.beforeTaxable===null)?null:round(months.reduce((n,m)=>n+m.beforeTaxable!,0)),taxable=round(months.reduce((n,m)=>n+m.taxable,0)),beforeExempt=months.some(m=>m.beforeExempt===null)?null:round(months.reduce((n,m)=>n+m.beforeExempt!,0)),exempt=round(months.reduce((n,m)=>n+m.exempt,0));
+  // d9ded29c — the benefit part of the totals above (display split only; the totals already include it).
+  const benefitTotals={benefits:round(months.reduce((n,m)=>n+(m.benefits??0),0)),beforeBenefits:months.some(m=>m.beforeBenefits==null)?null:round(months.reduce((n,m)=>n+m.beforeBenefits!,0))};
   if(changed&&slips.some(s=>s.period>cutoff)){
    const altersAllocation=months.some(m=>Object.keys(m.basis.exemptionUsed).length>0||object(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed)&&Object.keys(included.find(s=>s.id===m.payslipId)!.statutory.exemptionUsed as object).length>0);
-   if(altersAllocation)return {...blocked('Later saved months depend on annual exemption allocation. Extend the selected final month and preview again.'),recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,months};
+   if(altersAllocation)return {...blocked('Later saved months depend on annual exemption allocation. Extend the selected final month and preview again.'),recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,...benefitTotals,months};
   }
   const ledgerEntries=months.flatMap(month=>object(month.basis.exemptionLedger)&&Array.isArray(month.basis.exemptionLedger.entries)?month.basis.exemptionLedger.entries as TaxBasisLedgerEntry[]:[]);
   const exemptionLedger=cache.withoutLedger?undefined:summarizeExemptionLedger(ledgerEntries,openingExemptionUsed,openingInfo?.source??null);
-  return {...who,...(openingInfo?{openingExemptionSource:openingInfo.source,openingExemption:openingInfo}:{}),...(exemptionLedger?{exemptionLedger}:{}),...(pcbComparison?{pcbComparison}:{}),status:changed?'ready':'unchanged',reason:null,recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,months};
+  return {...who,...(openingInfo?{openingExemptionSource:openingInfo.source,openingExemption:openingInfo}:{}),...(exemptionLedger?{exemptionLedger}:{}),...(pcbComparison?{pcbComparison}:{}),status:changed?'ready':'unchanged',reason:null,recordCount:months.length,beforeTaxable,taxable,difference:beforeTaxable===null?null:round(taxable-beforeTaxable),beforeExempt,exempt,...benefitTotals,months};
  }catch(error){if(error instanceof PayrollTaxBasisError||error instanceof Error&&['TaxBasisReplayError','ImportedTaxSourceError','NonCashBenefitConfigurationError'].includes(error.name))return blocked(error.message);throw error;}
 }
 /** Read-only replay for one authorized open-run employee. Only the exact prefix selected by payroll
