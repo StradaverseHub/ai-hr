@@ -5,7 +5,8 @@ import {workerFixtureEnv} from './helpers/worker-fixture-tmp';
 it('preserves managed drain, production first activation, production update and rollback, immutable bytes and privileged refusal boundaries',()=>{
  const result=spawnSync('python3',['-I','-B','test/fixtures/bank-import-worker-upgrade-tests.py'],{env:workerFixtureEnv('upgrade'),encoding:'utf8',maxBuffer:1024**2});
  expect(result.status,result.stdout+'\n'+result.stderr).toBe(0);
- expect(result.stderr).toContain('Ran 93 tests');
+ // Exact on purpose (like its siblings): PR 362 added 5 WorkerInternalAuthEnvironmentTests cases; a silently dropped case must fail here.
+ expect(result.stderr).toContain('Ran 98 tests');
 });
 
 it('admits only the root-pinned live CI runtime and monotonic native finish, with unchanged quarantine',()=>{
