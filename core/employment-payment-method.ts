@@ -18,12 +18,13 @@ export function employmentPaymentMethodOnSql(employmentId:SQL,date:string=todayI
  // Same history, null/unknown boundary and RLS as app.employment_payment_method_on; scale equivalence
  // compares both readers for every scope. No current-master substitution when dated history exists.
  const legacy=legacyMethod??sql`(select aihr_method_legacy.payment_method::text from employment aihr_method_legacy where aihr_method_legacy.id=${employmentId} and aihr_method_legacy.tenant_id=app.current_tenant_id())`;
- return sql<PaymentMethod|null>`case when exists(select 1 from employment_payment_method_history h
-   where h.employment_id=${employmentId} and h.tenant_id=app.current_tenant_id()) then
-  (select h.payment_method from employment_payment_method_history h
-   where h.employment_id=${employmentId} and h.tenant_id=app.current_tenant_id() and h.superseded_at is null
-    and h.effective_on<=${date}::date order by h.effective_on desc limit 1)
-  else ${legacy} end`;
+ // 27 Nov 2026: one aggregate over the employment's own history rows (each checked by row security once) instead of
+ // an EXISTS (which the planner could hash into a read of the whole tenant's history) followed by a second probe.
+ // Same answer: any history row -> the current method as of the date (null when none is current); none -> legacy.
+ return sql<PaymentMethod|null>`(select case when count(*)>0 then
+   (array_agg(h.payment_method order by h.effective_on desc) filter (where h.superseded_at is null and h.effective_on<=${date}::date))[1]
+   else ${legacy} end
+  from employment_payment_method_history h where h.employment_id=${employmentId} and h.tenant_id=app.current_tenant_id())`;
 }
 export async function employmentPaymentMethodOnTx(tx:Tx,employmentId:string,date:string){
  if(!isCalendarDate(date))throw new Error('Enter a valid payment method effective date.');

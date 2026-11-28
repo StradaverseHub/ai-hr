@@ -3358,7 +3358,10 @@ export function payrollRunOutstandingCounts(
   return withTenant(ctx, async (tx) => {
     const rows = await tx.execute<{ id: string; count: number; held: number; marked: boolean; known: boolean; due: boolean }>(sql`
      with runs as materialized (
-      select b.id,b.needs_recalc_at,b.recalc_employment_ids from ${payrollBatch} b
+      -- Each run with its stored answer, read once per run (row security on payroll_run_outstanding runs once per run,
+      -- not once per owed employee).
+      select b.id,b.needs_recalc_at,b.recalc_employment_ids,o.employment_ids as stored,o.refreshed_at,o.requested_at
+      from ${payrollBatch} b left join ${payrollRunOutstanding} o on o.batch_id=b.id
       where b.id in (select jsonb_array_elements_text(${JSON.stringify(ids)}::jsonb)::uuid) and b.status='processed'),
      mark_ids as (
       select r.id as batch_id,elem #>> '{}' as eid from runs r
@@ -3366,30 +3369,41 @@ export function payrollRunOutstandingCounts(
        then r.recalc_employment_ids else '[]'::jsonb end) elem
       where jsonb_typeof(elem)='string' and length(elem #>> '{}')>0),
      stored_ids as (
-      select o.batch_id,elem #>> '{}' as eid from ${payrollRunOutstanding} o join runs r on r.id=o.batch_id
-      cross join lateral jsonb_array_elements(case when jsonb_typeof(o.employment_ids)='array' then o.employment_ids else '[]'::jsonb end) elem
+      select r.id as batch_id,elem #>> '{}' as eid from runs r
+      cross join lateral jsonb_array_elements(case when jsonb_typeof(r.stored)='array' then r.stored else '[]'::jsonb end) elem
       where jsonb_typeof(elem)='string'),
+     -- 27 Nov 2026: probing payslip once per mark element and again per stored element, with the id parsed inside the
+     -- join, let the stored-id anti-join read every payslip of the run per element (on a large-group fixture, 938 rows
+     -- x 400 loops, each under payslip row security). Each distinct (run, employee) is now probed once, by the run and
+     -- employment index, with the id parsed beforehand. owed is unchanged: marked employees who have a payslip on the
+     -- run, together with stored employees who have none.
+     candidates as materialized (
+      select c.batch_id,c.eid,
+       case when c.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then c.eid::uuid end as emp,
+       bool_or(c.marked) as marked,bool_or(not c.marked) as stored
+      from (select m.batch_id,m.eid,true as marked from mark_ids m union all select s.batch_id,s.eid,false from stored_ids s) c
+      group by c.batch_id,c.eid),
+     probed as materialized (
+      select c.batch_id,c.eid,c.marked,c.stored,
+       exists (select 1 from ${payslip} p where p.batch_id=c.batch_id and p.employment_id=c.emp) as paid
+      from candidates c),
      owed as (
-      select m.batch_id,m.eid from mark_ids m where exists (select 1 from ${payslip} p where p.batch_id=m.batch_id
-       and p.employment_id=case when m.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then m.eid::uuid end)
-      union
-      select s.batch_id,s.eid from stored_ids s where not exists (select 1 from ${payslip} p where p.batch_id=s.batch_id
-       and p.employment_id=case when s.eid ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' then s.eid::uuid end)),
+      select p.batch_id,p.eid from probed p where (p.marked and p.paid) or (p.stored and not p.paid)),
      taxed as materialized (select t.batch_id,t.eid from ${runTaxSkippedSql(sql`select id from runs`)} t),
      -- a1a80747 r3 — what the run owes, as the list counts it: the owed set once known, the mark's own set before.
      base as (
-      select w.batch_id,w.eid from owed w join ${payrollRunOutstanding} o on o.batch_id=w.batch_id where o.employment_ids is not null
+      select w.batch_id,w.eid from owed w join runs r on r.id=w.batch_id where r.stored is not null
       union
-      select m.batch_id,m.eid from mark_ids m left join ${payrollRunOutstanding} o on o.batch_id=m.batch_id where o.employment_ids is null),
+      select m.batch_id,m.eid from mark_ids m join runs r on r.id=m.batch_id where r.stored is null),
      split as (select b.batch_id,b.eid,exists (select 1 from taxed t where t.batch_id=b.batch_id and t.eid=b.eid) as held from base b)
      select r.id::text as id,
-      (o.employment_ids is not null) as known,
+      (r.stored is not null) as known,
       (r.needs_recalc_at is not null) as marked,
       (select count(*) from split x where x.batch_id=r.id and not x.held)::int as count,
       (select count(*) from split x where x.batch_id=r.id and x.held)::int as held,
-      ((o.refreshed_at is null or o.refreshed_at < now() - ${fresh}::int * interval '1 millisecond')
-       and (o.requested_at is null or o.requested_at < now() - ${fresh}::int * interval '1 millisecond')) as due
-     from runs r left join ${payrollRunOutstanding} o on o.batch_id=r.id`);
+      ((r.refreshed_at is null or r.refreshed_at < now() - ${fresh}::int * interval '1 millisecond')
+       and (r.requested_at is null or r.requested_at < now() - ${fresh}::int * interval '1 millisecond')) as due
+     from runs r`);
     return new Map(rows.map((r) => [r.id, { count: Number(r.count), held: Number(r.held), marked: r.marked, known: r.known, due: r.due }]));
   });
 }

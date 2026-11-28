@@ -6967,13 +6967,21 @@ export function auditEventsPage(
 
 /** The distinct aggregate types present in the tenant's log — drives the filter dropdown. */
 export function auditAggregateTypes(ctx: SessionContext): Promise<{ aggregateType: string }[]> {
-  return withTenant(ctx, (tx) =>
-    tx
-      .selectDistinct({ aggregateType: domainEvent.aggregateType })
-      .from(domainEvent)
-      .where(auditCompanyScope())
-      .orderBy(domainEvent.aggregateType),
-  );
+  // 27 Nov 2026: `select distinct` read every visible event (30,000 rows on a large-group fixture, 1.3 s). The distinct
+  // types are walked by domain_event_aggregate_idx (tenant_id, aggregate_type), a few index probes per type, and a
+  // type is kept when one of its events passes the caller's scope: the same rows, under the same row security.
+  return withTenant(ctx, async (tx) => Array.from(await tx.execute<{ aggregateType: string }>(sql`
+    with recursive types(t) as (
+      (select ${domainEvent.aggregateType} from ${domainEvent} where ${domainEvent.tenantId} = app.current_tenant_id()
+        order by ${domainEvent.aggregateType} limit 1)
+      union all
+      select (select ${domainEvent.aggregateType} from ${domainEvent} where ${domainEvent.tenantId} = app.current_tenant_id()
+        and ${domainEvent.aggregateType} > types.t order by ${domainEvent.aggregateType} limit 1)
+      from types where types.t is not null)
+    select types.t as "aggregateType" from types
+    where types.t is not null and exists (select 1 from ${domainEvent} where ${domainEvent.tenantId} = app.current_tenant_id()
+      and ${domainEvent.aggregateType} = types.t and ${auditCompanyScope()})
+    order by types.t`)));
 }
 
 /** 4ec5a940 — the distinct actors who appear in the log, with their resolved display name; drives the
@@ -6986,15 +6994,28 @@ export function auditActors(
   ctx: SessionContext,
   f: Pick<AuditFilters, 'module'> = {},
 ): Promise<{ actorId: string | null; actorName: string | null }[]> {
-  return withTenant(ctx, (tx) =>
-    tx
-      .selectDistinct({ actorId: domainEvent.actorId, actorName: person.fullName })
-      .from(domainEvent)
-      .leftJoin(appUser, eq(appUser.id, domainEvent.actorId))
-      .leftJoin(person, eq(person.id, appUser.personId))
-      .where(auditWhere({ module: f.module }))
-      .orderBy(person.fullName),
-  ) as Promise<{ actorId: string | null; actorName: string | null }[]>;
+  // 27 Nov 2026: as auditAggregateTypes. The distinct actors are walked by domain_event_actor_idx (7580), and the
+  // system/unlinked principal (a null actor) is checked once; an actor is kept when one of its events passes the same
+  // auditWhere (scope and area) the rows use. Name resolution and order are unchanged.
+  const where = auditWhere({ module: f.module });
+  return withTenant(ctx, async (tx) => Array.from(await tx.execute<{ actorId: string | null; actorName: string | null }>(sql`
+    with recursive actors(a) as (
+      (select ${domainEvent.actorId} from ${domainEvent} where ${domainEvent.tenantId} = app.current_tenant_id()
+        and ${domainEvent.actorId} is not null order by ${domainEvent.actorId} limit 1)
+      union all
+      select (select ${domainEvent.actorId} from ${domainEvent} where ${domainEvent.tenantId} = app.current_tenant_id()
+        and ${domainEvent.actorId} > actors.a order by ${domainEvent.actorId} limit 1)
+      from actors where actors.a is not null),
+    present(actor_id) as (
+      select actors.a from actors where actors.a is not null and exists (select 1 from ${domainEvent}
+        where ${domainEvent.tenantId} = app.current_tenant_id() and ${domainEvent.actorId} = actors.a and ${where})
+      union all
+      select null::uuid where exists (select 1 from ${domainEvent}
+        where ${domainEvent.tenantId} = app.current_tenant_id() and ${domainEvent.actorId} is null and ${where}))
+    select present.actor_id as "actorId", ${person.fullName} as "actorName" from present
+    left join ${appUser} on ${appUser.id} = present.actor_id
+    left join ${person} on ${person.id} = ${appUser.personId}
+    order by ${person.fullName}`)));
 }
 
 // ─── Approval activity history (bell History tab + /approvals/history) ───────────────────────────────

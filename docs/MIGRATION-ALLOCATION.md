@@ -1,3 +1,16 @@
+# Slow-page indexes: Audit Trail filter lists and payment method projection, 27 November 2026
+
+Reserve `7580_slow_page_indexes`, journal index `10980`, timestamp `1795495007580`, SQL SHA-256
+`18930d7742e81adbede8cbcce550c8048280e0a30eb2712245a02ee067c83ff3`. Next free slot after `7570_tp3_import_job` (main). Built on main `240adad5c`.
+Recheck both installations' watermarks and any competing reservation at admission.
+
+Adds `domain_event_actor_idx (tenant_id, actor_id)` and `employment_payment_method_history_employment_idx
+(tenant_id, employment_id)` only (the existing history index is partial, current rows). core/employment-payment-method.ts
+answers each employment's method in one aggregate over its own history rows by the second. core/read.ts `auditActors` walks the distinct actors by it
+(recursive skip scan) and `auditAggregateTypes` walks the distinct types by the existing `domain_event_aggregate_idx`,
+each keeping a value only when one of its events passes the caller's audit scope, instead of `select distinct` over
+every visible event. Same rows, same row security.
+
 # Board 5084d02e: Form TP3 Excel import job and Import Log, 26 November 2026
 
 Reserve `7570_tp3_import_job`, journal index `10970`, timestamp `1795495007570`, SQL SHA-256
