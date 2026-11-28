@@ -16,6 +16,10 @@
  *      again (an older reprocess skip no longer counts) and its own `taxHeld` list holds people.
  *   C. SELECT ALL. Every tickable row of the tab on every page, with the search applied, New rows that are not ready left
  *      out; Processed / No Change is every unmarked payslip; another tenant gets nothing.
+ *   D. 8a3de8ae — AFTER A PARTIAL REPROCESS, THE STORED FACTS THE SCREEN RE-SEEDS FROM. A real job reprocesses two
+ *      marked employees and fails a third (their salary record was withdrawn); a fourth is skipped by the tax check.
+ *      The arrival ticks then name only the failed one, the tax-held one is on Skipped, the two reprocessed ones are on
+ *      Processed / No Change at version 2, and the job's outcomes name exactly those two as reprocessed.
  */
 import { randomUUID } from 'node:crypto';
 import { eq, sql } from 'drizzle-orm';
@@ -30,9 +34,13 @@ import {
   BatchHasPendingEmployeesError,
   closeBatch,
   createBatch,
+  decodeReprocessEmployeeOutcomes,
   generatePayslips,
+  getReprocessJob,
+  payrollEmployeeSelectionPage,
   reprocessRequiredPage,
   reprocessSelectAll,
+  reprocessSelectedEmployees,
   reprocessStaleSelection,
   runOutstandingTx,
 } from '../core/payroll';
@@ -238,11 +246,128 @@ describe('a1a80747 r3 · C — Select all', () => {
   it('another tenant and a foreign run id get nobody', async () => {
     await hire('Fictional Ada', 'SK001', 5000);
     const batchId = await processedRun();
-    await hire('Fictional Late', 'SK004', 4200, `${period}-10`);
+    const late = await hire('Fictional Late', 'SK004', 4200, `${period}-10`);
     const other = await seedBase();
     await setModule(other.tenantId, 'payroll', 'active');
     const stranger = { ...(await entitledCtx(other, ['hr_admin'])), grants: [{ role: 'hr_admin' as const, companyId: null }] };
     expect((await reprocessSelectAll(stranger, { batchId, tab: 'required' })).rows).toEqual([]);
     expect((await reprocessSelectAll(ctx, { batchId: randomUUID(), tab: 'required' })).rows).toEqual([]);
+    // 7aaff171 — the Skipped tab's Select all is fenced the same way: the owner's tenant sees Late, nobody else does.
+    await outcome(batchId, late, 'skipped', 'TAX_RECALC_REQUIRED');
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'skipped' })).rows)).toEqual([late]);
+    expect((await reprocessSelectAll(stranger, { batchId, tab: 'skipped' })).rows).toEqual([]);
+    expect((await reprocessSelectAll(ctx, { batchId: randomUUID(), tab: 'skipped' })).rows).toEqual([]);
+  });
+
+  /**
+   * 7aaff171 — SELECT ALL ON THE SKIPPED TAB. A run set up for a chosen list of three: one marked (Reprocess Required),
+   * one paid and unmarked (Processed / No Change), one marked and skipped by the tax check (Held for income tax review).
+   * Everybody else in the company is Not owed on this run (outside its chosen list) — 58 ready people and one with no
+   * salary record. 60 people on the Skipped tab, three pages of 25.
+   */
+  it('Skipped: every tickable row of the tab on every page, with the search, never a Required, Processed or not-ready one', async () => {
+    const required = await hire('Fictional Chosen Marked', 'SC001', 5000);
+    const processed = await hire('Fictional Chosen Paid', 'SC002', 4900);
+    const held = await hire('Fictional Chosen Taxheld', 'SC003', 4800);
+    const outsiders: string[] = [];
+    for (let i = 0; i < 58; i += 1) {
+      const e = await hireEmployee(ctx, {
+        person: { fullName: `Fictional Outsider ${String(i).padStart(2, '0')}`, primaryEmail: `${randomUUID()}@fixture.test` },
+        companyId: b.companyId, departmentId: b.deptA, employeeCode: `SO${String(i).padStart(3, '0')}`, employmentType: 'full_time', hiredOn,
+      });
+      await setCompensation(ctx, { employmentId: e.employmentId, basicSalary: 3000 + i, effectiveFrom: hiredOn });
+      outsiders.push(e.employmentId);
+    }
+    const notReady = await hire('Fictional Outsider Unready', 'SO900', null);
+    const { batchId } = await createBatch(ctx, { companyId: b.companyId, payPeriod: period, scope: { employmentIds: [required, processed, held] } });
+    await generatePayslips(ctx, { batchId });
+    await mark(batchId, [required, held]);
+    await refresh(batchId);
+    await outcome(batchId, held, 'skipped', 'TAX_RECALC_REQUIRED');
+
+    // The tab, page by page: 60 people, the first page shows 25 of them.
+    const pageOne = await reprocessRequiredPage(ctx, { batchId, page: parsePageQuery({ page: '0', size: '25' }), tab: 'skipped' });
+    expect(pageOne.rows).toHaveLength(25);
+    expect(pageOne.state.hasNext).toBe(true);
+    expect(pageOne.skippedRunTotal).toBe(60);
+    const whole = await tabRows(batchId, 'skipped');
+    expect(ids(whole.rows)).toEqual([...outsiders, notReady, held].sort());
+    expect(whole.rows.find((r) => r.employmentId === notReady)!.blockers.length).toBeGreaterThan(0);
+
+    // Select all: everyone who can be ticked, every page, each once; the not-ready one is left out, as their box is.
+    const everyone = await reprocessSelectAll(ctx, { batchId, tab: 'skipped' });
+    expect(everyone.tooMany).toBe(false);
+    expect(everyone.total).toBe(60);
+    expect(ids(everyone.rows)).toEqual([...outsiders, held].sort());
+    expect(new Set(everyone.rows.map((r) => r.employmentId)).size).toBe(everyone.rows.length);
+    for (const nobody of [required, processed, notReady]) expect(everyone.rows.some((r) => r.employmentId === nobody), nobody).toBe(false);
+    // Identity only, with what the review needs: the outsiders are additions this run owes nothing; the held one is neither.
+    const byId = new Map(everyone.rows.map((r) => [r.employmentId, r]));
+    expect(outsiders.every((id) => byId.get(id)!.notOwed === true && byId.get(id)!.added === true)).toBe(true);
+    expect(byId.get(held)).toEqual({ employmentId: held, employeeCode: 'SC003', name: 'Fictional Chosen Taxheld' });
+    expect(Object.keys(byId.get(outsiders[0])!).sort()).toEqual(['added', 'employeeCode', 'employmentId', 'name', 'notOwed']);
+
+    // With a search, only the matches (SO010 to SO019).
+    const matching = await reprocessSelectAll(ctx, { batchId, tab: 'skipped', search: 'so01' });
+    expect(ids(matching.rows)).toEqual(outsiders.slice(10, 20).sort());
+    expect(matching.total).toBe(10);
+
+    // The other tabs keep their own Select all: Required is the marked one, Processed / No Change the paid one.
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'required' })).rows)).toEqual([required]);
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'unchanged' })).rows)).toEqual([processed]);
+  }, 120_000);
+});
+
+describe('8a3de8ae · D — after a partial reprocess, the selection is re-seeded from the run', () => {
+  it('two reprocessed, one failed, one tax-held: only the failed one is ticked on arrival; Select all never adds the others', async () => {
+    const ada = await hire('Fictional Ada Done', 'MJ001', 5000);
+    const ben = await hire('Fictional Ben Done', 'MJ002', 4800);
+    const cid = await hire('Fictional Cid Failed', 'MJ003', 4600);
+    const dan = await hire('Fictional Dan Taxheld', 'MJ004', 4400);
+    const eve = await hire('Fictional Eve Paid', 'MJ005', 4200);
+    const batchId = await processedRun();
+    await mark(batchId, [ada, ben, cid, dan]);
+    await refresh(batchId);
+    // Before: all four marked employees are ticked on arrival.
+    expect((await reprocessStaleSelection(ctx, batchId)).rows.map((r) => r.employmentId).sort()).toEqual([ada, ben, cid, dan].sort());
+
+    // Cid's salary record is withdrawn after processing, so his recalculation fails on its own (the job carries on).
+    await owner.client`update compensation set superseded_at=now() where tenant_id=${b.tenantId}::uuid and employment_id=${cid}::uuid and superseded_at is null`;
+    const run = await reprocessSelectedEmployees(ctx, { batchId, employmentIds: [ada, ben, cid], idempotencyKey: randomUUID() });
+    expect(run.status).toBe('completed');
+    // Dan is held by the tax check, recorded as the job's check records it (see the file header).
+    await outcome(batchId, dan, 'skipped', 'TAX_RECALC_REQUIRED');
+
+    const job = await getReprocessJob(ctx, run.jobId);
+    expect(job?.status).toBe('completed');
+    const outcomes = decodeReprocessEmployeeOutcomes(job!.result, job!.employmentIds)!;
+    expect(outcomes).toHaveLength(3);
+    const statusOf = new Map(outcomes.map((o) => [o.employmentId, o.status]));
+    expect(statusOf.get(ada)).toBe('reprocessed');
+    expect(statusOf.get(ben)).toBe('reprocessed');
+    expect(statusOf.get(cid)).toBe('validation_failed');
+    // What the page hands the form as `reprocessedNow`.
+    expect(outcomes.filter((o) => o.status === 'reprocessed').map((o) => o.employmentId).sort()).toEqual([ada, ben].sort());
+
+    // THE FRESH SEED: only the failed employee is still marked and ticked on arrival.
+    expect((await reprocessStaleSelection(ctx, batchId)).rows.map((r) => r.employmentId)).toEqual([cid]);
+    const required = await tabRows(batchId, 'required');
+    expect(ids(required.rows)).toEqual([cid]);
+    const skipped = await tabRows(batchId, 'skipped');
+    expect(ids(skipped.rows)).toEqual([dan]);
+    expect(skipped.rows[0]).toMatchObject({ taxSkipped: true, kind: 'recalculated' });
+
+    // Processed / No Change: the reprocessed two at version 2 (they read Reprocessed after any reload), Eve untouched.
+    const unchanged = await payrollEmployeeSelectionPage(ctx, { batchId, kind: 'reprocess', page: all, tab: 'unchanged' });
+    const version = new Map(unchanged.rows.map((r) => [r.employmentId, r.version]));
+    expect([...version.keys()].sort()).toEqual([ada, ben, eve].sort());
+    expect(version.get(ada)).toBe(2);
+    expect(version.get(ben)).toBe(2);
+    expect(version.get(eve)).toBe(1);
+    expect(unchanged.rows.every((r) => !r.stale)).toBe(true);
+
+    // Select all on Reprocess Required names the failed one only; on Skipped (7aaff171) the tax-held one only.
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'required' })).rows)).toEqual([cid]);
+    expect(ids((await reprocessSelectAll(ctx, { batchId, tab: 'skipped' })).rows)).toEqual([dan]);
   });
 });

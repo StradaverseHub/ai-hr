@@ -6695,6 +6695,7 @@
       "reprocessGapBank": "bank details",
       "reprocessNewCollects": "Adding someone new DOES collect the one-off transactions already waiting for them this month.",
       "reprocessReviewAddNote": "{n} of them are being added to this run for the first time: their payslip is created, the run’s headcount goes up, and their loans, claims and one-off payments are settled with it.",
+      "reprocessReviewNotOwedNote": "{n} of them are not owed anything on this run. Reprocessing includes them as if you had ticked them one by one.",
       "reprocessResultAdded": "Added to this run",
       "reprocessResultAddedCount": "{n} added to this run",
       "reprocessWhyAdded": "This is their first payslip on this run, so there is nothing to compare it with.",
