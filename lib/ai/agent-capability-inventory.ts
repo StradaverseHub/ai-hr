@@ -169,7 +169,7 @@ export const AGENT_CAPABILITY_INVENTORY:Readonly<Record<string,Readonly<Record<s
  "app/admin/personnel/import/movement-actions.ts":{"commitMovementAction":"backlog:approve","movementCatalogAction":"backlog:approve","previewMovementAction":"backlog:automatic"},
  "app/admin/personnel/import/movement/route.ts#route":{"POST":"backlog:approve"},
  "app/admin/personnel/import/section-actions.ts":{"commitSectionAction":"backlog:approve","registerRecordsAction":"backlog:approve","validateSectionAction":"backlog:automatic"},
- "app/admin/personnel/new/actions.ts":{"checkEmployeeCodeAction":"backlog:automatic","createDraftAction":"backlog:approve","createEmployeeAction":"backlog:approve","discardDraftAction":"backlog:approve","saveDraftAction":"backlog:approve"},
+ "app/admin/personnel/new/actions.ts":{"checkEmployeeCodeAction":"backlog:automatic","createDraftAction":"backlog:approve","createEmployeeAction":"backlog:approve","discardDraftAction":"backlog:approve","removeDraftPhotoAction":"backlog:approve","saveDraftAction":"backlog:approve","uploadDraftPhotoAction":"backlog:approve"},
  "app/admin/personnel/profile-changes/actions.ts":{"decideProfileChangeAction":"backlog:approve","rerouteProfileChangeAction":"backlog:approve"},
  "app/admin/privacy/actions.ts":{"erasePersonPiiAction":"handoff:privacy_erasure"},
  "app/admin/privacy/case-handlers/actions.ts":{"designateCaseHandlerAction":"handoff:access_and_authentication","revokeCaseHandlerAction":"handoff:access_and_authentication"},
