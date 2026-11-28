@@ -127,6 +127,10 @@ export const DEFINITION_OF_DONE_GAPS:Readonly<Record<string,readonly string[]>>=
  'page:/admin/settings/people-general','page:/admin/settings/profile-options','page:/admin/settings/system-labels',
  'page:/admin/settings/system-labels/profile-options','page:/admin/system-settings/approval-delegation','page:/admin/system-testing/new',
  'page:/admin/toil','page:/admin/users/access','page:/admin/users/create','page:/admin/users/function-access','page:/admin/users/invite',
+ // Board 0735d1b7 (owner decision, 28 November 2026, "List like siblings"): the duplicate-login and batch invitation pages
+ // carry the same three gaps as the Users pages above; recorded exception, not a precedent for new pages.
+ 'page:/admin/users/duplicates/email','page:/admin/users/duplicates/identity','page:/admin/users/duplicates/merge',
+ 'page:/admin/users/invitations/batch',
  'page:/admin/work-locations','page:/admin/work-locations/clocking/new','page:/admin/work-locations/new','page:/attendance/application-history',
  'page:/attendance/application-history/visible','page:/attendance/daily','page:/attendance/individual','page:/attendance/plan-ot/apply',
  'page:/control-tower/agents/allowances','page:/control-tower/agents/assistant','page:/control-tower/agents/features',
