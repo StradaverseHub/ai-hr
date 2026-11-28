@@ -31,7 +31,11 @@ import {definitionOfDoneInputs} from './definition-of-done-inputs';
 // Board 038c304b (owner decision, 26 November 2026, "List it like its siblings"): one recorded exception, +1 entry
 // (page:/payroll/transactions/cp38, semantic+corpus; its guide gap is closed), beside Zakat, Fixed, TP1 and TP3. Its semantic
 // read would be a new AI guidance purpose, which the standing staging approval does not cover.
-const CEILING={entries:350,semantic:339,guide:231,readiness:4,corpus:333} as const;
+// Board 0735d1b7 (owner decision, 28 November 2026, "List like siblings"): four recorded exceptions, +4 entries
+// (page:/admin/users/duplicates/email, /identity, /merge and page:/admin/users/invitations/batch, semantic+guide+corpus each),
+// beside /admin/users/access, create, function-access and invite under the same group-administrator guard. Their semantic
+// reads would be a new AI guidance purpose, which the standing staging approval does not cover.
+const CEILING={entries:354,semantic:343,guide:235,readiness:4,corpus:337} as const;
 
 const allowed=():Map<string,string[]>=>{const map=new Map<string,string[]>();
  for(const [signature,keys] of Object.entries(DEFINITION_OF_DONE_GAPS))for(const key of keys){
