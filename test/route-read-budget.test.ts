@@ -167,7 +167,7 @@ const WRITE=/^\s*(insert\s+into|update\s+("?[a-z_][a-z0-9_.]*"?\.)?"?[a-z_][a-z0
 type Mode='default'|'pool2'|'pool3'|'without'|'independent';
 const POOL:Partial<Record<Mode,string>>={pool2:'2',pool3:'3'};
 type Measured={route:Route;persona:string;scope:'all'|'one';mode:Mode;transactions:number;statements:number;ms:number;
- output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number;peakCarriers:number};
+ output:unknown;captured:Captured[];refused:Record<string,number>;fallbacks:number;staleSkips:number;peakCarriers:number;unopened:number};
 async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one',mode:Mode):Promise<Measured>{
  state.session=personas[persona];state.pathname=ROUTES[route].pathname();
  state.cookies=scope==='one'?{company_scope:workCompanyId}:{};
@@ -198,7 +198,7 @@ async function render(route:Route,persona:keyof typeof personas,scope:'all'|'one
  });
  const measured={route,persona,scope,mode,transactions:observed.transactions,statements:observed.statements.length,ms:Math.round(observed.ms),output:observed.result,
   captured:observed.statements,refused,fallbacks:stats.reduce((sum,session)=>sum+session.fallbacks,0),staleSkips:stats.reduce((sum,session)=>sum+session.staleSkips,0),
-  peakCarriers:Math.max(0,...stats.map(session=>session.peakCarriers))};
+  peakCarriers:Math.max(0,...stats.map(session=>session.peakCarriers)),unopened:stats.reduce((sum,session)=>sum+session.unopened,0)};
  console.log('ROUTE_BUDGET '+JSON.stringify({route,persona,scope,mode,transactions:measured.transactions,statements:measured.statements,
   ms:measured.ms,refused,failures,fallbacks:measured.fallbacks,staleSkips:measured.staleSkips,peakCarriers:measured.peakCarriers,identities:stats.length,barriers}));
  return measured;
@@ -377,10 +377,10 @@ describe('route read budget: wall time for the audit log and a payroll run, grou
   expect(firstDifference(off.output,pooled.output),'without vs pool3').toBeNull();
   expect(pooled.peakCarriers,'pool3 carriers at once').toBeLessThanOrEqual(4);
   // Unlike the four budgeted routes, these pages have owners that take a barrier and fall back to their own
-  // transaction. An owner that falls back may first have opened a pool carrier for itself alone (BEGIN, identity,
-  // COMMIT), so the bound is the join off plus the pooled render's fallbacks.
-  expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions+pooled.fallbacks);
-  console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,refused:pooled.refused}));
+  // transaction. A carrier begins only for an admitted statement, so an owner refused on its first statement costs
+  // only its own transaction, never a pool carrier for itself alone: never more transactions than the join off.
+  expect(pooled.transactions,'pool3 transactions').toBeLessThanOrEqual(off.transactions);
+  console.log('ROUTE_WALL_TRANSACTIONS '+JSON.stringify({route,off:off.transactions,pool3:pooled.transactions,pool3Fallbacks:pooled.fallbacks,pool3Unopened:pooled.unopened,refused:pooled.refused}));
   // The recorded budget, on the default join (as BUDGETS above), with the same output as the join off.
   const shared=await render(route,'group','all','default');
   expect(firstDifference(off.output,shared.output),'without vs default').toBeNull();

@@ -14,7 +14,8 @@
  * spread over at most that many carriers and never more; every owner and its nested reads stay on one carrier (one
  * snapshot); two owners of one render may read two snapshots, exactly as without the join; an explicit composition
  * never spreads; a pooled composition (the app frame) may take all N, and the page then opens one carrier of its own
- * (N+1 at most) so a page read never queues behind the frame; the stale-carrier rule and every refusal still hold. */
+ * (N+1 at most) so a page read never queues behind the frame; the stale-carrier rule and every refusal still hold; and a
+ * carrier begins its transaction only for an admitted statement, so an owner refused first costs only its own. */
 import {sql} from 'drizzle-orm';
 import {afterAll,afterEach,beforeAll,describe,expect,it} from 'vitest';
 import {requestReadJoinEnabled,requestScopedReadStats,withSharedReadSnapshot,withTenant,withoutDefaultRequestJoin,type SessionContext,type Tx} from '../db/client';
@@ -408,8 +409,8 @@ describe('bounded carrier pool for the default join (AIHR_DEFAULT_REQUEST_READ_C
   expect(roomy.pid).not.toBe(old.pid);
   expect(roomy.at).not.toBe(old.at);
   const [stats2]=await requestScopedReadStats(scope2);
-  // The busy carrier, the one the refused owner opened (and left at once), and the fresh one.
-  expect([stats2.staleSkips,stats2.carriers]).toEqual([0,3]);
+  // The busy carrier, the one the refused owner was given (refused first, it never began), and the fresh one.
+  expect([stats2.staleSkips,stats2.carriers,stats2.unopened]).toEqual([0,3,1]);
   await owner.db.execute(sql`delete from company where id=${added!}::uuid`);
  });
 
@@ -426,6 +427,60 @@ describe('bounded carrier pool for the default join (AIHR_DEFAULT_REQUEST_READ_C
   expect(stats.fallbacks).toBe(4);
   expect(stats.peakCarriers).toBeLessThanOrEqual(size);
   expect(Object.keys(stats.failures)).toEqual([]);
+ });
+
+ it.each([1,2,3] as const)('begins no carrier transaction for an owner refused on its first statement, with a pool of %i',async size=>{
+  pool(size);
+  // As the payroll-history owners send it: a read-only declaration (already in force on a carrier), then the barrier.
+  const refusedFirst=async(tx:Tx)=>{
+   await tx.execute(sql`SET TRANSACTION READ ONLY`);
+   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('carrier-first-refused',0))`);
+   return probeTx(tx);
+  };
+  // Alone: the owner's chosen carrier never begins, so the render pays exactly the owner's own transaction.
+  const aloneScope={};
+  const alone=await observeStatements(()=>render(aloneScope,()=>withTenant(ctxA,refusedFirst)));
+  const aloneOff=await observeStatements(()=>render({},()=>withoutDefaultRequestJoin(()=>withTenant(ctxA,refusedFirst))));
+  expect(alone.result.iso).toBe('read committed');
+  expect(comparable(alone.result)).toEqual(comparable(aloneOff.result));
+  expect([alone.transactions,aloneOff.transactions]).toEqual([1,1]);
+  let [stats]=await requestScopedReadStats(aloneScope);
+  expect([stats.carriers,stats.unopened,stats.fallbacks,stats.refused.barrier,stats.joins]).toEqual([1,1,1,1,1]);
+  expect(Object.keys(stats.failures)).toEqual([]);
+  // Beside readers of the same render: whichever carrier it was given (a fresh one with room in the pool, else a
+  // reader's), it costs no carrier transaction of its own, and the readers still share their carriers.
+  const scope={};
+  const mixed=()=>Promise.all([probe(ctxA),withTenant(ctxA,refusedFirst),probe(ctxA),withTenant(ctxA,refusedFirst)]);
+  const shared=await observeStatements(()=>render(scope,mixed));
+  const off=await observeStatements(()=>render({},()=>withoutDefaultRequestJoin(mixed)));
+  expect(shared.result.map(comparable)).toEqual(off.result.map(comparable));
+  expect(shared.result.map(row=>row.iso)).toEqual(['repeatable read','read committed','repeatable read','read committed']);
+  expect(off.transactions).toBe(4);
+  expect(shared.transactions).toBeLessThanOrEqual(off.transactions);
+  [stats]=await requestScopedReadStats(scope);
+  expect([stats.fallbacks,stats.refused.barrier]).toEqual([2,2]);
+  // Every carrier that began is one transaction, and every one only refused owners were given began none.
+  expect(shared.transactions).toBe(stats.carriers-stats.unopened+stats.fallbacks);
+  // With room in the pool the first refused owner is given a fresh carrier of its own, which never begins.
+  expect(stats.unopened).toBe(size===1?0:1);
+  // The carrier stays usable: the refusals were answered before anything reached it.
+  expect(Object.keys(stats.failures)).toEqual([]);
+ });
+
+ it('an owner refused after its first admitted statement still began its carrier, and reruns alone',async()=>{
+  pool(3);
+  const scope={};
+  const readThenBarrier=async(tx:Tx)=>{
+   const before=await probeTx(tx);
+   await tx.execute(sql`select pg_advisory_xact_lock_shared(hashtextextended('carrier-later-refused',0))`);
+   return {...before,second:await probeTx(tx)};
+  };
+  const shared=await observeStatements(()=>render(scope,()=>withTenant(ctxA,readThenBarrier)));
+  expect([shared.result.iso,shared.result.second.iso]).toEqual(['read committed','read committed']);
+  // The admitted read began the carrier; the barrier then reran the whole owner in its own transaction.
+  expect(shared.transactions).toBe(2);
+  const [stats]=await requestScopedReadStats(scope);
+  expect([stats.carriers,stats.unopened,stats.fallbacks,stats.refused.barrier]).toEqual([1,0,1,1]);
  });
 
  it('pools per identity: another identity in the same render has its own pool',async()=>{
