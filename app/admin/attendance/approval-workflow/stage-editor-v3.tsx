@@ -41,13 +41,13 @@ export function AttendanceStageEditorV3({ id, stages, employees, onChange, probl
                 const employmentIds = [...selected]; [employmentIds[from], employmentIds[to]] = [employmentIds[to], employmentIds[from]];
                 patch(levelIndex, { ...level, source: { ...source, employmentIds } });
             };
-            return <li key={levelIndex} id={`${id}-level-${levelIndex}`} tabIndex={-1} aria-describedby={levelProblems.length ? `${id}-errors-${levelIndex}` : undefined} className="space-y-3 rounded-lg border border-border p-4 outline-offset-4">
-                <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{t('stageNumber', { number: levelIndex + 1 })}</h3><div className="flex flex-wrap gap-2">
+            return <li key={levelIndex} id={`${id}-level-${levelIndex}`} tabIndex={-1} aria-describedby={levelProblems.length ? `${id}-errors-${levelIndex}` : undefined} className="space-y-3 overflow-hidden rounded-lg border border-border pb-4 outline-offset-4 [&>*:not(:first-child)]:mx-4">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/60 px-4 py-3"><h3 className="font-semibold">{t('stageNumber', { number: levelIndex + 1 })}</h3><div className="flex flex-wrap gap-2">
                     <Button type="button" variant="secondary" disabled={levelIndex === 0} onClick={() => moveLevel(levelIndex, levelIndex - 1)}>{t('moveUp')}</Button>
                     <Button type="button" variant="secondary" disabled={levelIndex === stages.length - 1} onClick={() => moveLevel(levelIndex, levelIndex + 1)}>{v3('moveDown')}</Button>
                     <Button type="button" variant="secondary" disabled={stages.length === 1} onClick={() => update(stages.filter((_, i) => i !== levelIndex))}>{t('remove')}</Button>
                 </div></div>
-                <fieldset className="space-y-2"><legend className="mb-2 text-sm font-medium">{v3('mode')}</legend>{(['sequential', 'any_one'] as const).map(mode => <label key={mode} className="flex items-start gap-2 text-sm">
+                <fieldset className="grid gap-3 sm:grid-cols-2"><legend className="mb-2 text-[13px] font-medium text-muted-foreground">{v3('mode')}</legend>{(['sequential', 'any_one'] as const).map(mode => <label key={mode} className="flex cursor-pointer items-start gap-2 rounded-lg border border-border p-3 text-sm has-[:checked]:border-primary has-[:checked]:bg-primary/5">
                     <input type="radio" className="mt-1" name={`${id}-mode-${levelIndex}`} value={mode} checked={level.mode === mode} onChange={() => patch(levelIndex, { ...level, mode })}/>
                     <span><span className="font-medium">{v3(mode === 'sequential' ? 'sequential' : 'anyOne')}</span><span className="block text-xs text-muted-foreground">{v3(mode === 'sequential' ? 'sequentialHelp' : 'anyOneHelp')}</span></span>
                 </label>)}</fieldset>

@@ -2,17 +2,14 @@ import type { AttendanceResolvedStage } from '../lib/attendance-workflow';
 import { attendanceApplicationReviewTx, attendanceProgressTx } from './attendance-application-review';
 import type { AttendanceProgress } from '../lib/attendance-progress';
 /** One scoped read model over attendance_correction; no copied application records. */
-import { and, asc, eq, inArray, isNull, sql, type SQL } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql, type SQL } from 'drizzle-orm';
 import { type SessionContext, type Tx } from '../db/client';
 import { withAttendanceTenant as withTenant } from './module-gate';
-import { attendanceCorrection as correction, employment, person, company, department, businessUnit, jobGrade, profileOption, domainEvent, appUser, position } from '../db/schema';
-import { CATEGORY_EMPLOYMENT_COLUMN, EMPLOYMENT_PROFILE_CATEGORIES } from './profile-options';
-import type { AttendanceCriteriaGroup } from '../lib/attendance-workflow';
-import { attendanceWorkflowsForTx, attendanceWorkflowForTx, attendanceApproverCodesForRequestsTx } from './attendance-workflow';
+import { attendanceCorrection as correction, employment, person, company, domainEvent, appUser } from '../db/schema';
+import { attendanceWorkflowsForTx, attendanceWorkflowForTx, attendanceApproverCodesForRequestsTx, attendanceWorkflowCatalogueTx, selectedAttendanceApproverLabelsTx } from './attendance-workflow';
 
 import { attendanceApplicationType, type AttendanceApplicationType } from '../lib/attendance-workflow';
 import { todayInKualaLumpur } from '../lib/hr-date';
-import { visibleLabelIdsCondition } from './system-labels';
 import { checkedAttendanceHistoryFilter, attendanceHistoryId, type AttendanceHistoryFilter } from '../lib/attendance-history-filter';
 import { hasGrantFor, withEffectiveGrants } from '../lib/authz-model';
 export type { AttendanceHistoryFilter } from '../lib/attendance-history-filter';
@@ -168,30 +165,17 @@ export async function attendanceApplicationDetail(ctx: SessionContext, companyId
         return { ...row, applicationType: attendanceApplicationType(row.application), workflow, events, review, progress, approverCodes, canReassign: !self && row.application.status === 'pending' && (workflow?.routingVersion === 2 || (workflow?.routingVersion === 3 || workflow?.routingVersion === 4)) && workflow.currentStage < workflow.stages.length, canDecide, canCancel: !self && (row.application.status === 'pending' || row.application.status === 'approved') };
     });
 }
+/** Application History's filter options. The option lists come from the workflow catalogue (one owner); the employee
+ * filter keeps its full list of employments in scope (a separate follow-up). Board 03cb9b74 removed the all-company
+ * approver pre-list and availability check, which no History control used and which cost ~12 s on a large group. */
 export function attendanceApplicationFilterOptions(ctx: SessionContext, companyIds: string[],selectedApproverIds:readonly string[]=[]) {
     if(selectedApproverIds.length>100||selectedApproverIds.some(id=>!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)))throw new Error('Invalid selected employee identities.');
     admin(ctx);
     return withTenant(ctx, async (tx) => {
-        if (!companyIds.length)
-            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
-        const companies = await tx.select({ id: company.id, name: company.legalName }).from(company).where(and(inArray(company.id, companyIds), sql `app.is_admin_for(${company.id})`)).orderBy(asc(company.legalName));
+        const catalogue = await attendanceWorkflowCatalogueTx(tx, companyIds);
+        const { companies } = catalogue;
         if (!companies.length)
-            return { companies: [], departments: [], businessUnits: [], grades: [], divisions: [], employees: [], positions: [], profileFields: {} };
-        const departments = await tx.select({ id: department.id, name: department.name }).from(department).where(and(isNull(department.archivedAt), visibleLabelIdsCondition(department, 'department', companies.map(c => c.id)))).orderBy(asc(department.name));
-        const businessUnits = await tx.select({ id: businessUnit.id, name: businessUnit.name }).from(businessUnit).where(and(isNull(businessUnit.archivedAt), visibleLabelIdsCondition(businessUnit, 'business_unit', companies.map(c => c.id)))).orderBy(asc(businessUnit.name));
-        const grades = await tx.select({ id: jobGrade.id, name: jobGrade.name }).from(jobGrade).where(isNull(jobGrade.archivedAt)).orderBy(asc(jobGrade.rank), asc(jobGrade.name));
-        const divisions = await tx.select({ id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(eq(profileOption.category, 'division'), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label));
-        const positions = await tx.select({ id: position.id, name: position.title }).from(position).where(and(isNull(position.archivedAt), visibleLabelIdsCondition(position, 'position', companies.map(c => c.id)))).orderBy(asc(position.title), asc(position.id));
-        const profileOptions = await tx.select({ category: profileOption.category, id: profileOption.value, name: profileOption.label }).from(profileOption).where(and(inArray(profileOption.category, [...EMPLOYMENT_PROFILE_CATEGORIES]), eq(profileOption.isActive, true))).orderBy(asc(profileOption.sortOrder), asc(profileOption.label), asc(profileOption.id));
-        const profileFields: Partial<Record<keyof AttendanceCriteriaGroup, { id: string; name: string }[]>> = {};
-        for (const option of profileOptions) {
-            const category=EMPLOYMENT_PROFILE_CATEGORIES.find(value=>value===option.category);
-            if(!category)continue;
-            const field=CATEGORY_EMPLOYMENT_COLUMN[category]?.[0];
-            if(!field)continue;
-            const key=field as keyof AttendanceCriteriaGroup;
-            const values = profileFields[key] ?? []; values.push({ id: option.id, name: option.name }); profileFields[key] = values;
-        }
+            return { ...catalogue, employees: [] };
         // Extend the existing authorised options, rather than introducing a wider employee reader.
         // One dated assignment supplies the choice-only narrowers; application filters remain separate.
         const employees = await tx.execute(sql`SELECT e.id,p.full_name AS name,e.employee_code AS "employeeCode",
@@ -212,13 +196,8 @@ export function attendanceApplicationFilterOptions(ctx: SessionContext, companyI
             terminatedOn:string|null; departmentId:string|null; department:string|null;
             businessUnitId:string|null; businessUnit:string|null;
           }[];
-        const approverEmployees = await tx.execute(sql`select id,name,employee_code as "employeeCode" from app.attendance_workflow_v3_approver_options(ARRAY[${sql.join(companies.map(row => sql`${row.id}::uuid`), sql`, `)}]::uuid[]) limit 50`) as unknown as { id: string; name: string; employeeCode: string | null }[];
-        if(selectedApproverIds.length){
-          const selected=await tx.execute<{id:string;name:string;employeeCode:string|null}>(sql`select e.id,p.full_name as name,e.employee_code as "employeeCode" from employment e join person p on p.id=e.person_id and p.tenant_id=e.tenant_id where e.tenant_id=${ctx.tenantId}::uuid and e.id in (${sql.join(selectedApproverIds.map(id=>sql`${id}::uuid`),sql`, `)}) and app.is_admin_for(e.company_id) and app.access_workforce_employment(e.id,'workforce.view')`);
-          for(const employee of selected)if(!approverEmployees.some(row=>row.id===employee.id))approverEmployees.push(employee);
-        }
-        const availability=companies.length===1?await tx.execute(sql`select app.attendance_workflow_approver_availability(${companies[0].id}::uuid) as reason`) as unknown as {reason:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible'|null}[]:[];
+        const approverEmployees = await selectedAttendanceApproverLabelsTx(tx, ctx.tenantId, selectedApproverIds);
         const [allCompany]=await tx.execute<{ok:boolean}>(sql`select app.principal_snapshot_current() and app.is_admin_for(NULL::uuid) as ok`);
-        return { canManageAllCompanies:allCompany?.ok===true, companies, departments, businessUnits, grades, divisions, employees, approverEmployees, approverAvailability:availability[0]?.reason??undefined, positions, profileFields };
+        return { ...catalogue, canManageAllCompanies:allCompany?.ok===true, employees, approverEmployees };
     });
 }

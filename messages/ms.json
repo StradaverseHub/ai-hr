@@ -28780,7 +28780,11 @@
       "escalationDays": "Tempoh Eskalasi (Hari)",
       "escalationHelp": "Hari kalendar, dikira dari hari selepas permohonan sampai ke tahap ini. Semakan setiap malam memindahkannya ke tahap seterusnya; ia tidak sekali-kali diluluskan atau ditolak secara automatik.",
       "escalationInvalid": "Masukkan bilangan hari dalam nombor bulat dari 1 hingga 365.",
-      "escalationFinal": "Tahap akhir – tiada eskalasi lanjut"
+      "escalationFinal": "Tahap akhir – tiada eskalasi lanjut",
+      "levelSummary": "{mode} – {source}{others, plural, =0 {} other { dan # sumber lagi}}",
+      "escalationAfter": "Hala secara automatik ke peringkat seterusnya jika tiada kelulusan atau penolakan selepas",
+      "escalationDaysUnit": "hari",
+      "ccNumber": "CC {number}"
     },
     "chooseCompanies": "Pilih syarikat",
     "searchCompanies": "Cari syarikat yang dibenarkan",
@@ -28823,7 +28827,11 @@
       "groupNumber": "Kumpulan {number}",
       "remove": "Buang kumpulan {number}",
       "add": "+ Tambah kumpulan ATAU",
-      "everyone": "Semua pekerja syarikat yang dipilih"
+      "everyone": "Semua pekerja syarikat yang dipilih",
+      "summary": "Padanan: {conditions}",
+      "condition": "{field} ialah {values}",
+      "more": "Syarat lain",
+      "moreSet": "{count} ditetapkan"
     },
     "copy": {
       "action": "Salin",
@@ -28889,6 +28897,21 @@
         "login_unusable": "Pelulus tiada log masuk unik yang boleh digunakan untuk syarikat pekerja ini. Minta HR membetulkan log masuk mereka."
       },
       "pendingActivation": "Akaun belum diaktifkan – permohonan akan menunggu pelulus ini"
+    },
+    "form": {
+      "sections": "Bahagian aliran kerja",
+      "details": "Butiran aliran kerja",
+      "detailsHelp": "Namakan aliran kerja dan pilih syarikat yang diliputinya.",
+      "appliesTo": "Kepada siapa ia digunakan",
+      "levelsHelp": "Permohonan melalui peringkat mengikut turutan.",
+      "save": "Pratonton dan simpan",
+      "previewHelp": "Pratonton tugasan menunjukkan siapa yang diliputi oleh aliran kerja ini, serta sebarang masalah laluan, sebelum anda menyimpan.",
+      "groupCount": "{count} kumpulan",
+      "levelCount": "{count} peringkat",
+      "unsaved": "Anda mempunyai perubahan yang belum disimpan"
+    },
+    "list": {
+      "andMore": "dan {count} lagi"
     }
   },
   "attendanceHistory": {

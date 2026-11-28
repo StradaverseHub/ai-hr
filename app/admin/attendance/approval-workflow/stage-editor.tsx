@@ -19,8 +19,8 @@ export function AttendanceStageEditor({ stages, onChange, routingVersion = 1 }: 
   return <div className="space-y-4">
     <ApprovalMode anyOne={anyOne} onChange={value => value ? alternate(0) : update(stages.map(stage => ({ ...stage, level: { ...stage.level, alternates: [] } })))} labels={{ modeTitle: shared('modeTitle'), modeSequential: shared('modeSequential'), modeSequentialHint: shared('modeSequentialHint'), modeAnyOne: shared('modeAnyOne'), modeAnyOneHint: shared('modeAnyOneHint') }}/>
     <p className="text-sm text-muted-foreground">{t('orderedHelp')}</p>
-    <ol className="space-y-4">{stages.map((stage, index) => <li key={index} className="space-y-3 rounded-lg border border-border p-4">
-      <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="font-semibold">{t('stageNumber', { number: index + 1 })}</h3><div className="flex flex-wrap gap-2">
+    <ol className="space-y-4">{stages.map((stage, index) => <li key={index} className="space-y-3 overflow-hidden rounded-lg border border-border pb-4 [&>*:not(:first-child)]:mx-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 bg-muted/60 px-4 py-3"><h3 className="font-semibold">{t('stageNumber', { number: index + 1 })}</h3><div className="flex flex-wrap gap-2">
         <Button type="button" variant="secondary" disabled={index === 0} onClick={() => move(index, index - 1)}>{t('moveUp')}</Button>
         <Button type="button" variant="secondary" disabled={index === stages.length - 1} onClick={() => move(index, index + 1)}>{shared('moveDown')}</Button>
         <Button type="button" variant="secondary" disabled={stages.length === 1} onClick={() => update(stages.filter((_, i) => i !== index))}>{t('remove')}</Button>

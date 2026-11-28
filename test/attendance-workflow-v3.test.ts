@@ -7,7 +7,7 @@ import { withTenant, type SessionContext } from '../db/client';
 import * as schema from '../db/schema';
 import { hireEmployee, setReportingLine } from '../core/org';
 import { checkIn, checkOut, requestAttendanceCorrection, pendingAttendanceTaskMetadata, decideAttendanceCorrection, listAttendanceCorrections, addAttendanceCorrectionAttachment, getAttendanceCorrectionAttachment } from '../core/attendance';
-import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx } from '../core/attendance-workflow';
+import { saveAttendanceWorkflow, setAttendanceWorkflowEnabled, previewAttendanceWorkflow, reassignAttendanceWorkflowStageToHr, hasPendingAttendanceParticipantAssignment, decideAttendanceWorkflowStageTx, searchAttendanceApprovers, attendanceWorkflowFormOptions } from '../core/attendance-workflow';
 import { attendanceApplicationDetail, attendanceApplicationFilterOptions } from '../core/attendance-application-history';
 import { listPendingTasks } from '../core/approvals-inbox';
 import { createBatch } from '../packs/payroll/service';
@@ -51,12 +51,13 @@ describe('Attendance v3 participant owner and exact request capability', () => {
         const second = await actor('Fictional second company choice', 'employee', department.id, { ...b, companyId: company.id, deptB: department.id });
         const empty = await attendanceApplicationFilterOptions(adminCtx(b), []);
         expect(empty.companies).toEqual([]);
-        const single = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId]);
-        expect(single.approverEmployees?.map(row => row.id)).toContain(first.employmentId);
-        expect(single.approverEmployees?.map(row => row.id)).toContain(second.employmentId); // The candidate has an actual tenant-wide employee grant.
-        const both = await attendanceApplicationFilterOptions(adminCtx(b), [b.companyId, company.id]);
+        // 03cb9b74: approver choices are searched when the picker opens (no page pre-list); the same eligibility decides.
+        const eligible = async (companyIds: string[]) => (await searchAttendanceApprovers(adminCtx(b), { companyIds, query: 'company choice', page: 0 })).rows.filter(row => row.eligible).map(row => row.id);
+        expect(await eligible([b.companyId])).toEqual(expect.arrayContaining([first.employmentId, second.employmentId])); // The candidate has an actual tenant-wide employee grant.
+        const both = await attendanceWorkflowFormOptions(adminCtx(b), [b.companyId, company.id]);
         expect(both.companies.map(row => row.id).sort()).toEqual([b.companyId, company.id].sort());
-        expect(both.approverEmployees?.map(row => row.id)).toEqual(expect.arrayContaining([first.employmentId, second.employmentId]));
+        expect(both.approverEmployees).toEqual([]);
+        expect(await eligible([b.companyId, company.id])).toEqual(expect.arrayContaining([first.employmentId, second.employmentId]));
     });
 
     it('allows exact ordinary employees to decide in order without granting general Personnel rights', async () => {

@@ -175,9 +175,11 @@ export type AttendanceWorkflowOptions = {
     grades: { id: string; name: string }[];
     divisions: { id: string; name: string }[];
     positions?: { id: string; name: string }[];
+    /** Employee / Employees criterion labels. The workflow pages carry only the employees a workflow already names
+     * (people are searched, board 03cb9b74); Application History still carries its full filter list. */
     employees?: { id: string; name: string; employeeCode?: string | null }[];
+    /** Labels of the named approvers (and CC employees) a workflow already names; others are searched. */
     approverEmployees?: { id: string; name: string; employeeCode?: string | null }[];
-    approverAvailability?:'available'|'noEmployees'|'noActiveEmployees'|'noLinkedLogin'|'noEligible';
     profileFields?: Partial<Record<keyof AttendanceCriteriaGroup, { id: string; name: string }[]>>;
 };
 /** One presentation descriptor for form, company list and View/Edit; values remain Personnel-owned. */

@@ -28780,7 +28780,11 @@
       "escalationDays": "Thời hạn chuyển cấp (ngày)",
       "escalationHelp": "Tính theo ngày lịch, từ ngày sau khi yêu cầu đến cấp này. Một lần kiểm tra hằng đêm sẽ chuyển yêu cầu lên cấp tiếp theo; yêu cầu không bao giờ được tự động phê duyệt hay từ chối.",
       "escalationInvalid": "Nhập số ngày là số nguyên từ 1 đến 365.",
-      "escalationFinal": "Cấp cuối – không chuyển cấp thêm"
+      "escalationFinal": "Cấp cuối – không chuyển cấp thêm",
+      "levelSummary": "{mode} – {source}{others, plural, =0 {} other { và # nguồn khác}}",
+      "escalationAfter": "Tự động chuyển sang cấp tiếp theo nếu không có phê duyệt hoặc từ chối sau",
+      "escalationDaysUnit": "ngày",
+      "ccNumber": "CC {number}"
     },
     "chooseCompanies": "Chọn công ty",
     "searchCompanies": "Tìm công ty được phép",
@@ -28823,7 +28827,11 @@
       "groupNumber": "Nhóm {number}",
       "remove": "Xóa nhóm {number}",
       "add": "+ Thêm nhóm HOẶC",
-      "everyone": "Tất cả nhân viên của các công ty đã chọn"
+      "everyone": "Tất cả nhân viên của các công ty đã chọn",
+      "summary": "Khớp: {conditions}",
+      "condition": "{field} là {values}",
+      "more": "Điều kiện khác",
+      "moreSet": "Đã đặt {count}"
     },
     "copy": {
       "action": "Sao chép",
@@ -28889,6 +28897,21 @@
         "login_unusable": "Người duyệt không có tài khoản đăng nhập duy nhất dùng được cho công ty của nhân viên này. Hãy nhờ HR sửa tài khoản."
       },
       "pendingActivation": "Tài khoản chưa được kích hoạt – các yêu cầu sẽ chờ người phê duyệt này"
+    },
+    "form": {
+      "sections": "Các phần của quy trình",
+      "details": "Chi tiết quy trình",
+      "detailsHelp": "Đặt tên quy trình và chọn các công ty áp dụng.",
+      "appliesTo": "Áp dụng cho ai",
+      "levelsHelp": "Yêu cầu đi qua các cấp theo thứ tự.",
+      "save": "Xem trước và lưu",
+      "previewHelp": "Xem trước phân công cho biết quy trình này áp dụng cho ai và các vấn đề về tuyến duyệt, trước khi bạn lưu.",
+      "groupCount": "{count} nhóm",
+      "levelCount": "{count} cấp",
+      "unsaved": "Bạn có thay đổi chưa lưu"
+    },
+    "list": {
+      "andMore": "và {count} công ty khác"
     }
   },
   "attendanceHistory": {

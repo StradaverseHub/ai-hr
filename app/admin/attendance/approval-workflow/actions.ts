@@ -77,6 +77,17 @@ export async function searchAttendanceApproversAction(input:{companyIds:string[]
  }catch(error){return {ok:false as const,error:await publicError(error)};}
 }
 
+/** Employee / Employees criterion search (board 03cb9b74): the same guard and company-scope check as the approver
+ * search; one keyset page of 50 employments of the administered companies, by Employee ID or name. */
+export async function searchAttendanceWorkflowEmployeesAction(input:{companyIds:string[];query:string;after?:{name:string;id:string}|null}){
+ const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
+ try{
+  if(!input||!Array.isArray(input.companyIds)||input.companyIds.some(id=>!(allowedCompanyIds??scopeIds).includes(id)))throw new AttendanceWorkflowError('scope','Select companies in your permitted scope.');
+  const {searchAttendanceWorkflowEmployees}=await import('@/packs/attendance/service');
+  return {ok:true as const,value:await searchAttendanceWorkflowEmployees(s,{companyIds:input.companyIds,query:input.query,after:input.after??null})};
+ }catch(error){return {ok:false as const,error:await publicError(error)};}
+}
+
 export async function archiveAttendanceWorkflowAction(lineageId:string,version:number){
  const {s,scopeIds,allowedCompanyIds}=await scopedAdmin();
  try{const current=await getAttendanceWorkflow(s,lineageId,allowedCompanyIds??scopeIds);if(!current)throw new AttendanceWorkflowError('stale','The workflow changed. Reload.');await archiveAttendanceWorkflow(s,lineageId,version);revalidatePath(LIST);revalidatePath(`${LIST}/${lineageId}`);return{ok:true as const,companyId:current.companyId,applicationType:current.applicationType};}
