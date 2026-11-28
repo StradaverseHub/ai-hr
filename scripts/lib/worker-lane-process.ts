@@ -22,6 +22,7 @@ import {WORKER_UNEXPECTED_EXIT_CODE} from '../../core/worker-lane-supervisor';
 import {client,createDb} from '../../db/client';
 import {openImportWorkerOwner} from '../../db/worker-connection';
 import {movementWorkbookKeyReady} from '../../lib/movement-workbook-metadata.server';
+import {workerInternalAuthWarning} from '../../lib/internal-auth/worker-environment';
 import {IMPORT_WORKER_STALL_ENV,importWorkerStallSeconds,startImportWorkerWatchdog} from '../../lib/import-worker-watchdog';
 
 export function runWorkerProcess(){
@@ -58,6 +59,8 @@ export function runWorkerProcess(){
   console.error(`Import worker serves ${lanes.length===WORKER_LANES.length?'all lanes':`lane ${lanes[0]}`} (${handlers.length} job kinds, ${WORKER_LANE_ENV}).`);
   // Other imports keep running; only Movement workbook checks fail, so warn loudly instead of refusing to start.
   if(!movementWorkbookKeyReady())console.error('Import worker: MOVEMENT_IMPORT_WORKBOOK_KEY/_ID are missing or invalid in its environment. Movement Excel imports will fail with "Workbook signing is not configured" until the web process values are copied into /etc/aihr/import-worker.env.');
+  // Likewise only batch account invitations need embedded login's settings; every other job keeps running.
+  const authWarning=workerInternalAuthWarning();if(authWarning)console.error(authWarning);
   try{do{
    const worked=await runWorkerLaneIteration({owner,probationOwner,lanes,handlers,ticks,enter:phase=>watchdog.enter(phase)});
    if(once)break;

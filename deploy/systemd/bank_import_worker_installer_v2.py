@@ -24,7 +24,9 @@ UNIT=Path('/etc/systemd/system/aihr-bank-import.service')
 USER='aihr-import'
 LOCK_DIRECTORY=Path('/run/aihr-bank-import')
 BASE_ENV={'PATH':'/usr/sbin:/usr/bin:/sbin:/bin','LANG':'C.UTF-8'}
-ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','MOVEMENT_IMPORT_WORKBOOK_KEY','MOVEMENT_IMPORT_WORKBOOK_KEY_ID','AIHR_WORKER_LANES'}
+ENV_KEYS={'DATABASE_URL','MIGRATION_DATABASE_URL','AUDIT_HASH_CHAIN_ENABLED','NODE_EXTRA_CA_CERTS','PGSSLMODE','PGSSLROOTCERT','PGSSLCERT','PGSSLKEY','MOVEMENT_IMPORT_WORKBOOK_KEY','MOVEMENT_IMPORT_WORKBOOK_KEY_ID','AIHR_WORKER_LANES','AUTH_PROVIDER','AUTH_PUBLIC_ORIGIN','AUTH_SESSION_KEY'}
+# The AUTH_* keys are the web process's exact embedded-login settings: the worker sends batch account invitations
+# (deploy/internal-auth/WORKER-ACCOUNT-EMAIL.md). AUTH_SESSION_KEY is secret; no helper message ever prints a value.
 # ADR 0181 J1.2: AIHR_WORKER_LANES makes the unit's main process supervise one child per listed lane (plus one
 # all-lane child) inside this same unit; the unit bytes, its pool setting and every tool's checks are unchanged.
 WORKER_LANES=('payroll','tax','import','export')

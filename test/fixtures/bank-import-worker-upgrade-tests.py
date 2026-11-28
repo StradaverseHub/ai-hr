@@ -1486,6 +1486,44 @@ class ProductionEnvironmentRebindTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'drained previous release'):f.rollback({'previous-worker-env-sha256':'c'*64})
             self.assertEqual(f.mutations()[before:],[])
 
+AUTH_SECRET='a1'*32  # fictional 32-byte hex session key, never a real installation key
+AUTH_KEYS={'AUTH_PROVIDER':'internal','AUTH_PUBLIC_ORIGIN':'https://hr.example.test','AUTH_SESSION_KEY':AUTH_SECRET}
+
+class WorkerInternalAuthEnvironmentTests(unittest.TestCase):
+    """Batch account invitations run in the worker: the web's exact AUTH_* settings are reviewed keys of its environment."""
+    STAGING=StagingEnvironmentRebindTests.STAGING
+    v2=staticmethod(StagingEnvironmentRebindTests.v2)
+    staging_fixture=StagingEnvironmentRebindTests.fixture
+    def test_internal_auth_settings_are_reviewed_keys(self):
+        for key in AUTH_KEYS:self.assertIn(key,install.ENV_KEYS)
+        self.assertNotIn('AUTH_DEFAULT_ORGANIZATION',install.ENV_KEYS);self.assertNotIn('KEYCLOAK_ADMIN_CLIENT_SECRET',install.ENV_KEYS)
+    def test_staging_rebind_accepts_added_internal_auth_settings_without_printing_the_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.staging_fixture(tmp,added=AUTH_KEYS);rebind={'previous-worker-env-sha256':f.previous_env_hash}
+            f.invoke('drain',rebind);f.web=f.source;f.invoke('activate',rebind)
+            accepted=json.loads((f.app/'releases'/f.source/'worker-install-v2.json').read_text())
+            self.assertEqual(accepted['selectedEnvironmentSha256'],f.env_hash);self.assertEqual(f.unit.read_text(),f.service_unit(f.source))
+            self.assertNotIn(AUTH_SECRET,json.dumps(accepted))
+            for record in f.operation.rglob('*.json'):self.assertNotIn(AUTH_SECRET,record.read_text())
+    def test_staging_refuses_an_unquoted_session_key_line_without_printing_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=self.staging_fixture(tmp,raw=self.v2(self.STAGING)+'AUTH_SESSION_KEY='+AUTH_SECRET+'\n')
+            with self.assertRaisesRegex(ValueError,'unreviewed syntax') as caught:f.invoke('drain',{'previous-worker-env-sha256':f.previous_env_hash})
+            self.assertFalse(f.operation.exists());self.assertNotIn(AUTH_SECRET,''.join(traceback.format_exception(caught.exception)))
+    def test_production_rebind_accepts_added_internal_auth_settings_without_printing_the_key(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=ProductionUpdateFixture(Path(tmp).resolve());f.previous_env_hash=f.env_hash
+            f.values={**f.values,**AUTH_KEYS};f.write_env(f.render(f.values));f.process('123',f.previous_release)
+            rebind={'previous-worker-env-sha256':f.previous_env_hash};f.drain(rebind);f.install_new_web();accepted=f.activate(rebind)
+            self.assertEqual(accepted['selectedEnvironmentSha256'],f.env_hash)
+            for text in (f.stdout,f.stderr,json.dumps(accepted)):self.assertNotIn(AUTH_SECRET,text)
+    def test_production_refuses_a_worker_started_before_the_settings_were_added(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            f=ProductionUpdateFixture(Path(tmp).resolve());f.previous_env_hash=f.env_hash
+            f.values={**f.values,**AUTH_KEYS};f.write_env(f.render(f.values))
+            with self.assertRaisesRegex(ValueError,'live worker environment differs') as caught:f.drain({'previous-worker-env-sha256':f.previous_env_hash})
+            self.assertEqual(f.mutations(),[]);self.assertNotIn(AUTH_SECRET,''.join(traceback.format_exception(caught.exception)))
+
 class WorkerLaneEnvironmentTests(unittest.TestCase):
     """ADR 0181 J1.2: lanes run as children of the one unit; the unit and its exact pool setting are unchanged."""
     def test_unit_keeps_one_service_and_exactly_the_reviewed_pool(self):

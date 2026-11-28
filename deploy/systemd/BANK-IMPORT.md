@@ -18,7 +18,10 @@ its separately authorized installation; this document and the service template d
    `MIGRATION_DATABASE_URL`, including this installation's TLS options, plus the web process's exact
    `MOVEMENT_IMPORT_WORKBOOK_KEY` and `MOVEMENT_IMPORT_WORKBOOK_KEY_ID` (the worker checks uploaded
    Movement workbooks; without them every Movement Excel check fails with "Workbook signing is not
-   configured", and different values reject every downloaded template). Keep owner credentials out of
+   configured", and different values reject every downloaded template), and the web process's exact
+   `AUTH_PROVIDER`, `AUTH_PUBLIC_ORIGIN` and `AUTH_SESSION_KEY` (the worker sends "By Batch Send Invitation"
+   account email; without them every invitation fails with "The email service is not available", see
+   [WORKER-ACCOUNT-EMAIL.md](../internal-auth/WORKER-ACCOUNT-EMAIL.md)). Keep owner credentials out of
    the web service. The worker uses the owner connection only for queue discovery, coordination and
    terminal operational failure; canonical HR changes always use the app-role connection and the
    submitting actor's database-captured grants, checked against current access on every transaction.
