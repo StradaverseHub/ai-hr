@@ -32,7 +32,7 @@ Verify observable outcomes with real authorized fixtures, failure paths and rend
 
 ## Database changes
 
-Append migrations and journal entries; applied SQL bytes are immutable. Coordinate allocation using [migration allocation](docs/MIGRATION-ALLOCATION.md). Check timestamp watermarks and ordered applied hashes: a lower timestamp can be silently skipped. New tables need grants as well as RLS. Review every writer before constraints; NOT VALID still affects subsequent writes. Shadow migration and populated-baseline rehearsal cover different risks. Verify any required data script separately; deployment does not imply it ran.
+Append migrations and journal entries; applied SQL bytes are immutable. Coordinate allocation using [migration allocation](docs/MIGRATION-ALLOCATION.md); before reserving, run `node .github/ci/check-migration-collisions.mjs --local --next`, and the `Migration collisions` pull-request check refuses a slot main or an earlier open PR already uses. Check timestamp watermarks and ordered applied hashes: a lower timestamp can be silently skipped. New tables need grants as well as RLS. Review every writer before constraints; NOT VALID still affects subsequent writes. Shadow migration and populated-baseline rehearsal cover different risks. Verify any required data script separately; deployment does not imply it ran.
 
 Local database settings are disposable and machine-specific. Inspect the rebuild script and active configuration before use. Never apply local RAM-disk/fsync settings to an installation or run the demo seed as a documentation refresh.
 

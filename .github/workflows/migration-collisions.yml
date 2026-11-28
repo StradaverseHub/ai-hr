@@ -1,0 +1,38 @@
+name: Migration collisions
+run-name: Migration slot check · PR ${{ github.event.pull_request.number }}
+# Refuses a migration whose number, journal idx or `when` is already used on main or by an earlier open pull
+# request (.github/ci/check-migration-collisions.mjs). Read-only: it reads journals through the API and changes nothing.
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - 'db/migrations/**'
+      - '.github/ci/check-migration-collisions.mjs'
+      - '.github/ci/migration-collisions.test.mjs'
+      - '.github/workflows/migration-collisions.yml'
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: migration-collisions-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  slots:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: '22.23.3'
+      - name: Collision rules
+        run: node --test .github/ci/migration-collisions.test.mjs
+      - name: This pull request against main and every other open pull request
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_CREATED_AT: ${{ github.event.pull_request.created_at }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: node .github/ci/check-migration-collisions.mjs --ci
