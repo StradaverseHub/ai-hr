@@ -511,6 +511,7 @@ export const APPROVED_UPGRADE_TAIL=[
  {idx:10960,when:1795495007560,tag:'7560_payroll_recalc_pending'},
  // Board 5084d02e — the Form TP3 import kind and its scoped Import Log definer.
  {idx:10970,when:1795495007570,tag:'7570_tp3_import_job'},
+ {idx:10980,when:1795495007580,tag:'7580_slow_page_indexes'},
  // Board 4197534a — the Overtime Pattern draft's planned Eligibility (nullable column and its reference trigger).
  {idx:11020,when:1795495007620,tag:'7620_overtime_pattern_planned_eligibility'},
 ] as const;
@@ -549,6 +550,7 @@ const APPROVED_UPGRADE_HASHES:Record<string,string>={
  '7550_payroll_group_tax_opening':'a1b8c2d3e074f5a67943c13b0d999f285ba42377bbcc5e5245897dba5409d491',
  '7560_payroll_recalc_pending':'2ed8d79355ad5b105f33f06f61952bc3aa0b5b4fd2e600034bfd0482ff94b94f',
  '7570_tp3_import_job':'3a1388043be5589123fd925c5bae120d933a7dd23e3f8d0747cd4b083692ef79',
+ '7580_slow_page_indexes':'18930d7742e81adbede8cbcce550c8048280e0a30eb2712245a02ee067c83ff3',
  '7620_overtime_pattern_planned_eligibility':'6faf85476c67e873dfabde8a28130eab8be54ed3d5ae5fdaf579cebfe514356d',
  '7110_payroll_draft_tax_readiness':'e4dd705e57e86344325f407fdf5f73e7d50838bc24475f5317e25afc088cb439',
  '7100_payroll_run_company_review':'558adf2530aa3961163841b6df000b3dbcc9af30d21e309258e3b2a72f2b5ec6',

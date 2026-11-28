@@ -6,8 +6,13 @@ import {V15_POSTGRES_PROFILE} from './postgres-evidence.mjs';
 export const CI_EXECUTION={workers:2,postgres:V15_POSTGRES_PROFILE,scheduling:DB_SCHEDULING};
 export const DB_BATCH_FILES=24;
 export const NODB_BATCH_FILES=256;
-/** Database files that start their own web server and browser run alone: two full gates on 17-18 Nov 2026 lost the runner of the 24-file unit holding this file (44011466586, 44065545160). Every file stays mandatory. */
-export const ISOLATED_DB_FILES=Object.freeze(['test/operational-visual-browser.test.ts','test/system-label-exchange-browser.test.ts']);
+/** Database files that run alone in their own unit. Every file stays mandatory.
+ * - The two browser files start their own web server and browser: two full gates on 17-18 Nov 2026 lost the runner of
+ *   the 24-file unit holding them (44011466586, 44065545160).
+ * - bank-import-job (its 100,001-employee import) and planning-cost-prepared-reads drive the unit's PostgreSQL to its
+ *   2 GiB cap: the container was OOM-killed beside a second worker with each of them (gates 46039739810 and 45850704112),
+ *   failing unrelated files on the dead server. Alone they keep the same cap, so the gate still proves they fit it. */
+export const ISOLATED_DB_FILES=Object.freeze(['test/operational-visual-browser.test.ts','test/system-label-exchange-browser.test.ts','test/bank-import-job.test.ts','test/planning-cost-prepared-reads.test.ts']);
 export const BROWSER_ENGINES=['chromium','firefox','webkit'];
 export const hash=value=>createHash('sha256').update(typeof value==='string'?value:JSON.stringify(value)).digest('hex');
 function inventory(files,pattern){
