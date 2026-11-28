@@ -1,4 +1,4 @@
-import {afterEach,beforeAll,expect,it,vi} from 'vitest';
+import {afterAll,afterEach,beforeAll,expect,it,vi} from 'vitest';
 import {act,cleanup,fireEvent,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import messages from '../messages/en.json';
@@ -7,6 +7,10 @@ import {communicationAnchor} from '../lib/lifecycle-case-communications';
 import {communicationsFixture} from './helpers/communications-fixture';
 vi.mock('next/navigation',()=>({useRouter:()=>({refresh:vi.fn()})}));
 vi.mock('../app/lifecycle/v9/actions',()=>({readV9Email:vi.fn(),readV9Workflow:vi.fn(),readV9UpdatedEmail:vi.fn()}));
+// The fixture's held run is due 2026-11-27 and the tests pass today="2026-11-27", but CaseWorkflows (the row actions)
+// reads its own todayInKualaLumpur(). From 28 November KL time the held email counted as late, so the row offered
+// Send anyway / Skip instead of Continue. Pin only Date to the fixture's day; timers and animation frames stay real.
+beforeAll(()=>{vi.useFakeTimers({toFake:['Date'],now:new Date('2026-11-27T04:00:00Z')});});afterAll(()=>{vi.useRealTimers();});
 beforeAll(()=>{HTMLDialogElement.prototype.showModal=function(){this.setAttribute('open','');};HTMLElement.prototype.scrollIntoView=vi.fn();});afterEach(()=>{cleanup();window.history.replaceState({},'','/');});
 function setup(canUploadFiles=false){const fixture=communicationsFixture(),command=vi.fn().mockResolvedValue({ok:false,error:'Keep this review.'}),onDocument=vi.fn();const view=render(<NextIntlClientProvider locale="en" messages={messages}><div className="v9-workspace"><CaseCommunications {...fixture} busy={false} writableKeys={['mobile']} users={[{id:'hr',name:'Fictional HR'}]} command={command} onDocument={onDocument} canUploadFiles={canUploadFiles} today="2026-11-27"/></div></NextIntlClientProvider>);return{...fixture,command,onDocument,...view};}
 it('defaults to Schedule, hides tests, shares exact filter counts and opens the existing recipient fixing surface without a write',async()=>{

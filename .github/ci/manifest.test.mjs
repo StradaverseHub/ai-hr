@@ -66,7 +66,7 @@ test('dedicated PDF suite moves complete files only, preserving all ordinary, da
 });
 
 test('isolated database files run alone in their own unit, keeping complete coverage',()=>{
- assert.deepEqual(ISOLATED_DB_FILES,['test/operational-visual-browser.test.ts','test/system-label-exchange-browser.test.ts']);
+ assert.deepEqual(ISOLATED_DB_FILES,['test/operational-visual-browser.test.ts','test/system-label-exchange-browser.test.ts','test/bank-import-job.test.ts','test/planning-cost-prepared-reads.test.ts']);
  const db=[...names('db',65),...ISOLATED_DB_FILES],nodb=names('nodb',20),suite=[...db,...nodb].sort();
  const units=buildUnits(suite,{db,nodb},browsers),dbUnits=units.filter(u=>u.kind==='db');
  const alone=dbUnits.filter(u=>u.files.some(f=>ISOLATED_DB_FILES.includes(f)));
