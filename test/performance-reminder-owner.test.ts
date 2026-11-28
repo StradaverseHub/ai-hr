@@ -34,7 +34,7 @@ async function restrictedDefiner(run:()=>Promise<void>){
 describe('Performance invalidation under the production owner privilege model',()=>{
  it('activates a saved employee draft and advances its canonical tenant epoch under a non-bypass definer',async()=>{
   const ctx=adminCtx(b),code='EPOCH'+randomUUID().slice(0,8).toUpperCase();
-  const {id}=await saveEmployeeDraft(ctx,{currentStep:1,data:{profile:{fullName:'Owner regression employee',employeeCode:code,primaryEmail:'epoch-'+randomUUID()+'@fixture.test'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5200'}}});
+  const {id}=await saveEmployeeDraft(ctx,{currentStep:1,data:{profile:{fullName:'Owner regression employee',employeeCode:code,primaryEmail:'epoch-'+randomUUID()+'@fixture.test'},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:todayInKualaLumpur()},payroll:{basicSalary:'5200',paymentMethod:'cash'}}});
   const zero='00000000-0000-0000-0000-000000000000';
   const scope=and(eq(s.assessmentReminderEpoch.tenantId,b.tenantId),eq(s.assessmentReminderEpoch.scopeId,zero));
   const [before]=await owner.db.select().from(s.assessmentReminderEpoch).where(scope).orderBy(s.assessmentReminderEpoch.scopeId);

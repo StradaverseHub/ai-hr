@@ -137,7 +137,7 @@ describe('atomic Draft activation', () => {
   });
 
   it.each(['new', 'historical'] as const)('keeps optional groups blank and the zero-salary rule for a %s draft, apart from the new-cohort SKBBK default', async cohort => {
-    const data = input({ statutory: {}, family: [], payroll: { basicSalary: '', remarks: 'Quarterly director fees' } });
+    const data = input({ statutory: {}, family: [], payroll: { basicSalary: '', remarks: 'Quarterly director fees', paymentMethod: 'cash' } });
     const { ctx, id } = await held(data);
     const stored = await getEmployeeDraft(ctx, id);
     expect(stored?.data.creationDefaultsVersion).toBe(1);
@@ -272,7 +272,7 @@ describe('atomic Draft activation', () => {
     const table={department:schema.department,position:schema.position,cost_center:schema.costCenter,grade:schema.jobGrade}[kind];
     await owner.db.update(table).set({archivedAt:new Date()}).where(eq(table.id,referenceId));
     const failure=await rejectedWithoutChanges(ctx,id,'reference_invalid');
-    expect(draftActivationValidation(failure)?.fields).toEqual([{tab:'job',field:kind==='cost_center'?'costCenter':kind}]);
+    expect(draftActivationValidation(failure)?.fields).toEqual([{tab:'job',field:kind==='cost_center'?'costAllocation':kind}]);
   });
 
   it('refuses a selected Department moved outside the company eligibility rule', async () => {

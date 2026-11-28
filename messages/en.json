@@ -3229,7 +3229,8 @@
         "profile_invalid": "Review the Profile details before activation.",
         "statutory_invalid": "Review the Bank & Statutory details before activation.",
         "payroll_invalid": "Review the Payroll details before activation.",
-        "family_invalid": "Review the Family details before activation."
+        "family_invalid": "Review the Family details before activation.",
+        "qualification_invalid": "A qualification on the Qualification tab needs correction."
       },
       "fields": {
         "fullName": "Full name",
@@ -3297,7 +3298,11 @@
         "companyFixed": "It decides which Employee ID rule applies, and it cannot be changed once the record is created.",
         "groupJoinDate": "The first day with the group. The Join Date for this company starts on the same day. After creation either date changes only through a movement event.",
         "internshipEndDate": "The last day of the internship. It drives the internship end review.",
-        "paymentMethodBankTransfer": "Bank Transfer needs the bank and the account number on the Bank & Statutory tab. Until both are there, the list of what Activate still needs says so."
+        "paymentMethodBankTransfer": "Bank Transfer needs the bank and the account number on the Bank & Statutory tab. Until both are there, the list of what Activate still needs says so.",
+        "legacyMonthlyAllowance": "This draft still holds a Monthly Allowance from an earlier version of this screen. The amount stays and is kept at Activate; please move it into a Pay item.",
+        "costAllocationEffective": "Takes effect from the Group Join Date when the employee is activated.",
+        "joinDate": "Starts on the same day as the Group Join Date.",
+        "payItems": "Saved with the draft and set up on the employee's payroll when you press Activate."
       },
       "backLabel": "Back to Personnel Management",
       "title": "Create new employee",
@@ -3347,7 +3352,8 @@
         "bankStatutory": "Bank & Statutory",
         "payroll": "Payroll",
         "family": "Family",
-        "empty": "Nothing to show here."
+        "empty": "Nothing to show here.",
+        "qualification": "Qualification"
       },
       "sections": {
         "personalDetails": "Personal details",
@@ -3358,9 +3364,15 @@
         "statutoryMalaysia": "Statutory (Malaysia)",
         "identityTax": "Identification & Tax",
         "compensation": "Basic Salary",
-        "payMethodGroup": "How This Employee Is Paid",
         "payrollPolicy": "Payroll policy",
-        "othersStatutory": "Others Statutory"
+        "othersStatutory": "Others Statutory",
+        "emergencyContact": "Emergency contact",
+        "directSuperior": "Direct Superior",
+        "costCenterAllocation": "Cost Center Allocation",
+        "probationGroup": "Probation Information",
+        "noticeGroup": "Notice Period Information",
+        "payItems": "Pay items",
+        "qualification": "Qualification Information"
       },
       "draftStatus": "Draft — pending activation",
       "cancel": "Cancel",
@@ -3376,7 +3388,13 @@
       "directSuperiorNoResults": "No matching employees.",
       "probationEndsOn": "Probation ends on {date} — the Group Join Date plus the Probation Period.",
       "probationEndsOnStored": "Probation ends on {date} — the end date already saved on this draft. Enter a Probation Period to work it out from the Group Join Date instead.",
-      "probationEndsNone": "No probation end date. Enter a Probation Period to work out when probation ends."
+      "probationEndsNone": "No probation end date. Enter a Probation Period to work out when probation ends.",
+      "next": "Next",
+      "photoErrorInvalid": "The photo could not be read. Choose a PNG or JPG file and try again.",
+      "photoErrorTooLarge": "The photo is larger than 2 MB. Choose a smaller file.",
+      "photoErrorType": "Only PNG or JPG photos can be used.",
+      "photoErrorPermission": "You don't have permission to change this draft's photo.",
+      "photoErrorUnavailable": "The photo could not be saved right now. Try again."
     },
     "duplicates": {
       "title": "Possible duplicate employee records",

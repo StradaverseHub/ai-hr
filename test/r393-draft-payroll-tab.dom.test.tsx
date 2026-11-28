@@ -135,9 +135,16 @@ describe('§1 both fields render in all six locales, with zero missing messages'
       const m = msgs as Msgs;
       const { unmount } = wrap(draftOf(), { messages: m, locale: loc });
       const panel = within(shownPanel());
-      // The two new cards carry the record's headings.
-      expect(panel.getByText(m.people.wizard.sections.payMethodGroup), `${loc} sections.payMethodGroup`).toBeTruthy();
-      expect(m.people.wizard.sections.payMethodGroup).toBe(m.people.detail.payMethodGroup);
+      // Board 2c1b2fba — Payment Method moved INTO the Basic Salary card and is required; the separate
+      // "How This Employee Is Paid" card (sections.payMethodGroup) would have been empty and is gone.
+      expect(panel.queryByText(m.people.detail.payMethodGroup), `${loc} no separate payment method card`).toBeNull();
+      const compensationCard = shownPanel().querySelector('[data-compensation-card]');
+      // The card's own heading (in th/vi the Basic Salary caption reads the same words as the heading).
+      expect(compensationCard?.querySelector('[data-ui-section-header]')?.textContent?.trim()).toBe(m.people.wizard.sections.compensation);
+      expect(paymentSelect()!.closest('[data-payment-method]'), `${loc} payment method present`).toBeTruthy();
+      expect(compensationCard?.contains(paymentSelect()!), `${loc} payment method sits in Basic Salary`).toBe(true);
+      expect(paymentSelect()!.getAttribute('aria-required'), `${loc} marked required`).toBe('true');
+      // The payroll policy card keeps the record's heading.
       expect(panel.getByText(m.people.wizard.sections.payrollPolicy), `${loc} sections.payrollPolicy`).toBeTruthy();
       expect(m.people.wizard.sections.payrollPolicy).toBe(m.payrollPolicy.assignTitle);
       // Payment Method: the record's caption and the record's four answers, in order.
@@ -207,7 +214,8 @@ describe('§3 the controls write the draft, and Bank Transfer without a bank hol
 
   it('choosing Bank Transfer with no bank lists it as still needed and disables Activate; a bank clears it', async () => {
     const activate = () => screen.getByRole('button', { name: en.people.wizard.activate }) as HTMLButtonElement;
-    const { unmount } = wrap(draftOf());
+    // Board 2c1b2fba — Payment Method is required on a draft, so "complete" now includes one.
+    const { unmount } = wrap(draftOf({ paymentMethod: 'cash' }));
     expect(activate().disabled, 'a complete draft can be activated').toBe(false);
     await userEvent.selectOptions(paymentSelect()!, 'bank_transfer');
     expect(screen.getByText(en.people.wizard.fields.paymentMethodBank, { exact: false })).toBeTruthy();

@@ -11,7 +11,7 @@ vi.mock('../app/admin/personnel/new/actions',()=>({saveDraftAction:mocks.save,di
 const {EmployeeWizard}=await import('../app/admin/personnel/new/wizard');
 const catalog=(locale='en')=>JSON.parse(readFileSync(new URL('../messages/'+locale+'.json',import.meta.url),'utf8'));
 const props={today:'2026-10-16',draftId:'fictional-draft-94b0-a',reservedEmployeeCode:'DEMO94B0001',initialStep:1,
-  initialData:{profile:{fullName:'Fictional Draft A',primaryEmail:'draft-a@example.test',employeeCode:'DEMO94B0001'},employment:{companyId:'fictional-company',departmentId:'fictional-department',employmentType:'full_time',hiredOn:'2026-10-16'},payroll:{basicSalary:'2000'}},
+  initialData:{profile:{fullName:'Fictional Draft A',primaryEmail:'draft-a@example.test',employeeCode:'DEMO94B0001'},employment:{companyId:'fictional-company',departmentId:'fictional-department',employmentType:'full_time',hiredOn:'2026-10-16'},payroll:{basicSalary:'2000',paymentMethod:'cash'}},
   companies:[{id:'fictional-company',label:'Fictional Board Company'}],departments:[{id:'fictional-department',label:'Fictional Department',companies:'fictional-company'}],businessUnits:[],positions:[],costCenters:[],grades:[],managers:[],nationalityOptions:[],profileOptions:{salutation:[],religion:[],race:[]},relationshipOptions:[],countryOptions:[],stateOptions:[]};
 const wrap=(locale='en',subject=props)=>render(<NextIntlClientProvider locale={locale} messages={catalog(locale)}><EmployeeWizard key={subject.draftId} {...subject}/></NextIntlClientProvider>);
 const deferred=<T,>()=>{let resolve!:(result:T)=>void;const promise=new Promise<T>(done=>{resolve=done;});return {promise,resolve};};

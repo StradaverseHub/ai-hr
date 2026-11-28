@@ -11,6 +11,11 @@ describe('human saved draft nomination',()=>{
  it('supports persisted creation metadata and reviews only exact SKBBK elections',()=>{for(const choice of ['yes','no'])expect(supportedEmployeeDraftActivationData({creationDefaultsVersion:1,statutory:{subjectToSkbbk:choice}})).toBe(true);for(const value of [{creationDefaultsVersion:2},{statutory:{subjectToSkbbk:'maybe'}},{statutory:{subjectToSkbbk:'yes',bankAccountNo:'private'}}])expect(supportedEmployeeDraftActivationData(value)).toBe(false);});
  it('keeps unsupported captured facts in native review instead of silently dropping them',()=>{
   expect(supportedEmployeeDraftActivationData({profile:{fullName:'Fictional'},employment:{companyId:id},payroll:{basicSalary:'3000'}})).toBe(true);
+  // Board 2c1b2fba — Payment Method is now required on a draft, so the review carries it; the four new registers are
+  // reviewed only while empty (an entry is a write this review does not describe, so it is a native handoff).
+  expect(supportedEmployeeDraftActivationData({profile:{fullName:'Fictional'},employment:{companyId:id},payroll:{basicSalary:'3000',paymentMethod:'cash'}})).toBe(true);
+  expect(supportedEmployeeDraftActivationData({emergencyContacts:[],qualifications:[],payItems:[],costAllocations:[]})).toBe(true);
+  for(const value of [{emergencyContacts:[{fullName:'Human contact'}]},{qualifications:[{qualification:'degree'}]},{payItems:[{componentId:id,amount:'100'}]},{costAllocations:[{costCenterId:id,percentage:'100'}]},{payItems:{}}])expect(supportedEmployeeDraftActivationData(value)).toBe(false);
   for(const value of [{profile:{preferredName:'Human entered name'}},{statutory:{bankName:'Human bank'}},{family:[{fullName:'Human child'}]},{employment:{gradeId:id}},{profile:{fullName:42}}])expect(supportedEmployeeDraftActivationData(value)).toBe(false);
  });
 });

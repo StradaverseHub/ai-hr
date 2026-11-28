@@ -56,7 +56,7 @@ const minimal = (statutory?: NonNullable<EmployeeDraftData['statutory']>): Emplo
   },
   employment: { companyId: b.companyId, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-03-01' },
   ...(statutory ? { statutory } : {}),
-  payroll: { basicSalary: '3000' },
+  payroll: { basicSalary: '3000', paymentMethod: 'cash' },
 });
 
 async function employmentCount(): Promise<number> {

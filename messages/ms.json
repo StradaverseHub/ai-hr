@@ -3229,7 +3229,8 @@
         "profile_invalid": "Semak butiran Profil sebelum pengaktifan.",
         "statutory_invalid": "Semak butiran Bank & Berkanun sebelum pengaktifan.",
         "payroll_invalid": "Semak butiran Penggajian sebelum pengaktifan.",
-        "family_invalid": "Semak butiran Keluarga sebelum pengaktifan."
+        "family_invalid": "Semak butiran Keluarga sebelum pengaktifan.",
+        "qualification_invalid": "Satu kelayakan pada tab Kelayakan perlu dibetulkan."
       },
       "fields": {
         "fullName": "Nama penuh",
@@ -3297,7 +3298,11 @@
         "companyFixed": "Ia menentukan peraturan ID Pekerja yang terpakai, dan tidak boleh diubah setelah rekod dicipta.",
         "groupJoinDate": "Hari pertama bersama kumpulan. Tarikh Menyertai untuk syarikat ini bermula pada hari yang sama. Selepas penciptaan, kedua-dua tarikh hanya berubah melalui peristiwa pergerakan.",
         "internshipEndDate": "Hari terakhir latihan. Ia memacu semakan tamat latihan.",
-        "paymentMethodBankTransfer": "Pindahan Bank memerlukan nama bank dan nombor akaun pada tab Bank & Statutori. Selagi kedua-duanya belum diisi, senarai perkara yang masih diperlukan untuk Aktifkan akan menyatakannya."
+        "paymentMethodBankTransfer": "Pindahan Bank memerlukan nama bank dan nombor akaun pada tab Bank & Statutori. Selagi kedua-duanya belum diisi, senarai perkara yang masih diperlukan untuk Aktifkan akan menyatakannya.",
+        "legacyMonthlyAllowance": "Draf ini masih menyimpan Elaun bulanan daripada versi lama skrin ini. Amaun ini kekal dan dibawa semasa Aktifkan; sila pindahkannya ke Item gaji.",
+        "costAllocationEffective": "Berkuat kuasa dari Tarikh Menyertai Kumpulan apabila pekerja diaktifkan.",
+        "joinDate": "Bermula pada hari yang sama dengan Tarikh Menyertai Kumpulan.",
+        "payItems": "Disimpan bersama draf dan disediakan dalam gaji pekerja apabila anda menekan Aktifkan."
       },
       "backLabel": "Kembali ke Pengurusan Kakitangan",
       "title": "Cipta pekerja baharu",
@@ -3347,7 +3352,8 @@
         "bankStatutory": "Bank & Berkanun",
         "payroll": "Gaji",
         "family": "Keluarga",
-        "empty": "Tiada apa-apa untuk dipaparkan di sini."
+        "empty": "Tiada apa-apa untuk dipaparkan di sini.",
+        "qualification": "Kelayakan"
       },
       "sections": {
         "personalDetails": "Butiran peribadi",
@@ -3358,9 +3364,15 @@
         "statutoryMalaysia": "Berkanun (Malaysia)",
         "identityTax": "Pengenalan & Cukai",
         "compensation": "Gaji Asas",
-        "payMethodGroup": "Cara Pekerja Ini Dibayar",
         "payrollPolicy": "Dasar gaji",
-        "othersStatutory": "Statutori Lain"
+        "othersStatutory": "Statutori Lain",
+        "emergencyContact": "Hubungan kecemasan",
+        "directSuperior": "Ketua Langsung",
+        "costCenterAllocation": "Peruntukan Pusat Kos",
+        "probationGroup": "Maklumat Percubaan",
+        "noticeGroup": "Maklumat Tempoh Notis",
+        "payItems": "Item gaji",
+        "qualification": "Maklumat Kelayakan"
       },
       "draftStatus": "Draf — menunggu pengaktifan",
       "cancel": "Batal",
@@ -3376,7 +3388,13 @@
       "directSuperiorNoResults": "Tiada pekerja yang sepadan.",
       "probationEndsOn": "Tempoh percubaan tamat pada {date} — Tarikh Menyertai Kumpulan ditambah Tempoh Percubaan.",
       "probationEndsOnStored": "Tempoh percubaan tamat pada {date} — tarikh tamat yang telah disimpan pada draf ini. Masukkan Tempoh Percubaan untuk mengiranya daripada Tarikh Menyertai Kumpulan.",
-      "probationEndsNone": "Tiada tarikh tamat percubaan. Masukkan Tempoh Percubaan untuk mengira bila tempoh percubaan tamat."
+      "probationEndsNone": "Tiada tarikh tamat percubaan. Masukkan Tempoh Percubaan untuk mengira bila tempoh percubaan tamat.",
+      "next": "Seterusnya",
+      "photoErrorInvalid": "Foto tidak dapat dibaca. Pilih fail PNG atau JPG dan cuba lagi.",
+      "photoErrorTooLarge": "Foto melebihi 2 MB. Pilih fail yang lebih kecil.",
+      "photoErrorType": "Hanya foto PNG atau JPG boleh digunakan.",
+      "photoErrorPermission": "Anda tidak mempunyai kebenaran untuk menukar foto draf ini.",
+      "photoErrorUnavailable": "Foto tidak dapat disimpan sekarang. Cuba lagi."
     },
     "duplicates": {
       "title": "Rekod pekerja yang mungkin berganda",

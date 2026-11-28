@@ -24,6 +24,10 @@ import {
 import { normalizeEmployeeCode } from '@/lib/employee-code';
 import { hireHandoffPrefill, linkHireDraft } from '@/packs/recruitment/service';
 import type { EmployeeDraftData } from '@/lib/employee-draft-schema';
+import { DraftPhotoError, removeEmployeeDraftPhoto, setEmployeeDraftPhoto } from '@/core/employee-draft-photo';
+import { profilePhotoMime } from '@/core/person-photo';
+import { WorkforceAccessError } from '@/core/workforce-access';
+import { PHOTO_MAX_BYTES } from '@/lib/profile-photo-limits';
 
 /**
  * The short Create screen (item 06f0cb8f). Four fields in, a Draft with a HELD Employee ID out.
@@ -131,4 +135,39 @@ export async function createEmployeeAction(
     const validation = draftActivationValidation(error);
     return validation ? {ok:false,kind:'validation',...validation} : draftFailure('activate',error);
   }
+}
+
+/**
+ * Board 2c1b2fba — the draft's profile photo (Upload photo in the header card). The same rules as the record's
+ * upload (PNG or JPEG sniffed from the bytes, at most 2 MB) and the same authority (HR administrator with Workforce
+ * maintain for the draft's company), both enforced by core/employee-draft-photo.ts. Returns a finite refusal code;
+ * never a database message. The photo is not part of the draft JSON, so Save draft does not carry it.
+ */
+export type DraftPhotoActionResult = {ok:true}|{ok:false;error:'invalid'|'too_large'|'type'|'permission'|'unavailable'};
+function draftPhotoRefusal(error: unknown): DraftPhotoActionResult {
+  if (error instanceof DraftPhotoError) return {ok:false,error:error.reason};
+  if (error instanceof WorkforceAccessError) return {ok:false,error:'permission'};
+  console.error('[Draft photo failure]', error instanceof Error ? error.name : typeof error, pgSqlState(error) ?? '');
+  return {ok:false,error:'unavailable'};
+}
+export async function uploadDraftPhotoAction(formData: FormData): Promise<DraftPhotoActionResult> {
+  const s = await requireAdmin();
+  const draftId = String(formData.get('draftId') ?? '');
+  const file = formData.get('file');
+  if (!(file instanceof File) || file.size === 0) return {ok:false,error:'invalid'};
+  if (file.size > PHOTO_MAX_BYTES) return {ok:false,error:'too_large'};
+  try {
+    const content = Buffer.from(await file.arrayBuffer());
+    const mimeType = profilePhotoMime(content);
+    if (!mimeType) return {ok:false,error:'type'};
+    await setEmployeeDraftPhoto(s, { draftId, content, fileName: file.name, mimeType, sizeBytes: content.byteLength });
+    return {ok:true};
+  } catch (error) { return draftPhotoRefusal(error); }
+}
+export async function removeDraftPhotoAction(draftId: string): Promise<DraftPhotoActionResult> {
+  const s = await requireAdmin();
+  try {
+    await removeEmployeeDraftPhoto(s, draftId);
+    return {ok:true};
+  } catch (error) { return draftPhotoRefusal(error); }
 }

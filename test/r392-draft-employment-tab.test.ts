@@ -165,7 +165,7 @@ describe('§3 completeEmployeeDraft writes the SAME end date the tab shows', () 
       primaryEmail: `r392.${randomUUID().slice(0, 8)}@employment-tab.test`,
     },
     employment: { companyId: b.companyId, departmentId: b.deptA, hiredOn: todayInKualaLumpur(), ...employment },
-    payroll: { basicSalary: '3000' },
+    payroll: { basicSalary: '3000', paymentMethod: 'cash' },
   });
   const activate = async (employment: EmployeeDraftEmployment) => {
     const ctx = adminCtx(b);

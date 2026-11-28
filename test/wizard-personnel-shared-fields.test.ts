@@ -103,7 +103,7 @@ function draft(over: Partial<EmployeeDraftData> = {}): EmployeeDraftData {
       employmentType: 'full_time',
       hiredOn: '2026-06-01',
     },
-    payroll: { basicSalary: '5200' },
+    payroll: { basicSalary: '5200', paymentMethod: 'cash' },
     ...over,
   };
 }
@@ -954,8 +954,9 @@ describe('§5 a draft saved BEFORE this change still opens and still creates', (
     // Group 2 changed which of these three inputs is VISIBLE, not where they are stored: payroll.payMode /
     // paymentTerm / rateAmount are still plain strings in the same place. A draft written by the old
     // wizard must therefore create exactly what it always did.
+    // Board 2c1b2fba — Payment Method is now required at Activate, so the reopened draft carries the one HR picks.
     const { id } = await saveEmployeeDraft(a, {
-      data: draft({ payroll: { basicSalary: '4000', payMode: 'daily', paymentTerm: 'weekly', rateAmount: '180' } }),
+      data: draft({ payroll: { basicSalary: '4000', payMode: 'daily', paymentTerm: 'weekly', rateAmount: '180', paymentMethod: 'cash' } }),
       currentStep: 4,
     });
     const reopened = await getEmployeeDraft(a, id);

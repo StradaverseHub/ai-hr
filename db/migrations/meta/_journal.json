@@ -8205,6 +8205,13 @@
       "when": 1795495007600,
       "tag": "7600_app_user_merge",
       "breakpoints": true
+    },
+    {
+      "idx": 11010,
+      "version": "7",
+      "when": 1795495007610,
+      "tag": "7610_employee_draft_photo",
+      "breakpoints": true
     }
   ]
 }

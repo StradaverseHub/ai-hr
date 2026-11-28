@@ -7,6 +7,8 @@
  "app/admin/attendance/approval-workflow/page.tsx": "test/attendance-workflow-read-budget-03cb9b74.test.ts",
  "app/admin/audit/page.tsx": "test/route-read-budget.test.ts",
  "app/admin/personnel/[employmentId]/cp38-actions.ts#deleteCp38Action": "test/cp38-read-budget-038c304b.test.ts",
+ "app/admin/personnel/new/actions.ts#removeDraftPhotoAction": "test/employee-draft-photo-7610.test.ts",
+ "app/admin/personnel/new/actions.ts#uploadDraftPhotoAction": "test/employee-draft-photo-7610.test.ts",
  "app/admin/users/activation/[personId]/page.tsx": "test/account-activation-page.test.ts",
  "app/admin/users/duplicates/actions.ts#mergeLoginsAction": "test/login-merge-read-budget.test.ts",
  "app/admin/users/duplicates/actions.ts#undoLoginMergeAction": "test/login-merge-read-budget.test.ts",

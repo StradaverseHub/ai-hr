@@ -124,29 +124,33 @@ beforeEach(() => {
 
 // ── the tab strip ─────────────────────────────────────────────────────────────────────────────────
 describe('the draft opens on the SAME tabs an activated employee opens', () => {
-  it('shows exactly the five tabs, named as the record names them', () => {
+  it('shows exactly the six tabs, named as the record names them', () => {
+    // Board 2c1b2fba — Qualification joined, between Payroll and Family.
     wrap();
     const t = messages.people.detail.tabs;
-    expect(tabNames()).toEqual([t.profile, t.job, t.bankStatutory, t.payroll, t.family]);
+    expect(tabNames()).toEqual([t.profile, t.job, t.bankStatutory, t.payroll, t.qualification, t.family]);
   });
 
-  it('does NOT show the six tabs a draft is not entitled to', () => {
+  it('does NOT show the tabs a draft is not entitled to', () => {
     wrap();
     const t = messages.people.detail.tabs;
-    // Four describe things that have happened to an employment and a draft has none; Qualification and
-    // Others follow activation by the plan's own choice. Absent, not empty — an empty "Leave" tab would
-    // still be a promise that leave exists on a record with no employment.
-    for (const absent of [t.careerMovement, t.attendance, t.leave, t.documents, t.qualification, t.others]) {
+    // Four describe things that have happened to an employment and a draft has none; Others was retired
+    // on the record. Absent, not empty — an empty "Leave" tab would still be a promise that leave exists on
+    // a record with no employment.
+    for (const absent of [t.careerMovement, t.attendance, t.leave, t.documents, t.others]) {
       expect(within(tabStrip()).queryByRole('tab', { name: absent }), absent).toBeNull();
     }
   });
 
-  it('there is no step strip, no Back and no Next left behind', () => {
+  it('there is no step strip and no Back; Next (board 2c1b2fba) only moves to the following tab', async () => {
     wrap();
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
     // The old form numbered its steps 1..5 in the strip; the tabs carry names only.
     expect(tabStrip().textContent).not.toMatch(/[1-5]/);
+    // One Next on the tab in view, and pressing it is a tab switch — nothing is saved.
+    await userEvent.click(within(shownPanel()).getByRole('button', { name: messages.people.wizard.next }));
+    expect(shownPanel().dataset.tabpanel).toBe('job');
+    expect(saveDraftAction).not.toHaveBeenCalled();
   });
 
   it('reopens on the tab the draft was left on, including the RETIRED step number 5', () => {
@@ -196,7 +200,7 @@ describe('each tab carries the record\'s own section names and the draft\'s own 
     wrap();
     const t = messages.people.detail.tabs;
     const empty = messages.people.detail.tabs.empty;
-    for (const name of [t.profile, t.job, t.bankStatutory, t.payroll, t.family]) {
+    for (const name of [t.profile, t.job, t.bankStatutory, t.payroll, t.qualification, t.family]) {
       await openTab(name);
       expect(shownPanel().textContent, `${name} panel`).not.toContain(empty);
       expect(shownPanel().textContent?.trim().length, `${name} panel`).toBeGreaterThan(40);

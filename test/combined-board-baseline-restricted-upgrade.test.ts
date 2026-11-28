@@ -93,6 +93,8 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:10990,version:'7',when:1795495007590,tag:'7590_payroll_group_tax_opening_noncash_base',breakpoints:true},
  // Board 0735d1b7 — batch invitation bulk-job kind and login merge facts.
  {idx:11000,version:'7',when:1795495007600,tag:'7600_app_user_merge',breakpoints:true},
+ // Board 2c1b2fba — Draft Employee page photo side table.
+ {idx:11010,version:'7',when:1795495007610,tag:'7610_employee_draft_photo',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

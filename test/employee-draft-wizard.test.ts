@@ -102,7 +102,8 @@ function completeDraft(over: Partial<EmployeeDraftData> = {}): EmployeeDraftData
       employmentType: 'full_time',
       hiredOn: '2026-06-01',
     },
-    payroll: { basicSalary: '5200' },
+    // Board 2c1b2fba — Payment Method is required on a draft; Cash needs no bank.
+    payroll: { basicSalary: '5200', paymentMethod: 'cash' },
     ...over,
   };
 }
@@ -144,7 +145,8 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     for (const f of ['company', 'fullName', 'primaryEmail', 'employeeCode']) expect(m).not.toContain(f);
     // r374 (item 7dbaf677) — `remarks`, NOT `basicSalary`. An empty draft has no basic amount, which is
     // now LEGITIMATE (a Director paid quarterly fees); what it is missing is the sentence saying why.
-    expect(m).toEqual(['department', 'employmentType', 'hiredOn', 'remarks']);
+    // Board 2c1b2fba — and Payment Method, now required on a draft (blank is "Not specified").
+    expect(m).toEqual(['department', 'employmentType', 'hiredOn', 'remarks', 'paymentMethod']);
   });
 
   it('an empty draft is missing exactly the required fields, grouped by their own TAB', () => {
@@ -156,7 +158,9 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(m.job).toEqual(['department', 'employmentType', 'hiredOn']);
     expect(m.bankStatutory).toEqual([]); // nothing on Bank & Statutory is required by any writer
     // r374 — see the note on the Create/Activate split case above: an absent amount asks for REMARKS.
-    expect(m.payroll).toEqual(['remarks']);
+    expect(m.payroll).toEqual(['remarks', 'paymentMethod']);
+    // Board 2c1b2fba — the Qualification tab requires nothing; it judges only a record somebody DID add.
+    expect(m.qualification).toEqual([]);
     // ITEM 759dfc7d ADDED `family`, AND IT REQUIRES NOTHING. Most new joiners have no family record to
     // enter, so a step that demanded one would block every one of them; what the rule does judge is a
     // member somebody DID add (see test/employee-draft-family.test.ts §1).
@@ -168,7 +172,9 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     // it rather than a set: each key's position maps to `employee_draft.current_step` on rows already
     // sitting in production, so a tab may only ever be APPENDED. Re-ordering to put Family SECOND —
     // where the activated record shows it — would silently reopen every existing draft on another tab.
-    expect(Object.keys(m)).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'family']);
+    // Board 2c1b2fba — Qualification sits between Payroll and Family in SCREEN order; its stored step number is
+    // the next free one (7), so no existing row's `current_step` moves (test/employee-draft-family.test.ts §1).
+    expect(Object.keys(m)).toEqual(['profile', 'job', 'bankStatutory', 'payroll', 'qualification', 'family']);
   });
 
   it('a complete draft has nothing outstanding', () => {
@@ -213,7 +219,7 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(missingByTab(base).payroll).toContain('rateAmount');
     expect(missingByTab({ payroll: { ...base.payroll, rateAmount: '180' } }).payroll).not.toContain('rateAmount');
     // A monthly worker needs no rate at all.
-    expect(missingByTab({ payroll: { basicSalary: '5000', payMode: 'monthly' } }).payroll).toEqual([]);
+    expect(missingByTab({ payroll: { basicSalary: '5000', payMode: 'monthly', paymentMethod: 'cash' } }).payroll).toEqual([]);
   });
 
   /**
@@ -228,8 +234,8 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     expect(missingByTab({ payroll: { basicSalary: 'abc' } }).payroll).toContain('basicSalary');
     // A zero is accepted on its own terms — what it needs is the reason, not a different amount.
     expect(missingByTab({ payroll: { basicSalary: '0' } }).payroll).not.toContain('basicSalary');
-    expect(missingByTab({ payroll: { basicSalary: '0' } }).payroll).toEqual(['remarks']);
-    expect(missingByTab({ payroll: { basicSalary: '0', remarks: "Quarterly director's fees" } }).payroll)
+    expect(missingByTab({ payroll: { basicSalary: '0', paymentMethod: 'cash' } }).payroll).toEqual(['remarks']);
+    expect(missingByTab({ payroll: { basicSalary: '0', remarks: "Quarterly director's fees", paymentMethod: 'cash' } }).payroll)
       .toEqual([]);
   });
 
@@ -238,7 +244,9 @@ describe('§1 the two rules — what Create asks for, and what Activate needs', 
     // Out-of-range clamps rather than returning undefined — a stored step from a future version of
     // the wizard must still open something.
     expect(stepKey(0)).toBe(DRAFT_TABS[0]);
-    expect(stepKey(99)).toBe(DRAFT_TABS[DRAFT_TABS.length - 1]);
+    // Board 2c1b2fba — the upper clamp is the HIGHEST step number (Qualification, 7), which is no longer the last
+    // tab on screen (Family, 6): Qualification sits before Family but took the next free number.
+    expect(stepKey(99)).toBe('qualification');
     expect(draftLabel({ profile: { fullName: '  Nadia Yusof ' } })).toBe('Nadia Yusof');
     expect(draftLabel({})).toBe('');
   });
@@ -254,7 +262,7 @@ function completeDraftShape(): EmployeeDraftData {
       employmentType: 'full_time',
       hiredOn: '2026-06-01',
     },
-    payroll: { basicSalary: '5200' },
+    payroll: { basicSalary: '5200', paymentMethod: 'cash' },
   };
 }
 
@@ -346,9 +354,9 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       // 759dfc7d work item 2 — the five-step form is gone and so are its step labels. Left behind they
       // would be five orphan strings per locale that read as the screen's vocabulary and are not.
       expect(msgs.people?.wizard?.steps, `${loc} wizard.steps`).toBeUndefined();
-      // Back / Next went with the wizard: a tabbed record has no sequence to move along.
+      // Back went with the wizard. Board 2c1b2fba brought Next back as a navigation-only guide along the tabs.
       expect(msgs.people?.wizard?.back, `${loc} wizard.back`).toBeUndefined();
-      expect(msgs.people?.wizard?.next, `${loc} wizard.next`).toBeUndefined();
+      expect(String(msgs.people?.wizard?.next ?? '').trim(), `${loc} wizard.next`).not.toBe('');
     }
   });
 
@@ -376,6 +384,15 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       // a family field added without a label would otherwise reach HR as a raw `fields.familyMemberX`.
       { family: [{}] },
       { family: [{ fullName: 'A', relationship: 'child', dateOfBirth: 'nope' }] },
+      // Board 2c1b2fba — the new registers and fields: a nameless contact, an allocation row with no cost centre,
+      // an unknown payee residency, a junk declared child-relief box, a pay item with no item, a qualification
+      // with no qualification. (Payment Method itself is tripped by the empty draft above.)
+      { emergencyContacts: [{}] },
+      { costAllocations: [{}] },
+      { statutory: { bankPayeeResidency: 'somewhere' } },
+      { statutory: { childReliefMode: 'auto_table', childReliefTable_under_18_full: 'x' } },
+      { payItems: [{}] },
+      { qualifications: [{}] },
     ];
     // r393 (685d2380 step 3b) — the EPF election and the income tax residency are judged by the PACK'S
     // rules, which the screen hands in (`clientPackFor('MY').statutory`); reachable ONLY with them supplied.
@@ -406,6 +423,8 @@ describe('§2 every computed translation key resolves, in all six locales', () =
       'customHolderName', 'customHolderId',
       // r393 (685d2380 step 3b) — the EPF boxes and the residency, named by the pack's own rules.
       'epfEmployeeRate', 'epfEmployerRate', 'epfEmployeeAmount', 'epfEmployerAmount', 'epfManualReason', 'taxResidency',
+      // Board 2c1b2fba — Payment Method (now required) and the new registers and fields.
+      'paymentMethod', 'emergencyContacts', 'costAllocation', 'bankPayeeResidency', 'childReliefTable', 'payItems', 'qualifications',
       'employeeCode']) {
       expect(names.has(expected), expected).toBe(true);
     }
@@ -552,7 +571,7 @@ describe('§3 a draft creates nothing until it is completed', () => {
 
   it('completing it creates the employee through the real writers, and the draft stops existing', async () => {
     const ctx = adminCtx(b);
-    const data = completeDraft({ payroll: { basicSalary: '5200', monthlyAllowance: '400' } });
+    const data = completeDraft({ payroll: { basicSalary: '5200', monthlyAllowance: '400', paymentMethod: 'cash' } });
     const { id } = await saveEmployeeDraft(ctx, { data, currentStep: 5 });
     const { employmentId } = await completeEmployeeDraft(ctx, id);
 
@@ -1021,7 +1040,7 @@ describe('§7 an Employee ID held by a draft', () => {
       data: {
         ...draft!.data,
         employment: { ...draft!.data.employment, departmentId: b.deptA, employmentType: 'full_time', hiredOn: '2026-06-01' },
-        payroll: { basicSalary: '5200' },
+        payroll: { basicSalary: '5200', paymentMethod: 'cash' },
       },
       currentStep: 4,
     });

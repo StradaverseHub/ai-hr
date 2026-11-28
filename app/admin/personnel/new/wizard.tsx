@@ -6,24 +6,26 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
  * 06f0cb8f, moved onto tabs by 759dfc7d work item 2).
  *
  * THE FILE IS STILL CALLED `wizard.tsx` AND IT IS NO LONGER A WIZARD. The five-step form is gone: no
- * step strip, no Back, no Next, no order imposed on the person filling it in. What is here instead is
+ * step strip, no Back, no order imposed on the person filling it in. What is here instead is
  * `ClientTabs` — literally the shell (components/personnel-tabs.tsx) the activated employee's record
- * uses — showing five of that record's own tabs. The filename is kept only because four tests address
- * this module by path; this header is the correction.
+ * uses — showing six of that record's own tabs. The filename is kept only because four tests address
+ * this module by path; this header is the correction. Board 2c1b2fba added a NEXT button at the foot of
+ * each tab (hidden on the last): it is navigation only — it calls the shell's own `selectTab` with
+ * `nextDraftTab(tab)`, saves nothing, validates nothing, and every tab stays directly clickable.
  *
  * IT IS NOT THE CREATION FORM EITHER. The record already exists by the time this screen opens: Create
  * (`create-form.tsx`) asked four questions and reserved the Employee ID. What is left is everything an
  * employment actually needs, and none of it is blocking anything — HR fills it in over the following days
  * and presses ACTIVATE when it is complete.
  *
- * FIVE TABS: Profile · Employment · Bank & Statutory · Payroll · Family, labelled from
- * `people.wizard.tabs.*`, which test/draft-record-tabs.test.ts pins EQUAL to `people.detail.tabs.*` in
- * all six locales — so the words on a draft and the words on the record it becomes cannot drift. The
- * cards inside each tab carry the record's own section names the same way (`people.wizard.sections.*`,
- * pinned against the same detail keys). The six tabs a draft does NOT get — Career Movement, Attendance,
- * Leave, Documents, Qualification and Others — are ABSENT rather than empty: four of them describe
- * things that have happened to an employment, and a draft has none. See DRAFT_TABS in
- * lib/employee-draft-schema.ts for the rule, and for why Qualification waits.
+ * SIX TABS: Profile · Employment · Bank & Statutory · Payroll · Qualification · Family (board 2c1b2fba
+ * added Qualification, in the reporter's order, with Family last), labelled from `people.wizard.tabs.*`,
+ * which test/draft-record-tabs.test.ts pins EQUAL to `people.detail.tabs.*` in all six locales — so the
+ * words on a draft and the words on the record it becomes cannot drift. The cards inside each tab carry
+ * the record's own section names the same way (`people.wizard.sections.*`, pinned against the same
+ * detail keys). The tabs a draft does NOT get — Career Movement, Attendance, Leave, Documents and the
+ * retired Others — are ABSENT rather than empty: they describe things that have happened to an
+ * employment, and a draft has none. See DRAFT_TABS in lib/employee-draft-schema.ts.
  *
  * WHAT MAKES IT A DRAFT SURVIVED THE MOVE, and each half is asserted rather than hoped for:
  *   - SAVE DRAFT works from any tab and DOES NOT VALIDATE. A draft that refused to save until it was
@@ -38,8 +40,9 @@ import {DerivedOrganisationFields,useDerivedOrganisation} from '@/components/der
  * THE DRAFT IS STILL ONE jsonb BLOB — route A of the plan, and route B stays rejected. A draft creates no
  * person and no employment, which is what keeps it out of headcount, payroll, leave and every report, and
  * out of RLS's way. Real rows in a 'draft' state would invert that invariant and every consumer would
- * have to learn to exclude them. So these tabs read and write `employee_draft.data`, and this change
- * carries no migration at all.
+ * have to learn to exclude them. So these tabs read and write `employee_draft.data`. The one exception is
+ * the PHOTO (board 2c1b2fba): bytes do not belong in a JSON blob, so it is kept in its own table beside
+ * the draft (`DraftPhoto`) and is still moved onto the person only at Activate.
  *
  * TWO THINGS ARE READ-ONLY HERE, and the server refuses to be told otherwise (`saveEmployeeDraft` pins
  * them): the COMPANY, because it decided which numbering rule the held ID came from, and the EMPLOYEE ID
@@ -61,7 +64,7 @@ import {draftActivationMessageKey,draftActivationFieldLabels,draftFailureReferen
 import { useTranslations } from 'next-intl';
 import { Badge, Button, Card, EmployeeCode, SectionHeader, inputCls } from '@/components/ui';
 import { PersonnelField } from '@/components/personnel-field';
-import { personnelInput, personnelControl, personnelFormChoices } from '@/lib/personnel-form-contract';
+import { personnelInput, personnelControl, personnelDisplay, personnelFormChoices, personnelFormLabel } from '@/lib/personnel-form-contract';
 // 759dfc7d work item 2 — the SAME tab shell app/admin/personnel/[employmentId] uses, not a copy of it.
 // A second strip would be a second set of tab behaviours to keep in step: the unsaved-changes guard, the
 // `?tab=` written into the address bar on every switch (and read back on load, `openingTab` below), and
@@ -143,10 +146,22 @@ import {
   type AssignablePolicyOption,
 } from '@/components/payroll-policy-field';
 import { hireOptionVisible } from '@/lib/hire-form-filter';
+import { ArrowRight } from 'lucide-react';
+import { ProfileOptionSelectControlled } from '@/components/profile-option-select';
 import {
   DEFAULT_EMPLOYMENT_TYPE,
+  DRAFT_CHILD_RELIEF_CATEGORIES,
+  DRAFT_ORG_LABEL_FIELDS,
   DRAFT_TABS,
+  draftChildReliefKey,
+  draftCostAllocations,
+  draftEmergencyContacts,
   draftFamily,
+  draftPayItems,
+  draftQualifications,
+  nextDraftTab,
+  type DraftChildReliefCategory,
+  type DraftOrgLabelField,
   draftProvisionalEndOn,
   draftShowsEndDateBox,
   draftTaxResidency,
@@ -162,9 +177,51 @@ import {
 } from '@/lib/employee-draft-schema';
 // 759dfc7d — the Family tab, the first of the active record's tabs a draft gets (plan work item 1).
 import { DraftFamilyStep } from './family-step';
+// Board 2c1b2fba — the registers and the photo this item put on the draft, each the record's own fields.
+import { DraftEmergencyContacts } from './draft-emergency-contacts';
+import { DraftQualifications } from './draft-qualifications';
+import { DraftPayItems, type DraftPayComponentOption } from './draft-pay-items';
+import { DraftCostAllocations } from './draft-cost-allocations';
+import { DraftPhoto } from './draft-photo';
 import { saveDraftAction, discardDraftAction, createEmployeeAction } from './actions';
 
 type Option = { id: string; label: string; companies?: string; businessUnitId?: string; buCompanies?: string };
+type CatalogOption = { value: string; label: string };
+/** Board 2c1b2fba — the eight organisation label catalogs, keyed by their `profile_option` category. */
+export type OrgLabelCatalogs = Record<'division' | 'branch' | 'region' | 'line' | 'section' | 'team' | 'base' | 'category', CatalogOption[]>;
+/** Draft key → the record's field id (a literal map, so the Personnel form audit can resolve every one). */
+const ORG_LABEL_FIELD_IDS: Record<DraftOrgLabelField, string> = {
+  orgDivision: 'employment.additional_organisation_labels.orgdivision',
+  orgBranch: 'employment.additional_organisation_labels.orgbranch',
+  orgRegion: 'employment.additional_organisation_labels.orgregion',
+  orgLine: 'employment.additional_organisation_labels.orgline',
+  orgSection: 'employment.additional_organisation_labels.orgsection',
+  orgTeam: 'employment.additional_organisation_labels.orgteam',
+  orgBase: 'employment.additional_organisation_labels.orgbase',
+  employmentCategory: 'employment.additional_organisation_labels.employmentcategory',
+};
+/** Draft key → the `profile_option` category its choices come from (the record's catalogs). */
+const ORG_LABEL_CATEGORY: Record<DraftOrgLabelField, keyof OrgLabelCatalogs> = {
+  orgDivision: 'division', orgBranch: 'branch', orgRegion: 'region', orgLine: 'line',
+  orgSection: 'section', orgTeam: 'team', orgBase: 'base', employmentCategory: 'category',
+};
+/** The declared child-relief grid's field ids, category × share — the record's own descriptors
+ *  (components/identity-tax-card.tsx carries the same literal map). */
+const CHILD_RELIEF_GRID_FIELDS: Record<DraftChildReliefCategory, Record<'full' | 'half', string>> = {
+  under_18: { full: 'bank_statutory.income_tax_pcb.childrelieftable_under_18_full', half: 'bank_statutory.income_tax_pcb.childrelieftable_under_18_half' },
+  study_preu: { full: 'bank_statutory.income_tax_pcb.childrelieftable_study_preu_full', half: 'bank_statutory.income_tax_pcb.childrelieftable_study_preu_half' },
+  study_tertiary: { full: 'bank_statutory.income_tax_pcb.childrelieftable_study_tertiary_full', half: 'bank_statutory.income_tax_pcb.childrelieftable_study_tertiary_half' },
+  disabled: { full: 'bank_statutory.income_tax_pcb.childrelieftable_disabled_full', half: 'bank_statutory.income_tax_pcb.childrelieftable_disabled_half' },
+  disabled_study: { full: 'bank_statutory.income_tax_pcb.childrelieftable_disabled_study_full', half: 'bank_statutory.income_tax_pcb.childrelieftable_disabled_study_half' },
+};
+type EmploymentPatch = Partial<NonNullable<EmployeeDraftData['employment']>>;
+type StatutoryPatch = Partial<NonNullable<EmployeeDraftData['statutory']>>;
+const EMPTY_ORG_CATALOGS: OrgLabelCatalogs = { division: [], branch: [], region: [], line: [], section: [], team: [], base: [], category: [] };
+/** A legacy draft's Monthly Allowance is shown (read-only) only when it actually holds an amount. */
+const holdsAmount = (v: string | undefined) => {
+  const raw = (v ?? '').trim();
+  return raw !== '' && Number(raw.replace(/[,_]/g, '')) !== 0;
+};
 
 export function EmployeeWizard({
   today,
@@ -187,6 +244,11 @@ export function EmployeeWizard({
   stateOptions,
   payrollOn = false,
   payrollPolicies = [],
+  orgLabelOptions = EMPTY_ORG_CATALOGS,
+  emergencyRelationshipOptions = [],
+  qualificationLevelOptions = [],
+  payComponents = [],
+  hasPhoto = false,
 }: {
   today: string;
   draftId: string;
@@ -229,6 +291,18 @@ export function EmployeeWizard({
   /** r393 — the draft company's ACTIVE payroll policies (`listAssignablePolicies`), plain data. Blank in
    *  the picker is the Monthly default. Empty when Payroll is off. */
   payrollPolicies?: AssignablePolicyOption[];
+  /** Board 2c1b2fba — the eight organisation label catalogs (division … category), active options for the
+   *  draft's company, read once by page.tsx with the rest (`listAllProfileOptions`). Absent ⇒ all empty. */
+  orgLabelOptions?: OrgLabelCatalogs;
+  /** Board 2c1b2fba — the `relationship` catalog the record's Emergency contact dialog offers. */
+  emergencyRelationshipOptions?: CatalogOption[];
+  /** Board 2c1b2fba — the `qualificationLevel` catalog the record's Qualification dialog offers. */
+  qualificationLevelOptions?: CatalogOption[];
+  /** Board 2c1b2fba — the READY pay item catalogue for the draft's company; read only when Payroll is on.
+   *  Empty ⇒ the Pay items section is not shown (the record's rule). */
+  payComponents?: DraftPayComponentOption[];
+  /** Board 2c1b2fba — does the draft already hold a photo (`hasEmployeeDraftPhoto`)? */
+  hasPhoto?: boolean;
 }) {
   const t = useTranslations('people.wizard');
   const tRoot=useTranslations();
@@ -239,7 +313,7 @@ export function EmployeeWizard({
   // `employee_draft.current_step` and a draft picked up two days later reopens where it was left. The
   // shell tells us on every switch (`onTabChange`); `selectTabRef` is the other direction, for the
   // outstanding-list links.
-  // WHERE THE SCREEN OPENS: the `?tab=` in the address bar if it names one of these five tabs, otherwise
+  // WHERE THE SCREEN OPENS: the `?tab=` in the address bar if it names one of these six tabs, otherwise
   // the stored step. Resolved ONCE here and used for both the shell's `defaultTab` and this mirror, so a
   // Save pressed on a URL-opened tab writes the number of the tab actually on screen.
   const openingKey = openingTab(initialTab, initialStep);
@@ -329,6 +403,14 @@ export function EmployeeWizard({
     setSaved(false);
     setData((d) => ({ ...d, family }));
   };
+  /** Board 2c1b2fba — the same whole-array rule for the four registers this item added. */
+  const setList = <K extends 'emergencyContacts' | 'qualifications' | 'payItems' | 'costAllocations'>(
+    key: K,
+    list: NonNullable<EmployeeDraftData[K]>,
+  ) => {
+    setSaved(false);
+    setData((d) => ({ ...d, [key]: list }));
+  };
 
   const visible = (o: Option, withBu: boolean) =>
     hireOptionVisible({
@@ -401,7 +483,7 @@ export function EmployeeWizard({
   /**
    * THE TAB LABELS — one STATIC `t()` per tab, never a computed key built from the tab name.
    *
-   * A template key is invisible to test/i18n-coverage.test.ts check C, and these five keys are the whole
+   * A template key is invisible to test/i18n-coverage.test.ts check C, and these six keys are the whole
    * point of the change: they carry the ACTIVE RECORD'S OWN WORDS onto the draft (pinned equal to
    * `people.detail.tabs.*` in all six locales by test/draft-record-tabs.test.ts). Written as a Record so
    * TypeScript refuses a tab with no label, and so the ORDER still comes from DRAFT_TABS rather than
@@ -412,13 +494,22 @@ export function EmployeeWizard({
     job: t('tabs.job'),
     bankStatutory: t('tabs.bankStatutory'),
     payroll: t('tabs.payroll'),
+    qualification: t('tabs.qualification'),
     family: t('tabs.family'),
   };
   const tabs = DRAFT_TABS.map((key) => ({ key, label: tabLabel[key] }));
+  /** Board 2c1b2fba — the five child-relief categories in the record's words, one static key each. */
+  const childReliefCategoryLabel: Record<DraftChildReliefCategory, string> = {
+    under_18: tRoot('people.detail.family.childReliefCat_under_18'),
+    study_preu: tRoot('people.detail.family.childReliefCat_study_preu'),
+    study_tertiary: tRoot('people.detail.family.childReliefCat_study_tertiary'),
+    disabled: tRoot('people.detail.family.childReliefCat_disabled'),
+    disabled_study: tRoot('people.detail.family.childReliefCat_disabled_study'),
+  };
 
   /**
-   * THE FIVE PANELS, ONE PER TAB — the SAME fields the wizard's five steps carried, regrouped under the
-   * SAME card names the activated record uses.
+   * THE PANELS, ONE PER TAB — the SAME fields the wizard's five steps carried, regrouped under the SAME
+   * card names the activated record uses, plus (board 2c1b2fba) the record's sections a draft lacked.
    *
    * NOTHING WAS RE-ASKED AND NOTHING WAS DROPPED IN THE MOVE. Every control below is the one that was on
    * the step of the same name a commit ago, including the shared field groups 35b7af0a consolidated
@@ -433,11 +524,12 @@ export function EmployeeWizard({
    * Tax"; and it groups Employment under "Organisation" and "Employment Dates". The draft now does the
    * same, and `people.wizard.sections.*` is pinned to the record's own keys so the words cannot drift.
    *
-   * WHAT IS DELIBERATELY NOT HERE: the record's ADDRESS lines, TP3, pay items, CP38, encashment,
-   * emergency contacts, compensation revisions — every one of them is either a child-record register or a
-   * column the draft blob has never carried. Adding a control for a field `completeEmployeeDraft` cannot
-   * write is exactly the silent drop this item exists to prevent, so a field arrives on this screen only
-   * when the activation path can carry it.
+   * WHAT IS DELIBERATELY NOT HERE: TP3, CP38, encashment and compensation revisions — each describes
+   * something that happens to an employment after it exists. Emergency contacts, pay items, qualifications,
+   * the cost-centre allocation, the organisation labels, bank payee residency and the declared child-relief
+   * table arrived with board 2c1b2fba, because the activation path now writes each one through its owner.
+   * Adding a control for a field `completeEmployeeDraft` cannot write is exactly the silent drop this item
+   * exists to prevent, so a field arrives on this screen only when the activation path can carry it.
    */
   const panels: Partial<Record<DraftTabKey, ReactNode>> = {
     profile: (
@@ -687,6 +779,15 @@ export function EmployeeWizard({
             </div>
           </div>
         </Card>
+        {/* Board 2c1b2fba — EMERGENCY CONTACT, the record's Profile register (its own card, its own Add,
+            the record's fields and the one-Primary rule). Held in the draft until Activate writes each
+            contact through `addEmergencyContact`. */}
+        <DraftEmergencyContacts
+          title={t('sections.emergencyContact')}
+          contacts={draftEmergencyContacts(data)}
+          onChange={(list) => setList('emergencyContacts', list)}
+          relationshipOptions={emergencyRelationshipOptions}
+        />
       </>
     ),
     job: (
@@ -751,23 +852,6 @@ export function EmployeeWizard({
                 <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
               )}
             </PersonnelField>
-            <PersonnelField fieldId={"employment.draft_only_employment_fields.costcenterid"} mode="draft">
-              <select {...personnelControl("employment.draft_only_employment_fields.costcenterid", 'draft')}
-                className={inputCls}
-                value={data.employment?.costCenterId ?? ''}
-                onChange={(e) => set('employment', { costCenterId: e.target.value })}
-              >
-                <option value="">{t('none')}</option>
-                {costCenters.filter((c) => visible(c, false)).map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
-              {orgEmpty(costCenters) && (
-                <p className="mt-1 text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
-              )}
-            </PersonnelField>
             <PersonnelField fieldId={"employment.organisation_assignment.gradename"} mode="draft">
               <select {...personnelControl("employment.organisation_assignment.gradename", 'draft')}
                 className={inputCls}
@@ -781,23 +865,6 @@ export function EmployeeWizard({
                   </option>
                 ))}
               </select>
-            </PersonnelField>
-            {/* r392 (685d2380 step 1) — "Direct Superior", the Personnel record's word for it, found by
-                SEARCHING (Employee ID or part of a name) with the same Combobox that record uses. CONTROLLED
-                MODE: no `name`, so nothing is posted by a hidden input — the pick is written into the draft
-                state under the STORED key it has always had (`reportingManagerEmploymentId`), which
-                `completeEmployeeDraft` hands `hireEmployee` unchanged. The people offered are unchanged
-                too: page.tsx still reads `listManagerCandidates(session, { companyIds: scopeIds })`. */}
-            <PersonnelField fieldId={"employment.direct_superior_and_history.superioremploymentid"} mode="draft">
-              <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'draft')}
-                value={data.employment?.reportingManagerEmploymentId ?? ''}
-                options={managers.map((m) => ({ value: m.id, label: m.label }))}
-                placeholder={t('directSuperiorNone')}
-                searchPlaceholder={t('directSuperiorSearch')}
-                noResultsLabel={t('directSuperiorNoResults')}
-                legacySuffix=""
-                onValueChange={(v) => set('employment', { reportingManagerEmploymentId: v })}
-              />
             </PersonnelField>
             {/* a72610af — THE `??` BELOW IS NO LONGER A DEFAULT, IT IS A GUARD, and the difference is the
                 whole of the defect this item fixed. It used to be the only statement of "Full Time" on
@@ -817,7 +884,76 @@ export function EmployeeWizard({
               </select>
             </PersonnelField>
           </div>
+          {/* Board 2c1b2fba — THE EIGHT ORGANISATION LABELS the record's Organisation card carries (Division,
+              Branch, Region, Line, Section, Team, Base, Category), in its order, captioned by its own field
+              descriptors and offered from the SAME catalogs, active for the draft's company. Activate lands
+              them as the employment's STARTING values (`assertEmploymentInformationLabelsTx` judges them
+              first). A catalog with no options gives a plain text box instead of an empty dropdown. */}
+          <div className="grid grid-cols-1 gap-4 border-t border-border p-4 sm:grid-cols-2 lg:grid-cols-4" data-org-labels>
+            {DRAFT_ORG_LABEL_FIELDS.map((key) => {
+              const fieldId = ORG_LABEL_FIELD_IDS[key];
+              const options = orgLabelOptions[ORG_LABEL_CATEGORY[key]];
+              const value = data.employment?.[key] ?? '';
+              return (
+                <PersonnelField key={key} fieldId={fieldId} mode="draft">
+                  {options.length > 0 ? (
+                    <ProfileOptionSelectControlled
+                      personnelFieldId={fieldId}
+                      value={value}
+                      options={options}
+                      placeholder={t('selectPrompt')}
+                      legacySuffix={tRoot('people.detail.optionLegacySuffix')}
+                      onChange={(v) => set('employment', { [key]: v } as EmploymentPatch)}
+                    />
+                  ) : (
+                    <input {...personnelControl(fieldId, 'draft')} className={inputCls}
+                      value={value} onChange={(e) => set('employment', { [key]: e.target.value } as EmploymentPatch)} />
+                  )}
+                </PersonnelField>
+              );
+            })}
+          </div>
         </Card>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* Board 2c1b2fba — DIRECT SUPERIOR IN ITS OWN CARD, as on the record (`directSuperiorTitle`). The
+              control, its candidates and its stored key are unchanged; only its place moved. */}
+          <Card>
+            <SectionHeader title={t('sections.directSuperior')} />
+            <div className="grid grid-cols-1 gap-4 p-4">
+              {/* r392 (685d2380 step 1) — "Direct Superior", the Personnel record's word for it, found by
+                  SEARCHING (Employee ID or part of a name) with the same Combobox that record uses. CONTROLLED
+                  MODE: no `name`, so nothing is posted by a hidden input — the pick is written into the draft
+                  state under the STORED key it has always had (`reportingManagerEmploymentId`), which
+                  `completeEmployeeDraft` hands `hireEmployee` unchanged. The people offered are unchanged
+                  too: page.tsx still reads `listManagerCandidates(session, { companyIds: scopeIds })`. */}
+              <PersonnelField fieldId={"employment.direct_superior_and_history.superioremploymentid"} mode="draft">
+                <Combobox {...personnelControl("employment.direct_superior_and_history.superioremploymentid", 'draft')}
+                  value={data.employment?.reportingManagerEmploymentId ?? ''}
+                  options={managers.map((m) => ({ value: m.id, label: m.label }))}
+                  placeholder={t('directSuperiorNone')}
+                  searchPlaceholder={t('directSuperiorSearch')}
+                  noResultsLabel={t('directSuperiorNoResults')}
+                  legacySuffix=""
+                  onValueChange={(v) => set('employment', { reportingManagerEmploymentId: v })}
+                />
+              </PersonnelField>
+            </div>
+          </Card>
+          {/* Board 2c1b2fba — COST CENTER ALLOCATION replaces the single Cost Center select, as on the record:
+              one or more cost centres with percentages, at most 100% in total, effective from the Group Join
+              Date. A legacy single `costCenterId` reads as one row at 100% (`draftCostAllocations`) and is
+              only written as a list when HR changes it and saves. */}
+          <DraftCostAllocations
+            title={t('sections.costCenterAllocation')}
+            rows={draftCostAllocations(data)}
+            onChange={(rows) => setList('costAllocations', rows)}
+            choices={costCenters.filter((c) => visible(c, false)).map((c) => ({ id: c.id, label: c.label }))}
+            allCostCenters={costCenters.map((c) => ({ id: c.id, label: c.label }))}
+            emptyNote={orgEmpty(costCenters) && (
+              <p className="text-xs text-muted-foreground">{t('orgLabelsEmptyForCompany')}</p>
+            )}
+          />
+        </div>
         <Card>
           <SectionHeader title={t('sections.employmentDates')} />
           <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
@@ -838,6 +974,14 @@ export function EmployeeWizard({
               {/* 89ea527b — Group Join Date and Join Date are the same day at creation and become
                   movement-only afterwards. The wizard captures the one date, as the ticket asks. */}
               <p className="mt-1 text-xs text-muted-foreground">{t('hints.groupJoinDate')}</p>
+            </PersonnelField>
+            {/* Board 2c1b2fba — JOIN DATE, read-only, as the record lays the card out: a new employee starts
+                the group and the company on the same day (`hireEmployee` writes join_date = hired_on), so it
+                mirrors the Group Join Date. After activation it moves only through a movement event. */}
+            <PersonnelField fieldId="employment.employment_dates_and_service.joindate" mode="draft">
+              <input {...personnelDisplay('employment.employment_dates_and_service.joindate')} readOnly disabled
+                className={`${inputCls} bg-muted/50`} value={data.employment?.hiredOn ?? today} />
+              <p className="mt-1 text-xs text-muted-foreground">{t('hints.joinDate')}</p>
             </PersonnelField>
             {/* 8590615a — for a CONTRACT hire this one date is the contract end date, so it says so. The
                 field, its state and its draft key are unchanged (`provisionalEndOn`); only the label and the
@@ -874,72 +1018,85 @@ export function EmployeeWizard({
                 probation extensions Movement-only: `setEmploymentInfo` honours that date solely under the
                 `probationExtension` movement tag and silently ignores an untagged save, so a box for it
                 on this screen would appear to work and do nothing. */}
-            <EmploymentPeriodField
-              mode="controlled"
-              labelKey="probationPeriod"
-              value={data.employment?.probationValue}
-              unit={data.employment?.probationUnit}
-              onChange={(patch) =>
-                set('employment', {
-                  ...(patch.value !== undefined ? { probationValue: patch.value } : {}),
-                  ...(patch.unit !== undefined ? { probationUnit: patch.unit } : {}),
-                })
-              }
-            />
-            {/* r392 (685d2380 step 1) — FULL-TIME ONLY: when probation ends, READ-ONLY, from the SAME
-                `draftProvisionalEndOn` that `completeEmployeeDraft` hands `hireEmployee`, so the date on
-                this line is the date the employee is created with. A pre-r392 draft with no period keeps
-                the end date it already holds, and the line says that is where it came from. */}
-            {employmentType === 'full_time' && (
-              <p className="self-end text-sm text-muted-foreground sm:col-span-2" data-probation-ends>
-                {endDate.source === 'period' && endDate.date
-                  ? t('probationEndsOn', { date: endDate.date })
-                  : endDate.source === 'stored' && endDate.date
-                    ? t('probationEndsOnStored', { date: endDate.date })
-                    : t('probationEndsNone')}
-              </p>
-            )}
-            <EmploymentPeriodField
-              mode="controlled"
-              labelKey="extendedProbationPeriod"
-              value={data.employment?.extendedProbationValue}
-              unit={data.employment?.extendedProbationUnit}
-              onChange={(patch) =>
-                set('employment', {
-                  ...(patch.value !== undefined ? { extendedProbationValue: patch.value } : {}),
-                  ...(patch.unit !== undefined ? { extendedProbationUnit: patch.unit } : {}),
-                })
-              }
-            />
-            <ConfirmationDateField
-              mode="controlled"
-              value={data.employment?.confirmationDate}
-              onChange={(confirmationDate) => set('employment', { confirmationDate })}
-            />
-            <EmploymentPeriodField
-              mode="controlled"
-              labelKey="noticeBeforeConfirmation"
-              value={data.employment?.noticeBeforeConfirmationValue}
-              unit={data.employment?.noticeBeforeConfirmationUnit}
-              onChange={(patch) =>
-                set('employment', {
-                  ...(patch.value !== undefined ? { noticeBeforeConfirmationValue: patch.value } : {}),
-                  ...(patch.unit !== undefined ? { noticeBeforeConfirmationUnit: patch.unit } : {}),
-                })
-              }
-            />
-            <EmploymentPeriodField
-              mode="controlled"
-              labelKey="noticeAfterConfirmation"
-              value={data.employment?.noticeAfterConfirmationValue}
-              unit={data.employment?.noticeAfterConfirmationUnit}
-              onChange={(patch) =>
-                set('employment', {
-                  ...(patch.value !== undefined ? { noticeAfterConfirmationValue: patch.value } : {}),
-                  ...(patch.unit !== undefined ? { noticeAfterConfirmationUnit: patch.unit } : {}),
-                })
-              }
-            />
+            {/* Board 2c1b2fba — THE RECORD'S TWO GROUPS: "Probation Information" (period, when it ends,
+                extension, confirmation) and "Notice Period Information" (the two notice periods). Same
+                controls and draft keys as before; only the headings and the grouping are new. */}
+            <div className="sm:col-span-2" data-probation-group>
+              <h3 className="mb-3 text-sm font-medium text-foreground">{t('sections.probationGroup')}</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <EmploymentPeriodField
+                  mode="controlled"
+                  labelKey="probationPeriod"
+                  value={data.employment?.probationValue}
+                  unit={data.employment?.probationUnit}
+                  onChange={(patch) =>
+                    set('employment', {
+                      ...(patch.value !== undefined ? { probationValue: patch.value } : {}),
+                      ...(patch.unit !== undefined ? { probationUnit: patch.unit } : {}),
+                    })
+                  }
+                />
+                <EmploymentPeriodField
+                  mode="controlled"
+                  labelKey="extendedProbationPeriod"
+                  value={data.employment?.extendedProbationValue}
+                  unit={data.employment?.extendedProbationUnit}
+                  onChange={(patch) =>
+                    set('employment', {
+                      ...(patch.value !== undefined ? { extendedProbationValue: patch.value } : {}),
+                      ...(patch.unit !== undefined ? { extendedProbationUnit: patch.unit } : {}),
+                    })
+                  }
+                />
+                <ConfirmationDateField
+                  mode="controlled"
+                  value={data.employment?.confirmationDate}
+                  onChange={(confirmationDate) => set('employment', { confirmationDate })}
+                />
+                {/* r392 (685d2380 step 1) — FULL-TIME ONLY: when probation ends, READ-ONLY, from the SAME
+                    `draftProvisionalEndOn` that `completeEmployeeDraft` hands `hireEmployee`, so the date on
+                    this line is the date the employee is created with. A pre-r392 draft with no period keeps
+                    the end date it already holds, and the line says that is where it came from. */}
+                {employmentType === 'full_time' && (
+                  <p className="self-end text-sm text-muted-foreground sm:col-span-2 lg:col-span-3" data-probation-ends>
+                    {endDate.source === 'period' && endDate.date
+                      ? t('probationEndsOn', { date: endDate.date })
+                      : endDate.source === 'stored' && endDate.date
+                        ? t('probationEndsOnStored', { date: endDate.date })
+                        : t('probationEndsNone')}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="sm:col-span-2" data-notice-group>
+              <h3 className="mb-3 text-sm font-medium text-foreground">{t('sections.noticeGroup')}</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <EmploymentPeriodField
+                  mode="controlled"
+                  labelKey="noticeBeforeConfirmation"
+                  value={data.employment?.noticeBeforeConfirmationValue}
+                  unit={data.employment?.noticeBeforeConfirmationUnit}
+                  onChange={(patch) =>
+                    set('employment', {
+                      ...(patch.value !== undefined ? { noticeBeforeConfirmationValue: patch.value } : {}),
+                      ...(patch.unit !== undefined ? { noticeBeforeConfirmationUnit: patch.unit } : {}),
+                    })
+                  }
+                />
+                <EmploymentPeriodField
+                  mode="controlled"
+                  labelKey="noticeAfterConfirmation"
+                  value={data.employment?.noticeAfterConfirmationValue}
+                  unit={data.employment?.noticeAfterConfirmationUnit}
+                  onChange={(patch) =>
+                    set('employment', {
+                      ...(patch.value !== undefined ? { noticeAfterConfirmationValue: patch.value } : {}),
+                      ...(patch.unit !== undefined ? { noticeAfterConfirmationUnit: patch.unit } : {}),
+                    })
+                  }
+                />
+              </div>
+            </div>
           </div>
         </Card>
       </>
@@ -964,6 +1121,22 @@ export function EmployeeWizard({
               hint={t('hints.bankAccount')}
               onChange={(patch) => set('statutory', patch)}
             />
+          </div>
+          {/* Board 2c1b2fba — BANK PAYEE RESIDENCY, the record's select (components/bank-info-card.tsx): its
+              three answers, its help text, in the record's words (`maybankPayment.*`). Blank = not recorded.
+              Lands through `pack.statutory.setBank` at Activate; never inferred from tax residency. */}
+          <div className="px-4 pb-4" data-bank-payee-residency>
+            <PersonnelField fieldId="bank_statutory.bank_information.bankpayeeresidency" mode="draft">
+              <select {...personnelControl('bank_statutory.bank_information.bankpayeeresidency', 'draft')}
+                aria-label={tRoot('maybankPayment.payeeResidency')} className={inputCls}
+                value={data.statutory?.bankPayeeResidency ?? ''}
+                onChange={(e) => set('statutory', { bankPayeeResidency: e.target.value })}>
+                <option value="">{tRoot('maybankPayment.notRecorded')}</option>
+                <option value="resident">{tRoot('maybankPayment.resident')}</option>
+                <option value="non_resident">{tRoot('maybankPayment.nonResident')}</option>
+              </select>
+              <p className="mt-1 text-xs text-muted-foreground">{tRoot('maybankPayment.residencyHelp')}</p>
+            </PersonnelField>
           </div>
           {/* r393 (685d2380 step 3a) — the custom payment holder, the SAME field group the Active profile's
               Bank Information card renders (components/custom-holder-fields.tsx). Ticking one opens its box;
@@ -1184,6 +1357,48 @@ export function EmployeeWizard({
                 {/* 99b2d6c0 (r336) — the same explanation of "Auto (from table)" the Personnel card now
                     carries, on the screen where the mode is FIRST chosen. */}
                 <ChildReliefModeHint />
+                {/* Board 2c1b2fba — THE DECLARED CHILD-RELIEF TABLE, under "Auto (from table)" exactly where
+                    the record's Income Tax (PCB) card shows it (components/identity-tax-card.tsx): the five
+                    LHDN categories × 100% / 50%, whole numbers of zero or more, the record's own captions.
+                    (The approved plan's wording said "Manual"; the record shows the grid under Auto (from
+                    table), and the draft follows the record.) The boxes are stored as typed
+                    (`draftChildReliefKey`) and handed to `pack.statutory.setTax` at Activate. */}
+                {(data.statutory?.childReliefMode ?? '').trim() === 'auto_table' && (
+                  <div className="rounded-md border border-border bg-card/60 p-3" data-child-relief-table>
+                    <p className="mb-2 text-xs text-muted-foreground">{tRoot('people.detail.childReliefTableNote')}</p>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead className="text-left text-xs uppercase tracking-wide text-muted-foreground">
+                          <tr>
+                            <th className="py-1.5 pr-4 font-medium">{tRoot('people.detail.childReliefTableCategoryCol')}</th>
+                            <th className="py-1.5 pr-4 font-medium">{tRoot('people.detail.childReliefTableFullCol')}</th>
+                            <th className="py-1.5 font-medium">{tRoot('people.detail.childReliefTableHalfCol')}</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {DRAFT_CHILD_RELIEF_CATEGORIES.map((category) => (
+                            <tr key={category} className="border-t border-border">
+                              <td className="py-1.5 pr-4 align-middle">{childReliefCategoryLabel[category]}</td>
+                              {(['full', 'half'] as const).map((share) => {
+                                const fieldId = CHILD_RELIEF_GRID_FIELDS[category][share];
+                                const key = draftChildReliefKey(category, share);
+                                return (
+                                  <td key={share} className="py-1.5 pr-4">
+                                    <input {...personnelInput(fieldId, 'draft')}
+                                      aria-label={personnelFormLabel(fieldId, (k, fallback) => (tRoot.has(k) ? tRoot(k) : fallback))}
+                                      className={`${inputCls} max-w-24`}
+                                      value={data.statutory?.[key] ?? ''}
+                                      onChange={(e) => set('statutory', { [key]: e.target.value } as StatutoryPatch)} />
+                                  </td>
+                                );
+                              })}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
                 </>
               }
             />
@@ -1209,7 +1424,7 @@ export function EmployeeWizard({
     ),
     payroll: (
       <>
-      <Card>
+      <Card data-compensation-card>
         <SectionHeader title={t('sections.compensation')} />
         <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
             {/* r374 (item 7dbaf677) — THE FLOOR IS ZERO, AND BLANK IS ALLOWED.
@@ -1233,16 +1448,17 @@ export function EmployeeWizard({
                 onChange={(e) => set('payroll', { basicSalary: e.target.value })}
               />
             </PersonnelField>
-            <PersonnelField fieldId={"payroll.draft_initial_monthly_allowance.monthlyallowance"} mode="draft">
-              <input {...personnelInput("payroll.draft_initial_monthly_allowance.monthlyallowance", 'draft')}
-
-
-
-                className={inputCls}
-                value={data.payroll?.monthlyAllowance ?? ''}
-                onChange={(e) => set('payroll', { monthlyAllowance: e.target.value })}
-              />
-            </PersonnelField>
+            {/* Board 2c1b2fba — THE MONTHLY ALLOWANCE BOX IS GONE, as it is from the record: recurring amounts
+                are Pay items now (below). A LEGACY draft that still holds an amount shows it READ-ONLY with a
+                note, so nothing disappears without warning; Activate still carries it (core/employee-draft.ts)
+                until HR moves it into a Pay item. */}
+            {holdsAmount(data.payroll?.monthlyAllowance) && (
+              <PersonnelField fieldId={"payroll.draft_initial_monthly_allowance.monthlyallowance"} mode="draft">
+                <input {...personnelDisplay("payroll.draft_initial_monthly_allowance.monthlyallowance")} readOnly disabled
+                  className={`${inputCls} bg-muted/50`} value={data.payroll?.monthlyAllowance ?? ''} data-legacy-monthly-allowance />
+                <p className="mt-1 text-xs text-amber-700 dark:text-amber-400">{t('hints.legacyMonthlyAllowance')}</p>
+              </PersonnelField>
+            )}
             {/* 35b7af0a group 2 — Pay Mode, Payment Term and Rate are the SAME component the Personnel
                 Payroll tab and the salary-history edit flow already used
                 (components/pay-structure-fields.tsx). The wizard's private copy had drifted in wording
@@ -1298,26 +1514,37 @@ export function EmployeeWizard({
                 {t('hints.noBasicSalary')}
               </p>
             )}
+            {/* r393 (685d2380 step 2), moved by board 2c1b2fba — PAYMENT METHOD, the record's own select, now
+                inside Basic Salary and REQUIRED: blank ("Not specified") keeps Activate switched off and is
+                listed as still needed (`missingByTab` → `paymentMethod`), until HR picks Bank Transfer,
+                Cheque or Cash. Bank Transfer also needs the bank and the account number from the Bank &
+                Statutory tab (`paymentMethodBank`, the SAME predicate the record's writer refuses with), and
+                the hint beside the select says so where the choice is made. The separate "How this employee
+                is paid" card it used to sit in would now be empty, so it is gone. */}
+            <div className="flex flex-col gap-1.5" data-payment-method>
+              <PaymentMethodField
+                mode="controlled"
+                value={data.payroll?.paymentMethod}
+                onChange={(paymentMethod) => set('payroll', { paymentMethod })}
+                markRequired
+                requiredAriaLabel={t('requiredField')}
+              />
+              <p className="text-xs text-muted-foreground">{t('hints.paymentMethodBankTransfer')}</p>
+            </div>
         </div>
       </Card>
-      {/* r393 (685d2380 step 2) — HOW THIS EMPLOYEE IS PAID, the record's own select and the record's own
-          heading (`sections.payMethodGroup`, pinned equal to people.detail.payMethodGroup). Bank Transfer
-          needs the bank and the account number from the Bank & Statutory tab; until both are there
-          `missingByTab` lists `paymentMethodBank` above the Activate button — the SAME predicate the
-          record's writer refuses with — and the hint below says so where the choice is made. */}
-      <Card>
-        <SectionHeader title={t('sections.payMethodGroup')} />
-        <div className="grid grid-cols-1 gap-4 p-4 sm:grid-cols-2">
-          <div className="flex flex-col gap-1.5" data-payment-method>
-            <PaymentMethodField
-              mode="controlled"
-              value={data.payroll?.paymentMethod}
-              onChange={(paymentMethod) => set('payroll', { paymentMethod })}
-            />
-          </div>
-          <p className="text-xs text-muted-foreground sm:col-span-2">{t('hints.paymentMethodBankTransfer')}</p>
-        </div>
-      </Card>
+      {/* Board 2c1b2fba — PAY ITEMS, the record's section, shown where the record shows it: Payroll on for
+          the draft's company AND a non-empty ready catalogue. Lines are held in the draft and written by
+          `setEmploymentPayComponent` at Activate, starting on the Group Join Date by default. */}
+      {payrollOn && payComponents.length > 0 && (
+        <DraftPayItems
+          title={t('sections.payItems')}
+          items={draftPayItems(data)}
+          onChange={(list) => setList('payItems', list)}
+          components={payComponents}
+          groupJoinDate={data.employment?.hiredOn ?? today}
+        />
+      )}
       {/* r393 — THE PAYROLL POLICY, only where Payroll is switched on for this company (the record's
           `payrollOn` rule). The list is the record's: this company's active policies, blank = the Monthly
           default. The company is fixed on a draft (see the header), so a pick can never be left pointing
@@ -1343,6 +1570,16 @@ export function EmployeeWizard({
        draft's own blob and materialised into real rows at Activate. It brings its OWN card (titled from
        `people.detail.family.title`, the record's own key) because it is a register with a table and a
        dialog rather than a grid of fields. */
+    /* Board 2c1b2fba — QUALIFICATION, the record's register: optional, at most one Highest, written by
+       `addQualification` at Activate. Its own card, titled with the record's own heading. */
+    qualification: (
+      <DraftQualifications
+        title={t('sections.qualification')}
+        qualifications={draftQualifications(data)}
+        onChange={(list) => setList('qualifications', list)}
+        levelOptions={qualificationLevelOptions}
+      />
+    ),
     family: (
       <DraftFamilyStep
         members={draftFamily(data)}
@@ -1353,6 +1590,33 @@ export function EmployeeWizard({
     ),
   };
 
+  /**
+   * Board 2c1b2fba — THE NEXT BUTTON at the foot of every tab but the last, in DRAFT_TABS order (Profile →
+   * Employment → Bank & Statutory → Payroll → Qualification → Family). NAVIGATION ONLY: it moves the shell
+   * through its OWN guarded `selectTab` (the same path the strip and the outstanding list take), saves
+   * nothing and validates nothing, and the strip stays clickable in any order. Values survive the move for
+   * the reason given at the ClientTabs import: `data` lives above the shell.
+   */
+  const withNext = (key: DraftTabKey, panel: ReactNode) => {
+    const next = nextDraftTab(key);
+    return (
+      <div className="space-y-6">
+        {panel}
+        {next && (
+          <div className="flex justify-end" data-next-tab={next}>
+            <Button type="button" onClick={() => selectTabRef.current?.(next)} title={tabLabel[next]}>
+              {t('next')}
+              <ArrowRight className="size-4" aria-hidden />
+            </Button>
+          </div>
+        )}
+      </div>
+    );
+  };
+  const panelsWithNext = Object.fromEntries(
+    DRAFT_TABS.map((key) => [key, withNext(key, panels[key])]),
+  ) as Partial<Record<DraftTabKey, ReactNode>>;
+
   return (
     <div className="space-y-6">
       {/* THE RECORD THAT ALREADY EXISTS (item 06f0cb8f) — its held Employee ID, its name and its company,
@@ -1361,6 +1625,9 @@ export function EmployeeWizard({
           that might yet become something. `EmployeeCode` is the same monospaced treatment the employee
           list and the profile screen give the ID, so the number reads as identical in all three places. */}
       <Card className="flex flex-wrap items-center gap-x-8 gap-y-3 px-4 py-3">
+        {/* Board 2c1b2fba — the record header's photo and its Upload photo control (PNG/JPG, 2 MB). Stored
+            beside the draft, not in its JSON, and moved onto the person at Activate. */}
+        <DraftPhoto draftId={id} name={data.profile?.fullName?.trim() || t('untitledDraft')} hasPhoto={hasPhoto} />
         <div>
           <div className="text-xs font-medium text-muted-foreground">{t('fields.employeeCode')}</div>
           <div className="mt-0.5">
@@ -1408,12 +1675,12 @@ export function EmployeeWizard({
           `current_step`, including the retired 5, mapped onto a tab that still exists.
           `onTabChange` mirrors the switch back so the next save records it; `selectRef` is how the
           outstanding list below moves the shell, through the shell's OWN guarded switch rather than
-          around it. `emptyLabel` can never actually show here (every one of the five tabs has a panel),
+          around it. `emptyLabel` can never actually show here (every one of the six tabs has a panel),
           and is passed because the shell requires a real string rather than a placeholder. */}
       <fieldset disabled={busy} className="min-w-0 border-0 p-0">
       <ClientTabs
         tabs={tabs}
-        panels={panels}
+        panels={panelsWithNext}
         emptyLabel={t('tabs.empty')}
         defaultTab={openingKey}
         ariaLabel={t('progressLabel')}
@@ -1453,10 +1720,10 @@ export function EmployeeWizard({
         </div>
       )}
 
-      {/* BACK AND NEXT ARE GONE with the wizard they belonged to. A draft is filled in over days in
-          whatever order suits whoever is filling it in, so the tabs above are the navigation and there is
-          no "next" for a screen with no sequence. What is left is the three things that act on the whole
-          record: Save, Discard, Activate. */}
+      {/* BACK IS GONE with the wizard it belonged to. A draft is filled in over days in whatever order suits
+          whoever is filling it in, so the tabs above are the navigation; the Next button at the foot of
+          each tab (board 2c1b2fba) is a convenience that only moves to the following tab. What is here is
+          the three things that act on the whole record: Save, Discard, Activate. */}
       <div className="flex flex-wrap items-center gap-2">
         {/* Deliberately UNVALIDATED: a draft that refused to save until it was complete would not be
             a draft. The reporter's whole ask is "keep what I have and come back to it". */}

@@ -22,7 +22,13 @@ import { hireHandoffPrefill, RecruitmentError, type HirePrefill } from '@/packs/
 // against the draft as loaded. See the function's own header for why a display-only fallback was the bug.
 import { withEmploymentDefaults } from '@/lib/employee-draft-schema';
 // 35b7af0a group 8 — the nationality catalog the shared identity group offers on BOTH screens.
-import { listProfileOptions } from '@/core/profile-options';
+// Board 2c1b2fba — every profile catalog the continue form needs comes from ONE read (all categories,
+// active only, the draft company), exactly as the activated record reads its own.
+import { listAllProfileOptions } from '@/core/profile-options';
+// Board 2c1b2fba — the ready pay item catalogue (Payroll pack facade, never core/pay-components directly)
+// and whether the draft already holds a photo (kept beside the draft, never inside its JSON).
+import { listPayComponents } from '@/packs/payroll/service';
+import { hasEmployeeDraftPhoto } from '@/core/employee-draft-photo';
 import { listConfigs, resolveEmployeeIdRule } from '@/core/employee-id-config';
 import { labelIdsForCompany } from '@/core/system-labels';
 import type { EmployeeIdRule } from '@/lib/employee-id-mode';
@@ -123,6 +129,7 @@ export default async function CreateEmployeePage({
     );
   }
 
+  const draftCompanyId = draft.companyId;
   const [
     departments,
     positions,
@@ -130,13 +137,8 @@ export default async function CreateEmployeePage({
     businessUnits,
     grades,
     managerCandidates,
-    nationalities,
-    dependentRelationships,
-    countries,
-    states,
-    salutations,
-    religions,
-    races,
+    catalogs,
+    hasPhoto,
   ] = await Promise.all([
     listDepartments(session),
     listPositions(session, { companyIds: scopeIds }),
@@ -144,26 +146,19 @@ export default async function CreateEmployeePage({
     listBusinessUnits(session, { companyIds: scopeIds }),
     listJobGrades(session,{companyId:scopeIds.length===1?scopeIds[0]:null}),
     listManagerCandidates(session, { companyIds: scopeIds }),
-    // 35b7af0a group 8 — active options only, exactly as the Personnel profile card reads them, so a
-    // nationality HR can pick here is one core/org.ts's catalog validation will accept on a later edit.
-    listProfileOptions(session, 'nationality', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
-    // 759dfc7d — the two catalogs the Family step needs, read the SAME way the Personnel Family tab reads
-    // them: active options only, so a relationship HR can pick on a draft is one `assertDependentsValid`
-    // will still accept at Activate. An empty dependentRelationship catalog is not an error — the step
-    // falls back to the five built-ins, exactly as that tab does.
-    listProfileOptions(session, 'dependentRelationship', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
-    listProfileOptions(session, 'country', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
-    // da7463b4 — the `state` catalog the Permanent / Correspondence address blocks need, read exactly as
-    // the Personnel Contact & Address card reads it. The COUNTRY catalog beside it is the same list that
-    // card uses, so the address blocks share `countries` rather than resolving a second copy of one list.
-    listProfileOptions(session, 'state', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
-    // a72610af — the three catalogs behind Salutation, Religion and Race, read exactly as the Personnel
-    // profile card reads them (active options only), so a value HR can pick on a draft is one
-    // `updatePerson`'s catalog check will accept at Activate.
-    listProfileOptions(session, 'salutation', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
-    listProfileOptions(session, 'religion', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
-    listProfileOptions(session, 'race', { activeOnly: true,companyId:scopeIds.length===1?scopeIds[0]:null }),
+    // Board 2c1b2fba — ONE catalog read for every dropdown on the continue form, active options only and
+    // judged for THE DRAFT'S COMPANY (the company Activate validates against), the way the activated record
+    // reads its own (`listAllProfileOptions(s, { activeOnly: true, companyId })`). It replaces the seven
+    // per-kind reads that were here (nationality, dependentRelationship, country, state, salutation,
+    // religion, race) and serves the categories this item added: the eight organisation labels, the
+    // emergency-contact relationship and the qualification level. 35b7af0a / 759dfc7d / da7463b4 / a72610af
+    // all asked for "active only, as the record reads it" — still true. An empty dependentRelationship
+    // catalog is not an error: the Family tab falls back to the five built-ins, exactly as the record does.
+    listAllProfileOptions(session, { activeOnly: true, companyId: draftCompanyId ?? null }),
+    hasEmployeeDraftPhoto(session, draft.id),
   ]);
+  const choices = (rows: { value: string; label: string }[]) => rows.map((o) => ({ value: o.value, label: o.label }));
+  const nationalities = catalogs.nationality;
 
   // Same inversion the Personnel page performs: resolver answers per company → Map(labelId → CSV).
   const labelCompanyCsv = async (kind: string): Promise<Map<string, string>> => {
@@ -193,7 +188,6 @@ export default async function CreateEmployeePage({
   // the end out from the period (`draftProvisionalEndOn`), the same function Activate uses.
   // One company, not all nine (item 06f0cb8f): the company is fixed for the life of a draft, so the map
   // the wizard used to carry could only ever be read at one key.
-  const draftCompanyId = draft.companyId;
   const probationMonths = draftCompanyId
     ? resolveProbationMonths((await getHiringDefaults(session, draftCompanyId))?.probationMonths)
     : 3;
@@ -204,13 +198,26 @@ export default async function CreateEmployeePage({
   // policies only — with blank meaning the Monthly default. `completeEmployeeDraft` asks the same question
   // and ignores a stored policy when the answer is no, so what is hidden here is also not applied.
   const payrollOn = draftCompanyId ? isModuleEnabledOrFalse(session, 'payroll', draftCompanyId) : false;
-  const payrollPolicies =
+  // Board 2c1b2fba — the Pay items section's catalogue: READY components for the draft company only, read
+  // only where Payroll is on (the record's `payComponentsCard` rule — off, or an empty catalogue, hides the
+  // section). Both reads are for the one draft company, side by side; nothing here loops.
+  const [policyRows, componentRows] =
     payrollOn && draftCompanyId
-      ? (await listAssignablePolicies(session, draftCompanyId)).map((p) => ({ id: p.id, name: p.name }))
-      : [];
+      ? await Promise.all([
+          listAssignablePolicies(session, draftCompanyId),
+          listPayComponents(session, { readyOnly: true, companyId: draftCompanyId }),
+        ])
+      : ([[], []] as [
+          Awaited<ReturnType<typeof listAssignablePolicies>>,
+          Awaited<ReturnType<typeof listPayComponents>>,
+        ]);
+  const payrollPolicies = policyRows.map((p) => ({ id: p.id, name: p.name }));
+  const payComponents = componentRows.map((c) => ({ id: c.id, code: c.code, name: c.name }));
 
+  // Board 2c1b2fba — the continue form uses the activated record's full width (its page wraps in
+  // `max-w-[100rem]`); the four-field Create form above stays narrow.
   return (
-    <div className="mx-auto max-w-5xl space-y-6">
+    <div className="mx-auto max-w-[100rem] space-y-6">
       <PageHeader
         back={{ href: '/admin/personnel', label: t('backLabel') }}
         title={t('continueTitle')}
@@ -256,20 +263,36 @@ export default async function CreateEmployeePage({
           id: m.employmentId,
           label: m.employeeCode ? `${m.employeeCode} – ${m.name}` : m.name,
         }))}
-        nationalityOptions={nationalities.map((o) => ({ value: o.value, label: o.label }))}
+        nationalityOptions={choices(nationalities)}
         // PLAIN DATA across the boundary, trimmed to what the dropdowns render: this screen is a client
         // component and a catalog row's sort order and active flag would be columns in the browser bundle
         // that nothing on the page reads.
         profileOptions={{
-          salutation: salutations.map((o) => ({ value: o.value, label: o.label })),
-          religion: religions.map((o) => ({ value: o.value, label: o.label })),
-          race: races.map((o) => ({ value: o.value, label: o.label })),
+          salutation: choices(catalogs.salutation),
+          religion: choices(catalogs.religion),
+          race: choices(catalogs.race),
         }}
-        relationshipOptions={dependentRelationships.map((o) => ({ value: o.value, label: o.label }))}
-        countryOptions={countries.map((o) => ({ value: o.value, label: o.label }))}
-        stateOptions={states.map((o) => ({ value: o.value, label: o.label }))}
+        relationshipOptions={choices(catalogs.dependentRelationship)}
+        countryOptions={choices(catalogs.country)}
+        stateOptions={choices(catalogs.state)}
+        // Board 2c1b2fba — the record's own catalogs for the eight organisation labels, the emergency-contact
+        // relationship and the qualification level. Plain value/label data, like every catalog above.
+        orgLabelOptions={{
+          division: choices(catalogs.division),
+          branch: choices(catalogs.branch),
+          region: choices(catalogs.region),
+          line: choices(catalogs.line),
+          section: choices(catalogs.section),
+          team: choices(catalogs.team),
+          base: choices(catalogs.base),
+          category: choices(catalogs.category),
+        }}
+        emergencyRelationshipOptions={choices(catalogs.relationship)}
+        qualificationLevelOptions={choices(catalogs.qualificationLevel)}
         payrollOn={payrollOn}
         payrollPolicies={payrollPolicies}
+        payComponents={payComponents}
+        hasPhoto={hasPhoto}
       />
     </div>
   );

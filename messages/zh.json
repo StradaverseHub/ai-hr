@@ -3229,7 +3229,8 @@
         "profile_invalid": "启用前请检查个人资料。",
         "statutory_invalid": "启用前请检查银行与法定信息。",
         "payroll_invalid": "启用前请检查薪资信息。",
-        "family_invalid": "启用前请检查家庭信息。"
+        "family_invalid": "启用前请检查家庭信息。",
+        "qualification_invalid": "“学历资历”标签页中的一条学历记录需要更正。"
       },
       "fields": {
         "fullName": "全名",
@@ -3297,7 +3298,11 @@
         "companyFixed": "它决定适用哪条员工编号规则，记录创建后不可更改。",
         "groupJoinDate": "加入集团的第一天。本公司的入职日期从同一天开始。创建之后，这两个日期只能通过异动事件更改。",
         "internshipEndDate": "实习的最后一天。该日期驱动实习结束审核。",
-        "paymentMethodBankTransfer": "银行转账需要在「银行与法定」标签页填写银行名称和账号。在两项都填写之前，激活仍需项目列表会提示这一点。"
+        "paymentMethodBankTransfer": "银行转账需要在「银行与法定」标签页填写银行名称和账号。在两项都填写之前，激活仍需项目列表会提示这一点。",
+        "legacyMonthlyAllowance": "此草稿仍保留旧版页面中的每月津贴。该金额保持不变，并会在启用时保留；请将其改为薪资项目。",
+        "costAllocationEffective": "员工启用后，自集团入职日期起生效。",
+        "joinDate": "与集团入职日期同日开始。",
+        "payItems": "随草稿一起保存，并在您点击“启用”时设置到员工的薪资中。"
       },
       "backLabel": "返回员工管理",
       "title": "创建新员工",
@@ -3347,7 +3352,8 @@
         "bankStatutory": "银行与法定",
         "payroll": "薪酬",
         "family": "家庭",
-        "empty": "此处暂无内容。"
+        "empty": "此处暂无内容。",
+        "qualification": "学历资历"
       },
       "sections": {
         "personalDetails": "个人信息",
@@ -3358,9 +3364,15 @@
         "statutoryMalaysia": "法定信息（马来西亚）",
         "identityTax": "身份与税务",
         "compensation": "基本薪资",
-        "payMethodGroup": "该员工的支付方式",
         "payrollPolicy": "薪资政策",
-        "othersStatutory": "其他法定项目"
+        "othersStatutory": "其他法定项目",
+        "emergencyContact": "紧急联系人",
+        "directSuperior": "直属上级",
+        "costCenterAllocation": "成本中心分配",
+        "probationGroup": "试用期信息",
+        "noticeGroup": "通知期信息",
+        "payItems": "薪资项目",
+        "qualification": "学历资历信息"
       },
       "draftStatus": "草稿 — 待启用",
       "cancel": "取消",
@@ -3376,7 +3388,13 @@
       "directSuperiorNoResults": "没有匹配的员工。",
       "probationEndsOn": "试用期于 {date} 结束 — 即集团入职日期加上试用期。",
       "probationEndsOnStored": "试用期于 {date} 结束 — 这是此草稿中已保存的结束日期。输入试用期即可改为根据集团入职日期计算。",
-      "probationEndsNone": "无试用期结束日期。输入试用期即可计算试用期何时结束。"
+      "probationEndsNone": "无试用期结束日期。输入试用期即可计算试用期何时结束。",
+      "next": "下一步",
+      "photoErrorInvalid": "无法读取该照片。请选择 PNG 或 JPG 文件后重试。",
+      "photoErrorTooLarge": "照片超过 2 MB。请选择较小的文件。",
+      "photoErrorType": "只能使用 PNG 或 JPG 照片。",
+      "photoErrorPermission": "您无权更改此草稿的照片。",
+      "photoErrorUnavailable": "暂时无法保存照片。请重试。"
     },
     "duplicates": {
       "title": "可能重复的员工记录",

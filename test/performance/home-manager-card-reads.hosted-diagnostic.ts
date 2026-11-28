@@ -501,7 +501,7 @@ async function seedBeforePayrollOwnerFixtures(actors:Actor[],today:string){
   await onboarding.onboardingSaveConfig(admin,context.revision,config);
   admin=await entitledCtx(b);
   const saved=await drafts.saveEmployeeDraft(admin,{data:{profile:{fullName:'PERF Fictional Joiner',employeeCode:'PERF-JOINER',primaryEmail:'perf-joiner@example.invalid'},
-   employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:today},payroll:{basicSalary:'5000'}},currentStep:5});
+   employment:{companyId:b.companyId,departmentId:b.deptA,positionId:b.positionId,employmentType:'full_time',hiredOn:today},payroll:{basicSalary:'5000',paymentMethod:'cash'}},currentStep:5});
   const active=await drafts.completeEmployeeDraft(admin,saved.id);
   const find=async()=>(await onboarding.onboardingList(admin)).find(row=>row.case.employmentId===active.employmentId)!;
   let row=await find();

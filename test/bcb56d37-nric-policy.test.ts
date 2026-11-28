@@ -171,7 +171,7 @@ describe('bcb56d37 tenant NRIC policy: actual app role and atomic admission',()=
 describe('bcb56d37 all employee entry paths use the current policy',()=>{
   it('manual draft activation rolls back OFF duplicates, then ON activates the same draft',async()=>{
     const a=await hire('DRAFT-HOLDER');await setIcProfileMY(ctx,{personId:a.personId,icNumber:identity});
-    const draft=await saveEmployeeDraft(ctx,{data:{profile:{fullName:'Draft duplicate',primaryEmail:'draft@nric-policy.test',employeeCode:'DRAFT-DUP',icNumber:identity},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'},payroll:{basicSalary:'4200'}},currentStep:3});
+    const draft=await saveEmployeeDraft(ctx,{data:{profile:{fullName:'Draft duplicate',primaryEmail:'draft@nric-policy.test',employeeCode:'DRAFT-DUP',icNumber:identity},employment:{companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',hiredOn:'2020-01-01'},payroll:{basicSalary:'4200',paymentMethod:'cash'}},currentStep:3});
     const before=await counts();await refusal(completeEmployeeDraft(ctx,draft.id));expect(await counts()).toEqual(before);
     await policy(true);const completed=await completeEmployeeDraft(ctx,draft.id);expect(completed.employmentId).toBeTruthy();expect(await occupants()).toBe(2);
   });
