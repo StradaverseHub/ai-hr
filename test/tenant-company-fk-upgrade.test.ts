@@ -2660,6 +2660,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'employee_cp38_revision':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // 7560 (124a979e): pending recalculation marks from saves by people without payroll administration; append and consume.
    'payroll_recalc_pending':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ard/OWNER}'},
+   // 7600 (0735d1b7): append-only login merge facts; no application grant, read and written only by the 7600 definer functions.
+   'app_user_merge':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
   };
   const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
