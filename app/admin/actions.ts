@@ -292,6 +292,12 @@ const LEAVE = '/admin/leave-config/types';
 // leave-year action is openLeaveYearAction, and it redirects to GENERATE, not here. LEAVE remains the
 // redirect target of the leave TYPE master actions on /admin/leave.
 const USERS = '/admin/users';
+/** Board 0735d1b7: the role, assistant and archive forms moved to the account page, which posts its own address as
+ * `returnTo` so a save returns there. Only that exact page shape is honoured; anything else returns to the Users list. */
+const usersReturn = (fd: FormData) => {
+  const to = String(fd.get('returnTo') ?? '');
+  return /^\/admin\/users\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\/account$/i.test(to) ? to : USERS;
+};
 const HOLIDAYS = '/admin/holidays';
 // 66b8f5a8 — the Holiday Group tab + its dedicated add/edit pages.
 const HOLIDAY_GROUPS = '/admin/holidays/groups';
@@ -1514,9 +1520,9 @@ export async function assignRoleAction(formData: FormData) {
       companyId: (formData.get('companyId') as string) || undefined,
     });
   } catch (e) {
-    fail(USERS, e);
+    fail(usersReturn(formData), e);
   }
-  ok(USERS);
+  ok(usersReturn(formData));
 }
 
 export async function revokeRoleAction(formData: FormData) {
@@ -1524,9 +1530,9 @@ export async function revokeRoleAction(formData: FormData) {
   try {
     await revokeRole(s, { roleAssignmentId: String(formData.get('roleAssignmentId')) });
   } catch (e) {
-    fail(USERS, e);
+    fail(usersReturn(formData), e);
   }
-  ok(USERS);
+  ok(usersReturn(formData));
 }
 
 // ADR-0072 — invitation-only account creation. Invite by email + role (+ optional company scope);
@@ -1563,9 +1569,9 @@ export async function archiveUserAction(formData: FormData) {
       archived: archived(formData),
     });
   } catch (e) {
-    fail(USERS, e);
+    fail(usersReturn(formData), e);
   }
-  ok(USERS);
+  ok(usersReturn(formData));
 }
 
 /**
@@ -1582,9 +1588,9 @@ export async function setAssistantGrantAction(formData: FormData) {
     if (String(formData.get('granted')) === 'true') await grantAssistant(s, { appUserId });
     else await revokeAssistant(s, { appUserId });
   } catch (e) {
-    fail(USERS, e);
+    fail(usersReturn(formData), e);
   }
-  ok(USERS);
+  ok(usersReturn(formData));
 }
 
 export async function revokeInvitationAction(formData: FormData) {

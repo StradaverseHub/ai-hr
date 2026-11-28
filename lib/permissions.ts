@@ -144,6 +144,11 @@ export const SCREENS: readonly ScreenEntry[] = [
   {screenKey:'functionAccess',href:'/admin/users/function-access',labelKey:'securityCenter.functions.title',guard:'requireAdmin',routes:['/admin/users/function-access']},
   {screenKey:'createLogin',href:'/admin/users/create',labelKey:'securityCenter.create.title',guard:'requireGroupAdministration',routes:['/admin/users/create'],hasScopeNote:true},
   {screenKey:'inviteUser',href:'/admin/users/invite',labelKey:'securityCenter.invite.title',guard:'requireGroupAdministration',routes:['/admin/users/invite'],hasScopeNote:true},
+  // Board 0735d1b7 — reached from Security Center > Users, never the menu. Group-wide administrators only (the people who
+  // can invite users today); each page calls requireGroupAdministration and its owner re-checks in its transaction.
+  {screenKey:'batchInvitation',href:'/admin/users/invitations/batch',labelKey:'admin.users.batchInvite.title',guard:'requireGroupAdministration',routes:['/admin/users/invitations/batch','/admin/users/invitations/batch/[jobId]'],hasScopeNote:true},
+  {screenKey:'duplicateLogins',href:'/admin/users/duplicates/identity',labelKey:'admin.users.tabs.duplicates',guard:'requireGroupAdministration',routes:['/admin/users/duplicates/identity','/admin/users/duplicates/email','/admin/users/duplicates/merge'],hasScopeNote:true},
+  {screenKey:'loginActivation',href:'/admin/users',labelKey:'admin.users.activation.screen',guard:'requireGroupAdministration',routes:['/admin/users/activation/[personId]'],hasScopeNote:true},
   {screenKey:'accessConfiguration',href:'/admin/users/access',labelKey:'accessConfiguration.title',guard:'requireAccessConfiguration',routes:['/admin/users/access'],hasScopeNote:true},
   {screenKey:'myTasks',href:'/tasks',labelKey:'nav.myTasks',guard:'scopedSession',routes:['/tasks'],hasScopeNote:true},
   {screenKey:'employeeMasterReports',href:'/reports/employee-master',labelKey:'employeeMasterReports.title',guard:'scopedSession',routes:['/reports/employee-master','/reports/employee-master/[id]']},

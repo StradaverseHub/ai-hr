@@ -8198,6 +8198,13 @@
       "when": 1795495007590,
       "tag": "7590_payroll_group_tax_opening_noncash_base",
       "breakpoints": true
+    },
+    {
+      "idx": 11000,
+      "version": "7",
+      "when": 1795495007600,
+      "tag": "7600_app_user_merge",
+      "breakpoints": true
     }
   ]
 }

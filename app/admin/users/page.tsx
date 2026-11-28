@@ -1,33 +1,36 @@
 import {readManagedAccountDirectory} from '@/core/account-management';
 import {readLastSignIns} from '@/core/last-sign-in';
-import {PasswordUnlock} from './password-unlock';
-import {internalSelected} from '@/lib/internal-auth/config';
 import {getTranslations} from 'next-intl/server';
 import {redirect} from 'next/navigation';
 import Link from 'next/link';
 import {requireAdmin,isGroupAdmin} from '@/lib/authz';
-import {ErrorBanner,btnGhost} from '@/components/ui';
+import {ErrorBanner,btnGhost,btnPrimary} from '@/components/ui';
 import {manualIdentityErrorCodes} from '@/lib/identity/manual-model';
 import {loadUsersData} from './data';
 import {UsersDirectory} from './users-directory';
 import {SecurityPageHeader} from './security-page';
 import {LegacySecurityNavigation} from './legacy-navigation';
+import {UsersTabs} from './users-tabs';
+/** Security Center > Users. Board 0735d1b7: one View/Edit link per row (the account page or, for a person waiting for
+ * a login, the activation page), a User Type column, the duplicate tabs and By Batch Send Invitation. The Unlock
+ * Password Account form moved to the account page, where it names the one account it acts on. */
 export default async function UsersPage({searchParams}:{searchParams:Promise<{error?:string;archived?:string;manualError?:string;manualSuccess?:string;activate?:string}>}){
  const s=await requireAdmin(),params=await searchParams,t=await getTranslations('admin.users'),center=await getTranslations('securityCenter');
  const legacy=new URLSearchParams();
  if(manualIdentityErrorCodes.some(code=>code===params.manualError))legacy.set('manualError',params.manualError!);
  if(['created','cancelled'].includes(params.manualSuccess??''))legacy.set('manualSuccess',params.manualSuccess!);
  if(legacy.size)redirect(`/admin/users/create?${legacy}`);
- const {rows,groupAdmin,companies,roleOptions,assistantGranted}=await loadUsersData(s);
+ const {rows,groupAdmin,companies}=await loadUsersData(s);
  const appUserIds=rows.flatMap(row=>row.appUserId?[row.appUserId]:[]);
  const [accounts,lastSignIns]=await Promise.all([readManagedAccountDirectory(s,appUserIds),readLastSignIns(s,appUserIds)]);
  const target=params.activate&&/^[0-9a-f-]{36}$/i.test(params.activate)?`?activate=${encodeURIComponent(params.activate)}`:'';
  return <div className="mx-auto w-full space-y-6">
-  <SecurityPageHeader title={center('users.title')} actions={<span className="text-sm text-muted-foreground">{t('userCount',{count:rows.length})}</span>}/>
+  <SecurityPageHeader title={center('users.title')} actions={<div className="flex flex-wrap items-center justify-end gap-3"><span className="text-sm text-muted-foreground">{t('userCount',{count:rows.length})}</span>
+   {groupAdmin&&<Link href="/admin/users/invitations/batch" className={`${btnPrimary.replace('h-9','min-h-11')} whitespace-normal`}>{t('batchInvite.open')}</Link>}</div>}/>
   {params.error&&<div role="alert"><ErrorBanner message={params.error}/></div>}
   <div data-tour="admin-provisioning" className="rounded-lg border border-border bg-muted/50 px-4 py-3 text-sm text-muted-foreground">{t.rich('provisioningNote',{strong:chunks=><span className="font-medium">{chunks}</span>,em:chunks=><em>{chunks}</em>})}</div>
   {isGroupAdmin(s)&&<><LegacySecurityNavigation/><noscript><p>{center('legacyHelp')}</p><Link href={`/admin/users/create${target}`} className={btnGhost}>{center('create.title')}</Link><Link href={`/admin/users/invite${target}`} className={btnGhost}>{center('invite.title')}</Link></noscript></>}
-  {groupAdmin&&internalSelected()&&<PasswordUnlock users={rows.flatMap(row=>row.appUserId?[{id:row.appUserId,label:row.name??row.email??row.appUserId}]:[])}/>}
-  <UsersDirectory accounts={accounts} lastSignIns={lastSignIns} managedSignIn={internalSelected()} rows={rows} groupAdmin={groupAdmin} includeArchived={params.archived==='1'} companies={companies} roleOptions={[...roleOptions]} assistantGrantedIds={rows.flatMap(row=>row.appUserId&&assistantGranted.has(row.appUserId)?[row.appUserId]:[])}/>
+  <UsersTabs active="all" session={s}/>
+  <UsersDirectory accounts={accounts} lastSignIns={lastSignIns} rows={rows} groupAdmin={groupAdmin} includeArchived={params.archived==='1'} companies={companies}/>
  </div>;
 }

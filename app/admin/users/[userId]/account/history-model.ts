@@ -14,7 +14,10 @@ const LABELS:Record<string,string>={
  'app-user.password-reset':'passwordChanged',
  'app-user.mfa-enrolled':'authenticatorEnrolled',
  'app-user.password-unlocked':'unlocked',
+ // Board 0735d1b7 — login merge and its undo (core/login-merge.ts), recorded on both logins.
+ 'app-user.merged':'merged',
+ 'app-user.merge-undone':'mergeUndone',
 };
 export function historyLabelKey(eventType:string){return LABELS[eventType]??'other';}
 /** Events an administrator performs; the history names that administrator. Others are the person's own or the system's. */
-export function historyShowsActor(eventType:string){return eventType.startsWith('app-user.account-')||eventType==='app-user.password-unlocked';}
+export function historyShowsActor(eventType:string){return eventType.startsWith('app-user.account-')||eventType==='app-user.password-unlocked'||eventType==='app-user.merged'||eventType==='app-user.merge-undone';}

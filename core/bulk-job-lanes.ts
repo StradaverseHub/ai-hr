@@ -32,7 +32,9 @@ export const BULK_JOB_LANES:Readonly<Record<WorkerLane,readonly string[]>>=Objec
   'recruitment_candidate_import','contract_preview','contract_automation','contract_setup','contract_schedule','contract_scheduled_automation',
   'contract_posting_apply',
   // a1a80747 — the Payroll Process list's stored outstanding answer: upkeep, never ahead of payroll processing.
-  'payroll_run_outstanding_refresh']),
+  'payroll_run_outstanding_refresh',
+  // 0735d1b7 — Security Center By Batch Send Invitation: one invitation and one email per step.
+  'account_invitation_batch']),
 });
 
 export const WORKER_LANE_ENV='AIHR_WORKER_LANE';

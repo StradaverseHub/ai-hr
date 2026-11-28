@@ -293,6 +293,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:10980,version:'7',when:1795495007580,tag:'7580_slow_page_indexes',breakpoints:true},
  // Board d9ded29c — the group tax opening counts a saved basis's own taxable benefits in its base.
  {idx:10990,version:'7',when:1795495007590,tag:'7590_payroll_group_tax_opening_noncash_base',breakpoints:true},
+ // Board 0735d1b7 — batch invitation bulk-job kind and login merge facts.
+ {idx:11000,version:'7',when:1795495007600,tag:'7600_app_user_merge',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{

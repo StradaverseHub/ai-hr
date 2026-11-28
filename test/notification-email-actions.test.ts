@@ -11,7 +11,8 @@ vi.mock('../lib/identity/email-ipc',()=>({identityEmailRequest:vi.fn()}));
 vi.mock('../core/notification-email',()=>({saveNotificationEmailPolicy:m.policy,saveNotificationEmailPreferences:m.preferences,retryNotificationEmail:m.retry}));
 vi.mock('../core/auth',()=>({retryAccountEmail:m.accountRetry}));
 vi.mock('../lib/identity/email-settings',()=>({requireIdentityEmailAdmin:m.emailAdmin}));
-vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw new Error('REDIRECT '+p);}}));
+vi.mock('next/cache',()=>({revalidatePath:vi.fn()}));
+vi.mock('next-intl/server',()=>({getTranslations:async(namespace:string)=>(key:string)=>`${namespace}.${key}`}));vi.mock('next/navigation',()=>({redirect:(p:string)=>{throw new Error('REDIRECT '+p);}}));
 import { saveWorkflowEmailPolicy,retryWorkflowEmail,retryAccountEmailAction } from '../app/admin/settings/notifications/actions';
 import { saveMyWorkflowEmailPreferences } from '../app/me/notifications/actions';
 const session={tenantId:'tenant',userId:'server-user'},identity={issuer:'https://hr.test',subject:'server-subject',email:'verified@example.test',emailVerified:true};
@@ -85,6 +86,17 @@ describe('account email retry server action boundaries',()=>{
   const f=new FormData();f.set('returnTo','/admin/settings/email');f.set('kind','invitation');f.set('deliveryId','delivery');f.set('acknowledged','true');
   await expect(retryAccountEmailAction(f)).rejects.toThrow('REDIRECT /admin/settings/email?accountRetry=1');
   expect(m.emailAdmin).not.toHaveBeenCalled();expect(m.accountRetry).toHaveBeenCalledWith(session,'delivery',true,undefined);
+ });
+ it('returns Resend from a pending person\'s activation page to that page only (board 0735d1b7)',async()=>{
+  const page='/admin/users/activation/11111111-1111-4111-8111-111111111111';
+  const f=new FormData();f.set('deliveryId','d');f.set('acknowledged','true');f.set('kind','invitation');f.set('returnTo',page);
+  await expect(retryAccountEmailAction(f)).rejects.toThrow(`REDIRECT ${page}?toast=${encodeURIComponent('admin.users.activation.resent')}`);
+  expect(m.accountRetry).toHaveBeenCalledWith(session,'d',true,undefined);
+  m.accountRetry.mockRejectedValue(Error('secret reset link'));
+  await expect(retryAccountEmailAction(f)).rejects.toThrow(`REDIRECT ${page}?error=${encodeURIComponent('admin.users.activation.resendFailed')}`);
+  // Any other address keeps the existing destinations.
+  f.set('returnTo','/admin/users/activation/../../settings');m.accountRetry.mockResolvedValue(undefined);
+  await expect(retryAccountEmailAction(f)).rejects.toThrow('REDIRECT /admin/settings/notifications?accountRetry=1');
  });
  it('keeps secret provider errors out of redirects' ,async()=>{
   m.accountRetry.mockRejectedValue(Error('secret reset link'));await expect(retryAccountEmailAction(new FormData())).rejects.toThrow('REDIRECT /admin/settings/notifications?error=account-retry');

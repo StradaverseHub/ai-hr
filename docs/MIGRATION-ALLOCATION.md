@@ -1,3 +1,23 @@
+# Board 0735d1b7: Security Center > Users batch invitation kind and login merge facts, 27 November 2026
+
+Reserve `7600_app_user_merge`, journal index `11000`, timestamp `1795495007600`, SQL SHA-256
+`4590b9eb51f0ff91cfba0b7ad9761d0f67e965980494beb52b7e5cfdfcbb2321`. Allocated by the board coordinator from the
+7590-7620 block for this batch (7580 `claude/prod-slow-pages` is reserved ahead of it; 7590 and 7620 are other lanes of
+the batch). Built on main 240adad5c, whose ledger ends at `7570` (index `10970`). Depends on none of 7580-7620. Recheck
+both installations' watermarks and any competing reservation at admission.
+
+Inserts the `account_invitation_batch` bulk-job kind (tenant-exclusive; input
+`{"mode":"string","personIds":"array?","deliveryIds":"array?","role":"string?","companyId":"string?","emailLocale":"string?"}`,
+at most 262,144 bytes). Creates the append-only `public.app_user_merge` (master and merged login, match basis `ic`,
+`passport` or `email`, the group's SHA-256 digest (never a raw IC, passport or email), the merged login's previous
+`archived_at`, the grants HR ticked to carry, who/when/why for the merge and its undo; foreign keys to tenant and
+app_user; one active merge per merged login). Row security is enabled with no policy and neither PUBLIC nor `ai_hr_app`
+holds a table privilege: `ai_hr_app` reaches it only through four SECURITY DEFINER functions with pinned search paths,
+EXECUTE to `ai_hr_app` only (`app.login_merge_record`, `app.login_merge_undo_record`, `app.login_merge_active()`,
+`app.login_merge_facts(uuid)`), each checking tenant, current principal and group administration (`login_merge_active`:
+any tenant administrator, ids only). No CREATE POLICY, so no access-rule text changes. No existing table, row, column,
+policy, function or grant changes; no backfill. This entry carries no deployment authority.
+
 # Board d9ded29c: group tax opening counts a saved basis's taxable benefits, 27 November 2026
 
 Reserve `7590_payroll_group_tax_opening_noncash_base`, journal index `10990`, timestamp `1795495007590`, SQL SHA-256

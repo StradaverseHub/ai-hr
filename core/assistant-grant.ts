@@ -141,48 +141,55 @@ export async function grantAssistant(
   return withTenant(ctx, async (tx) => {
     await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     assertAdmin(ctx);
-    const [existing] = await tx
+    return grantAssistantTx(tx, ctx, p);
+  });
+}
+
+/** The grant writer inside a caller's transaction that already holds the exclusive Access lock and proved the
+ *  administrator (board 0735d1b7: a login merge carries a ticked assistant grant to the master). Idempotent as above. */
+export async function grantAssistantTx(tx: Tx, ctx: SessionContext, p: { appUserId: string }): Promise<{ id: string }> {
+  assertAdmin(ctx);
+  const [existing] = await tx
+    .select({ id: assistantGrant.id })
+    .from(assistantGrant)
+    .where(and(eq(assistantGrant.appUserId, p.appUserId), isNull(assistantGrant.revokedAt)))
+    .limit(1);
+  if (existing) return { id: existing.id };
+  // THE SELECT ABOVE IS NOT ENOUGH TO BE IDEMPOTENT, and this function's contract says it is.
+  // Select-then-insert races `assistant_grant_live_uq`: two admins granting the same user at the same
+  // moment — or one admin double-clicking — both find no live row, both insert, and the loser gets a
+  // raw 23505 rendered to an admin screen. `onConflictDoNothing` makes the database the arbiter, and
+  // the empty-returning case below is that loser taking the winner's row instead of failing.
+  const [row] = await tx
+    .insert(assistantGrant)
+    .values({
+      tenantId: ctx.tenantId,
+      appUserId: p.appUserId,
+      grantedByUserId: ctx.userId ?? null,
+    })
+    .onConflictDoNothing()
+    .returning({ id: assistantGrant.id });
+  if (!row) {
+    // Lost the race. The other transaction's grant is live and equivalent, so re-read it rather than
+    // reporting a failure for a state that is exactly what the caller asked for. No event is appended:
+    // the winner already appended one, and two `granted` events for one grant would misreport history.
+    const [won] = await tx
       .select({ id: assistantGrant.id })
       .from(assistantGrant)
       .where(and(eq(assistantGrant.appUserId, p.appUserId), isNull(assistantGrant.revokedAt)))
       .limit(1);
-    if (existing) return { id: existing.id };
-    // THE SELECT ABOVE IS NOT ENOUGH TO BE IDEMPOTENT, and this function's contract says it is.
-    // Select-then-insert races `assistant_grant_live_uq`: two admins granting the same user at the same
-    // moment — or one admin double-clicking — both find no live row, both insert, and the loser gets a
-    // raw 23505 rendered to an admin screen. `onConflictDoNothing` makes the database the arbiter, and
-    // the empty-returning case below is that loser taking the winner's row instead of failing.
-    const [row] = await tx
-      .insert(assistantGrant)
-      .values({
-        tenantId: ctx.tenantId,
-        appUserId: p.appUserId,
-        grantedByUserId: ctx.userId ?? null,
-      })
-      .onConflictDoNothing()
-      .returning({ id: assistantGrant.id });
-    if (!row) {
-      // Lost the race. The other transaction's grant is live and equivalent, so re-read it rather than
-      // reporting a failure for a state that is exactly what the caller asked for. No event is appended:
-      // the winner already appended one, and two `granted` events for one grant would misreport history.
-      const [won] = await tx
-        .select({ id: assistantGrant.id })
-        .from(assistantGrant)
-        .where(and(eq(assistantGrant.appUserId, p.appUserId), isNull(assistantGrant.revokedAt)))
-        .limit(1);
-      if (won) return { id: won.id };
-      throw new AssistantGrantError('The assistant grant could not be written — please try again.');
-    }
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'assistant-grant',
-      aggregateId: row.id,
-      eventType: 'assistant-grant.granted',
-      actor: actorOf(ctx),
-      payload: { appUserId: p.appUserId },
-    });
-    return { id: row.id };
+    if (won) return { id: won.id };
+    throw new AssistantGrantError('The assistant grant could not be written — please try again.');
+  }
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'assistant-grant',
+    aggregateId: row.id,
+    eventType: 'assistant-grant.granted',
+    actor: actorOf(ctx),
+    payload: { appUserId: p.appUserId },
   });
+  return { id: row.id };
 }
 
 /** Admin: switch it off. A STAMP, never a delete — 0451 revokes DELETE from ai_hr_app so the database
@@ -193,19 +200,25 @@ export async function revokeAssistant(ctx: SessionContext, p: { appUserId: strin
   await withTenant(ctx, async (tx) => {
     await lockAccessConfigurationWriteTx(tx, ctx.tenantId);
     assertAdmin(ctx);
-    const [row] = await tx
-      .update(assistantGrant)
-      .set({ revokedAt: new Date(), revokedByUserId: ctx.userId ?? null })
-      .where(and(eq(assistantGrant.appUserId, p.appUserId), isNull(assistantGrant.revokedAt)))
-      .returning({ id: assistantGrant.id });
-    if (!row) return;
-    await appendEvent(tx, {
-      tenantId: ctx.tenantId,
-      aggregateType: 'assistant-grant',
-      aggregateId: row.id,
-      eventType: 'assistant-grant.revoked',
-      actor: actorOf(ctx),
-      payload: { appUserId: p.appUserId },
-    });
+    await revokeAssistantTx(tx, ctx, p);
+  });
+}
+
+/** The revoke writer inside a caller's transaction that already holds the exclusive Access lock (Undo merge). */
+export async function revokeAssistantTx(tx: Tx, ctx: SessionContext, p: { appUserId: string }): Promise<void> {
+  assertAdmin(ctx);
+  const [row] = await tx
+    .update(assistantGrant)
+    .set({ revokedAt: new Date(), revokedByUserId: ctx.userId ?? null })
+    .where(and(eq(assistantGrant.appUserId, p.appUserId), isNull(assistantGrant.revokedAt)))
+    .returning({ id: assistantGrant.id });
+  if (!row) return;
+  await appendEvent(tx, {
+    tenantId: ctx.tenantId,
+    aggregateType: 'assistant-grant',
+    aggregateId: row.id,
+    eventType: 'assistant-grant.revoked',
+    actor: actorOf(ctx),
+    payload: { appUserId: p.appUserId },
   });
 }
