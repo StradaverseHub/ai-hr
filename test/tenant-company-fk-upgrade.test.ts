@@ -2668,6 +2668,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'employee_cp38_revision':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // 7560 (124a979e): pending recalculation marks from saves by people without payroll administration; append and consume.
    'payroll_recalc_pending':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ard/OWNER}'},
+   // 7610 (2c1b2fba): a draft's profile photo, readable and written exactly where its draft is.
+   'employee_draft_photo':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arwd/OWNER}'},
   };
   const isApprovedRelation=(rel:string)=>Object.hasOwn(approvedRelations,rel);
   expect(Object.fromEntries(afterPerformancePrivileges.relations.filter(row=>isApprovedRelation(row.rel)).map(row=>[row.rel,{rls:row.rls,force:row.force,acl:ownerAcl(row.acl)}]))).toEqual(approvedRelations);
@@ -2815,6 +2817,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
   const manage=(column:string)=>`tenant_id=app.current_tenant_id() AND app.reward_config_page_allowed(${column},'plans.manage','manage')`;
   const own='app.acting_as_owner()';
   const approvedPolicies:ApprovedPolicy[]=[
+   // 7610 (2c1b2fba): the draft photo follows its draft's row security.
+   {table:'employee_draft_photo',name:'employee_draft_photo_rls',cmd:'ALL',role:'ai_hr_app',using:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=employee_draft_photo.draft_id AND d.tenant_id=employee_draft_photo.tenant_id)',check:'tenant_id=app.current_tenant_id() AND EXISTS(SELECT 1 FROM public.employee_draft d WHERE d.id=employee_draft_photo.draft_id AND d.tenant_id=employee_draft_photo.tenant_id)'},
    // 7540 (bc6b5490): CP38 history is readable where the employee's CP38 is; appended by an administrator who can see them.
    {table:'employee_cp38_revision',name:'employee_cp38_revision_read',cmd:'SELECT',role:'ai_hr_app',using:'(tenant_id = app.current_tenant_id()) AND (employment_id = ANY ((SELECT app.visible_employment_ids())::uuid[]))',check:null},
    {table:'employee_cp38_revision',name:'employee_cp38_revision_insert',cmd:'INSERT',role:'ai_hr_app',using:null,check:'(tenant_id = app.current_tenant_id()) AND (SELECT app.is_admin()) AND (employment_id = ANY ((SELECT app.visible_employment_ids())::uuid[]))'},
