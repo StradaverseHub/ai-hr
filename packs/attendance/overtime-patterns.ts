@@ -995,11 +995,24 @@ function starterMember(ctx:SessionContext,row:ConsolidationCandidate):OvertimeSt
  const key=readOvertimeStarterSeed(row.definition);
  return key&&row.id===overtimeStarterIdentity(ctx.tenantId,row.creation_company_id,key)&&row.code===`STD_${key.toUpperCase()}_${row.creation_company_id}`?key:null;
 }
+/** The consolidation identity compares what a definition does, not how its nodes are labelled. Node ids (conditions,
+ * expressions, rates, tiers, definitions) are labels only - the editor's Day types control mints them with
+ * crypto.randomUUID, so two drafts set up identically never share them - and are renamed here by position in the
+ * key-sorted tree; a definition reference (definitionId) follows the same renaming. Every other value, the structure
+ * and the order of arrays still count, so any real difference keeps patterns apart. Only the grouping key is
+ * normalised: stored definitions are never rewritten, and the survivor keeps its own. */
+function consolidationDefinitionKey(definition:unknown):unknown{
+ const tree=canonical(definition),names=new Map<string,string>();
+ const collect=(value:unknown):void=>{if(Array.isArray(value)){value.forEach(collect);return;}if(!value||typeof value!=='object')return;
+  for(const [key,item] of Object.entries(value)){if(key==='id'&&typeof item==='string'){if(!names.has(item))names.set(item,'#'+names.size);}else collect(item);}};
+ const rename=(value:unknown):unknown=>Array.isArray(value)?value.map(rename):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,(key==='id'||key==='definitionId')&&typeof item==='string'?names.get(item)??'unresolved:'+item:rename(item)])):value;
+ collect(tree);return rename(tree);
+}
 type ConsolidationGroup={key:string;starter:OvertimeStarterKey|null;members:ConsolidationCandidate[]};
 function consolidationGroups(ctx:SessionContext,rows:ConsolidationCandidate[]):ConsolidationGroup[]{
  const groups=new Map<string,ConsolidationGroup>();
  for(const row of rows){const starter=starterMember(ctx,row);
-  const key=starter?'starter:'+starter:'same:'+digest({currencies:row.currencies,name:row.name,description:row.description,definition:row.definition,planned:row.planned??null});
+  const key=starter?'starter:'+starter:'same:'+digest({currencies:row.currencies,name:row.name,description:row.description,definition:consolidationDefinitionKey(row.definition),planned:row.planned??null});
   const group=groups.get(key)??{key,starter,members:[]};group.members.push(row);groups.set(key,group);}
  return [...groups.values()].filter(group=>group.starter||group.members.length>1);
 }

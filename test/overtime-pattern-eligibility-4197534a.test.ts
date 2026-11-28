@@ -206,6 +206,8 @@ describe('one-time consolidation data step',()=>{
   const used=await draft('USED',{priority:9},[second]);
   await activateOvertimePatternWithEligibility(ctx,{versionId:used.versionId,expectedRevision:used.revision});
   // Make SAME_A and SAME_B identical apart from code and company (names differ by code in draft()): rename both.
+  // Each save builds its own definition(), so the Day types condition carries a different random node id in each -
+  // the same rules labelled differently, exactly as two drafts set up separately in the editor; they must still merge.
   await saveOvertimePatternDraft(ctx,{patternId:same1.patternId,versionId:same1.versionId,expectedRevision:same1.revision,draft:{code:'SAME_A',creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Shared fictional name',definition:definition(),plannedEligibility:{v:1,criteria:{},employmentIds:[],priority:100,from:today()}}});
   await saveOvertimePatternDraft(ctx,{patternId:same2.patternId,versionId:same2.versionId,expectedRevision:same2.revision,draft:{code:'SAME_B',creationCompanyId:b.companyId,companyIds:[second],name:'Shared fictional name',definition:definition(),plannedEligibility:{v:1,criteria:{},employmentIds:[],priority:100,from:today()}}});
   const before=await snapshot();
