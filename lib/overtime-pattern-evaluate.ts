@@ -337,7 +337,7 @@ export function resolveOvertimePattern(candidates: OvertimeCandidate[], facts: O
         for (const [i, raw] of items.entries()) {
             const p = `candidates.${i}`, r = overtimeObject(raw, p);
             overtimeKeys(r, ['assignmentId', 'patternVersionId', 'priority', 'from', 'to', 'companyIds', 'target'], p);
-            const c: OvertimeCandidate = { assignmentId: overtimeUuid(r.assignmentId, p), patternVersionId: overtimeUuid(r.patternVersionId, p), priority: overtimeInteger(r.priority, 0, 9999, p + '.priority'), from: overtimeDate(r.from, p + '.from'), to: r.to === null ? null : overtimeDate(r.to, p + '.to'), companyIds: overtimeList(r.companyIds, 100, p + '.companyIds').map(id => overtimeUuid(id, p + '.companyIds')), target: validateOvertimeAssignmentTarget(r.target) };
+            const c: OvertimeCandidate = { assignmentId: overtimeUuid(r.assignmentId, p), patternVersionId: overtimeUuid(r.patternVersionId, p), priority: overtimeInteger(r.priority, 0, 9999, p + '.priority'), from: overtimeDate(r.from, p + '.from'), to: r.to === null ? null : overtimeDate(r.to, p + '.to'), companyIds: overtimeList(r.companyIds, 500, p + '.companyIds').map(id => overtimeUuid(id, p + '.companyIds')), target: validateOvertimeAssignmentTarget(r.target) };
             if (!c.companyIds.length || new Set(c.companyIds).size !== c.companyIds.length || seen.has(c.assignmentId) || c.to !== null && c.to <= c.from)
                 fail('invalid', p, 'Invalid or duplicate dated assignment.');
             seen.add(c.assignmentId);

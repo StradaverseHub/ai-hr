@@ -15,7 +15,7 @@ import {lockAttendanceLeaveDependenciesTx} from '../core/attendance';
 import {hasRecordedAttendanceGroupPolicyTx} from '../packs/attendance/policy-selection';
 import {readOvertimeStarterSeed,prepareOvertimeStarter} from '../lib/overtime-pattern-starters';
 import type {OvertimePattern} from '../lib/overtime-pattern-model';
-import {hasOvertimePatternForDayTx,readOvertimeRefreshDayTx,activateOvertimePattern,archiveOvertimePattern,ensureOvertimePatternStarters,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
+import {hasOvertimePatternForDayTx,readOvertimeRefreshDayTx,activateOvertimePattern,archiveOvertimePattern,captureOvertimePersonnelContextTx,createOvertimeCalculationOwner,forkOvertimePatternDraft,getOvertimePattern,listOvertimePatterns,overtimePatternWorkspaceCompanies,readOvertimeCalculationTx,readOvertimeDurationsTx,listCoveredOvertimeDaysTx,readOvertimePersonnelContextTx,readOvertimeSettlementForDayTx,releaseOvertimeSettlementsForDraftTeardownTx,releaseOvertimeSettlementTx,reserveOvertimeSettlementTx,saveOvertimePatternAssignment,saveOvertimePatternDraft,stopOvertimePatternVersion,validateOvertimePatternActivation,type CanonicalOvertimeSnapshot} from '../packs/attendance/overtime-patterns';
 import {requestAttendanceCorrection,decideAttendanceCorrection,refreshOvertimePatternDayTx,saveAttendanceWorkflow,setAttendanceWorkflowEnabled} from '../packs/attendance/service';
 let b:Base,employmentId:string,attendanceId:string,earningId:string;const day=()=>todayInKualaLumpur();
 const plus=(n:number)=>{const d=new Date(day()+'T00:00:00Z');d.setUTCDate(d.getUTCDate()+n);return d.toISOString().slice(0,10);};
@@ -28,70 +28,16 @@ async function activated(definition=pattern()){const saved=await saveOvertimePat
 async function recorded(){await activated();const api=createOvertimeCalculationOwner(async()=>snapshot());return withTenant(adminCtx(b),async tx=>{const prepared=await api.prepareTx(tx,adminCtx(b),{employmentId,date:day()});return api.recordTx(tx,adminCtx(b),{prepared,expectedCurrentRevision:0});});}
 async function batch(){const [period]=await owner.db.insert(s.payPeriod).values({tenantId:b.tenantId,companyId:b.companyId,period:day().slice(0,7)}).returning();const [batch]=await owner.db.insert(s.payrollBatch).values({tenantId:b.tenantId,companyId:b.companyId,payPeriodId:period.id,payPeriod:period.period,batchDate:day()}).returning();return batch;}
 beforeAll(migrateTestDb);afterAll(closeAll);beforeEach(async()=>{await resetDb();b=await seedAttendanceSubmissionBase();await setModule(b.tenantId,'attendance','active');await setModule(b.tenantId,'payroll','active');const [person]=await owner.db.insert(s.person).values({tenantId:b.tenantId,fullName:'OT Employee',primaryEmail:`ot-owner-${randomUUID()}@example.test`}).returning();const [employee]=await owner.db.insert(s.employment).values({tenantId:b.tenantId,companyId:b.companyId,personId:person.id,hiredOn:plus(-10)}).returning();employmentId=employee.id;await owner.db.insert(s.assignment).values({tenantId:b.tenantId,employmentId,companyId:b.companyId,departmentId:b.deptA,employmentType:'full_time',validFrom:plus(-10)});const [attendance]=await owner.db.insert(s.attendance).values({tenantId:b.tenantId,employmentId,attendanceDate:day(),checkInAt:'09:00:00',checkOutAt:'18:00:00',otMinutes:120}).returning();attendanceId=attendance.id;const [earning]=await owner.db.insert(s.payComponent).values({tenantId:b.tenantId,code:'OT',name:'OT fixture',kind:'allowance'}).returning();earningId=earning.id;});
-describe('persisted standard starting drafts',()=>{
- it('creates four scoped, unassigned drafts once across concurrent visits, with one actual audit each',async()=>{
-  const ctx=adminCtx(b),answers=await Promise.all([ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId]}),ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId,b.companyId]})]);
-  expect(answers.map(answer=>answer.created).sort((a,b)=>a-b)).toEqual([0,4]);
-  const rows=await listOvertimePatterns(ctx,{companyIds:[b.companyId]});expect(rows.items).toHaveLength(4);
-  expect(rows.items.map(row=>readOvertimeStarterSeed(row.latestVersion?.definition)).sort()).toEqual(['ot00','ot15','ot20','ot30']);
-  for(const row of rows.items){
-   const view=await getOvertimePattern(ctx,row.id);expect(view?.assignments).toEqual([]);
-   expect(view?.versions).toHaveLength(1);expect(view!.versions[0]).toMatchObject({status:'draft',activatedAt:null,companyIds:[b.companyId],states:[]});
-   const check=await validateOvertimePatternActivation(ctx,{versionId:view!.versions[0].id,expectedRevision:view!.versions[0].revision});
-   expect(check.validationDigest).toBeNull();expect(check.issues.some(issue=>issue.severity==='error')).toBe(true);
-   const audits=await owner.db.select().from(s.domainEvent).where(eq(s.domainEvent.aggregateId,row.id)).orderBy(asc(s.domainEvent.id));
-   expect(audits).toHaveLength(1);expect(audits[0]).toMatchObject({eventType:'overtime.draft.saved',actorType:'user',actorId:ctx.userId});
-  }
- });
- it('retains edited and archived starters and never adopts or renames existing company patterns',async()=>{
-  const ctx=adminCtx(b),custom=await saveOvertimePatternDraft(ctx,{draft:{...draft(),name:'OT 1.5'}});
-  expect(await ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId]})).toEqual({created:4});
+describe('no per-company starting drafts (board 4197534a)',()=>{
+ it('creates nothing on a listing read and lists one row per Pattern Code with all its companies',async()=>{
+  const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Other fictional OT company',country:'MY',currency:'MYR'});
+  expect((await listOvertimePatterns(ctx,{companyIds:[b.companyId]})).items).toEqual([]);
+  expect(await owner.db.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,b.tenantId),eq(s.overtimePattern.kind,'formula')))).toEqual([]);
+  const saved=await saveOvertimePatternDraft(ctx,{draft:{...draft(),code:'OT001',companyIds:[b.companyId,other.id]}});
   const rows=(await listOvertimePatterns(ctx,{companyIds:[b.companyId]})).items;
-  const seed=rows.find(row=>readOvertimeStarterSeed(row.latestVersion?.definition)==='ot15')!,version=seed.latestVersion!;
-  const definition=prepareOvertimeStarter('ot15','session','latest');
-  await saveOvertimePatternDraft(ctx,{patternId:seed.id,versionId:version.id,expectedRevision:version.revision,draft:{code:seed.code!,creationCompanyId:b.companyId,companyIds:[b.companyId],name:'Edited company rate',definition}});
-  const zero=rows.find(row=>readOvertimeStarterSeed(row.latestVersion?.definition)==='ot00')!;
-  await archiveOvertimePattern(ctx,{patternId:zero.id,expectedRevision:zero.revision,reason:'Fictional deliberate archive'});
-  const before=await getOvertimePattern(ctx,seed.id),archived=await getOvertimePattern(ctx,zero.id),customBefore=await getOvertimePattern(ctx,custom.patternId);
-  expect(await ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId]})).toEqual({created:0});
-  expect(await getOvertimePattern(ctx,seed.id)).toEqual(before);expect(await getOvertimePattern(ctx,zero.id)).toEqual(archived);
-  expect(await getOvertimePattern(ctx,custom.patternId)).toEqual(customBefore);
-  expect((await listOvertimePatterns(ctx,{companyIds:[b.companyId]})).items).toHaveLength(5);
- });
- it('refuses a foreign company and disabled Attendance before creating any starting draft',async()=>{
-  const ctx=adminCtx(b),foreign=await seedBase();
-  await expect(ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId,foreign.companyId]})).rejects.toMatchObject({code:'permission'});
-  expect((await listOvertimePatterns(ctx)).items).toHaveLength(0);
-  await setModule(b.tenantId,'attendance','disabled');
-  // A fresh entitlement context is required: the module owner never accepts a caller's enabled flag.
-  await expect(ensureOvertimePatternStarters(await entitledCtx(b),{companyIds:[b.companyId]})).rejects.toThrow();
-  expect(await owner.db.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(eq(s.overtimePattern.tenantId,b.tenantId))).toEqual([]);
- });
- it('refuses an occupied starting code without adopting it or leaving the other three partial drafts',async()=>{
-  const ctx=adminCtx(b),custom=await saveOvertimePatternDraft(ctx,{draft:{...draft(),code:`STD_OT15_${b.companyId}`,name:'Human-owned collision'}});
-  const before=await getOvertimePattern(ctx,custom.patternId);
-  const audits=await owner.db.select().from(s.domainEvent).orderBy(asc(s.domainEvent.id));
-  await expect(ensureOvertimePatternStarters(ctx,{companyIds:[b.companyId]})).rejects.toMatchObject({code:'conflict'});
-  expect(await getOvertimePattern(ctx,custom.patternId)).toEqual(before);
-  expect((await listOvertimePatterns(ctx)).items.map(row=>row.id)).toEqual([custom.patternId]);
-  expect(await owner.db.select().from(s.domainEvent).orderBy(asc(s.domainEvent.id))).toEqual(audits);
- });
- it('uses current administrator scope, keeps other companies separate, and refuses a forged role or mixed scope atomically',async()=>{
-  const ctx=adminCtx(b),other=await createCompany(ctx,{legalName:'Other fictional starter employer',country:'MY',currency:'MYR'});
-  const [subject]=await owner.db.select().from(s.employment).where(eq(s.employment.id,employmentId));
-  const userId=await createAppUser(b.tenantId,subject.personId,'hr_admin');
-  await owner.db.update(s.roleAssignment).set({companyId:b.companyId}).where(eq(s.roleAssignment.appUserId,userId));
-  const scoped={...ctx,userId,personId:subject.personId,grants:[{role:'hr_admin',companyId:b.companyId}]};
-  await expect(ensureOvertimePatternStarters(scoped,{companyIds:[b.companyId,other.id]})).rejects.toMatchObject({code:'permission'});
-  expect((await listOvertimePatterns(ctx)).items).toHaveLength(0);
-  expect(await ensureOvertimePatternStarters(scoped,{companyIds:[b.companyId]})).toEqual({created:4});
-  expect((await listOvertimePatterns(ctx,{companyIds:[other.id]})).items).toHaveLength(0);
-  expect(await ensureOvertimePatternStarters(ctx,{companyIds:[other.id]})).toEqual({created:4});
-  const first=(await listOvertimePatterns(ctx,{companyIds:[b.companyId]})).items,second=(await listOvertimePatterns(ctx,{companyIds:[other.id]})).items;
-  expect(new Set([...first,...second].map(row=>row.id)).size).toBe(8);
-  await owner.db.update(s.roleAssignment).set({role:'employee'}).where(eq(s.roleAssignment.appUserId,userId));
-  await expect(ensureOvertimePatternStarters({...scoped,roles:['hr_admin']},{companyIds:[b.companyId]})).rejects.toThrow();
-  expect((await listOvertimePatterns(ctx)).items).toHaveLength(8);
+  expect(rows).toHaveLength(1);expect(rows[0]).toMatchObject({id:saved.patternId,code:'OT001',status:'draft',latestDraft:true,companyCount:2,writable:true,archived:false});
+  expect(rows[0].companyIds.sort()).toEqual([b.companyId,other.id].sort());
+  expect(readOvertimeStarterSeed(null)).toBeNull();expect(typeof prepareOvertimeStarter).toBe('function');
  });
 });
 describe('company-filtered Overtime Pattern listing',()=>{
@@ -113,7 +59,7 @@ describe('company-filtered Overtime Pattern listing',()=>{
   for(const [companyIds,expected]of [[[b.companyId],[f.first.patternId,f.shared.patternId]],[[f.other.id],[f.second.patternId,f.shared.patternId]],[[b.companyId,f.other.id],[f.first.patternId,f.second.patternId,f.shared.patternId]]] as const){
    const rows=await listOvertimePatterns(f.ctx,{companyIds:[...companyIds],search:f.prefix,status:'draft',method:'flat'});
    expect(rows.items.map(row=>row.id).sort()).toEqual([...expected].sort());expect(rows.nextCursor).toBeNull();
-   for(const row of rows.items){expect(row.matchingVersion).not.toBeNull();expect(row.matchingVersion!.companyIds.some(id=>companyIds.some(selected=>selected===id))).toBe(true);}
+   for(const row of rows.items){expect(row.latestVersionId).not.toBeNull();expect(row.companyIds.some(id=>companyIds.some(selected=>selected===id))).toBe(true);}
   }
   const page=await listOvertimePatterns(f.ctx,{companyIds:[b.companyId,f.other.id],search:f.prefix,limit:1});expect(page.items).toHaveLength(1);expect(page.nextCursor).toBe(page.items[0].id);
   const next=await listOvertimePatterns(f.ctx,{companyIds:[b.companyId,f.other.id],search:f.prefix,cursor:page.nextCursor!,limit:1});expect(next.items).toHaveLength(1);expect(next.items[0].id).not.toBe(page.items[0].id);
@@ -169,7 +115,7 @@ describe('Draft, activation and effective assignment',()=>{
  it('makes activated definitions immutable and forks a distinct editable revision',async()=>{const saved=await activated();await expect(withTenant(adminCtx(b),tx=>tx.update(s.overtimePatternVersion).set({name:'Overwrite'}).where(eq(s.overtimePatternVersion.id,saved.versionId)))).rejects.toMatchObject({cause:expect.objectContaining({message:expect.stringMatching(/immutable/i)})});const detail=await getOvertimePattern(adminCtx(b),saved.patternId);const fork=await forkOvertimePatternDraft(adminCtx(b),{versionId:saved.versionId,expectedPatternRevision:detail!.pattern.revision});expect(fork.versionId).not.toBe(saved.versionId);expect((await getOvertimePattern(adminCtx(b),saved.patternId))!.versions.map(v=>v.status)).toEqual(['draft','active']);});
  it('refuses stale activation after the earning reference changes',async()=>{const saved=await saveOvertimePatternDraft(adminCtx(b),{draft:draft()});const check=await validateOvertimePatternActivation(adminCtx(b),{versionId:saved.versionId,expectedRevision:1});await owner.db.update(s.payComponent).set({name:'Changed mapping'}).where(eq(s.payComponent.id,earningId));await expect(activateOvertimePattern(adminCtx(b),{versionId:saved.versionId,expectedRevision:1,validationDigest:check.validationDigest!,effectiveFrom:day()})).rejects.toMatchObject({code:'stale'});});
  it('refuses equal-priority overlapping individual assignments, but permits explicit greater priority',async()=>{const saved=await activated();await expect(saveOvertimePatternAssignment(adminCtx(b),{versionId:saved.versionId,target:{type:'individual',employmentIds:[employmentId]},priority:1,from:day(),to:null})).rejects.toMatchObject({code:'conflict'});await expect(saveOvertimePatternAssignment(adminCtx(b),{versionId:saved.versionId,target:{type:'individual',employmentIds:[employmentId]},priority:2,from:day(),to:null})).resolves.toHaveProperty('assignmentId');});
- it('returns the matching activated version when a newer Draft has another payment method',async()=>{const saved=await activated(),detail=await getOvertimePattern(adminCtx(b),saved.patternId);await forkOvertimePatternDraft(adminCtx(b),{versionId:saved.versionId,expectedPatternRevision:detail!.pattern.revision});const rows=await listOvertimePatterns(adminCtx(b),{status:'active',method:'flat'});const found=rows.items.find(item=>item.id===saved.patternId)!;expect(found.latestVersion!.status).toBe('draft');expect(found.matchingVersion!.id).toBe(saved.versionId);});
+ it('returns the matching activated version when a newer Draft has another payment method',async()=>{const saved=await activated(),detail=await getOvertimePattern(adminCtx(b),saved.patternId);await forkOvertimePatternDraft(adminCtx(b),{versionId:saved.versionId,expectedPatternRevision:detail!.pattern.revision});const rows=await listOvertimePatterns(adminCtx(b),{status:'active',method:'flat'});const found=rows.items.find(item=>item.id===saved.patternId)!;expect(found.latestDraft).toBe(true);expect(found.liveVersionId).toBe(saved.versionId);expect(found.status).toBe('active');expect(found.pendingDraft).toBe(true);});
  it('appends a same-day stop without mutating the activated version',async()=>{const saved=await activated(),before=await getOvertimePattern(adminCtx(b),saved.patternId);await stopOvertimePatternVersion(adminCtx(b),{versionId:saved.versionId,expectedRevision:before!.versions[0].revision,effectiveFrom:day(),reason:'Prospective policy stop'});const after=await getOvertimePattern(adminCtx(b),saved.patternId);expect(after!.versions[0].states.map(st=>st.state)).toEqual(['active','inactive']);expect(after!.versions[0].definition).toEqual(before!.versions[0].definition);});
 });
 describe('Canonical source and immutable exact evidence',()=>{

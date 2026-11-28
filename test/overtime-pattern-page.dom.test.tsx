@@ -1,13 +1,13 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {cleanup,render,screen} from '@testing-library/react';
+import {cleanup,render,screen,within} from '@testing-library/react';
 import {NextIntlClientProvider} from 'next-intl';
 import en from '../messages/en.json';
 import Page from '../app/admin/attendance/settings/overtime-patterns/page';
-const m=vi.hoisted(()=>({scope:vi.fn(),companies:vi.fn(),list:vi.fn(),setup:vi.fn(),groups:vi.fn(),detail:vi.fn(),workspace:vi.fn((_props:unknown)=>null)}));
+const m=vi.hoisted(()=>({scope:vi.fn(),companies:vi.fn(),list:vi.fn(),setup:vi.fn(),groups:vi.fn(),detail:vi.fn(),workspace:vi.fn((_props:unknown)=>null),actions:vi.fn((_props:unknown)=>null)}));
 vi.mock('../lib/scope',()=>({scopedAdmin:m.scope}));
 vi.mock('next-intl/server',()=>({getTranslations:async()=>((key:string)=>key.split('.').reduce((value:any,part)=>value?.[part],en.overtimePatterns)??key)}));
 vi.mock('../packs/attendance/service',()=>({overtimePatternWorkspaceCompanies:m.companies,listOvertimePatterns:m.list,overtimePatternSetup:m.setup,listAttendanceRules:m.groups,getOvertimePattern:m.detail,attendanceGroupPolicyReview:vi.fn(),OvertimeOwnerError:class extends Error{}}));
-vi.mock('../components/overtime-patterns/starter-initializer',()=>({OvertimeStarterInitializer:()=>null}));
+vi.mock('../components/overtime-patterns/list-actions',()=>({OvertimePatternListActions:(props:{row:{code:string|null}})=>m.actions(props)}));
 vi.mock('../components/overtime-patterns/group-policy-review',()=>({OvertimeGroupPolicyReview:()=>null}));
 vi.mock('../components/overtime-patterns/workspace',()=>({OvertimeWorkspace:(props:unknown)=>m.workspace(props)}));
 vi.mock('../app/admin/attendance/settings/overtime-patterns/legacy-bands',()=>({LegacyOvertimeBands:()=>null}));
@@ -18,7 +18,9 @@ afterEach(cleanup);beforeEach(()=>{
 describe('Overtime workspace tolerates historical company selections',()=>{
  it('passes only active currently-administrable selected companies to strict configuration owners',async()=>{
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({})})}</NextIntlClientProvider>);
-  expect(await screen.findByText(en.overtimePatterns.empty)).toBeVisible();expect(m.list).toHaveBeenCalledWith(session,expect.objectContaining({companyIds:[active]}));expect(m.setup).toHaveBeenCalledWith(session,{companyIds:[active],limit:100});
+  expect(await screen.findByText(en.overtimePatterns.empty)).toBeVisible();expect(m.list).toHaveBeenCalledWith(session,expect.objectContaining({companyIds:[active]}));
+  // 4197534a: no starting patterns are prepared on a visit, and the list view reads no editor setup.
+  expect(m.setup).not.toHaveBeenCalled();expect(screen.queryByText(en.overtimePatterns.standardStarters)).toBeNull();
   expect(screen.getByRole('link',{name:en.overtimePatterns.create})).toBeVisible();
  });
  it('does not widen an empty eligible intersection to every company or mislabel it an empty tenant',async()=>{
@@ -27,6 +29,7 @@ describe('Overtime workspace tolerates historical company selections',()=>{
  });
  it('files a new pattern under the single selected company and asks for one company otherwise (b31981c0)',async()=>{
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({new:'1'})})}</NextIntlClientProvider>);
+  expect(m.setup).toHaveBeenCalledWith(session,{limit:100});
   expect(m.workspace).toHaveBeenCalled();expect(m.workspace.mock.lastCall![0]).toMatchObject({detail:null,newPatternCompany:{id:active,currency:'MYR'}});
   cleanup();m.workspace.mockClear();
   const second='10000000-0000-4000-8000-000000000003';
@@ -48,4 +51,18 @@ describe('Overtime workspace tolerates historical company selections',()=>{
   render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({pattern,saveAck:'not-a-receipt'})})}</NextIntlClientProvider>);
   expect((m.workspace.mock.lastCall![0] as {legacyEditor?:unknown}).legacyEditor).toBeUndefined();
  });
+ // 4197534a — the listing shows Code, Name, Companies (a count when several), Status and View/Edit/Delete per row.
+ it('lists one row per Pattern Code with its company count, status and actions, and opens View read-only',async()=>{
+  const pattern='20000000-0000-4000-8000-000000000002',version='40000000-0000-4000-8000-000000000002';
+  m.list.mockResolvedValue({items:[{id:pattern,kind:'formula',code:'OT001',legacyRuleId:null,revision:3,archived:false,name:'Standard Overtime',latestVersionId:version,latestDraft:false,liveVersionId:version,liveFrom:'2026-12-01',status:'active',pendingDraft:false,companyCount:58,companyIds:[],companyNames:['A','B'],writable:true}],nextCursor:null});
+  render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({})})}</NextIntlClientProvider>);
+  expect(screen.getByText('OT001')).toBeVisible();expect(screen.getByText('Standard Overtime')).toBeVisible();
+  const table=screen.getByRole('table');expect(within(table).getByText(en.overtimePatterns.listing.companyCount)).toBeVisible();expect(within(table).getByText(en.overtimePatterns.status.active)).toBeVisible();
+  expect(m.actions.mock.lastCall![0]).toMatchObject({row:{id:pattern,code:'OT001',writable:true,latestDraft:false,revision:3}});
+  cleanup();m.workspace.mockClear();
+  m.detail.mockResolvedValue({pattern:{id:pattern,kind:'formula',legacyRuleId:null,revision:3},versions:[{id:version,ordinal:1,status:'active',activatedAt:new Date(),effectiveFrom:'2026-12-01',companyIds:[active]}],assignments:[],writable:true});
+  render(<NextIntlClientProvider locale="en" messages={en}>{await Page({searchParams:Promise.resolve({pattern,version,mode:'view'})})}</NextIntlClientProvider>);
+  expect(m.workspace.mock.lastCall![0]).toMatchObject({readOnly:true,version:{id:version}});
+ });
 });
+

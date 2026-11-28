@@ -8212,6 +8212,13 @@
       "when": 1795495007610,
       "tag": "7610_employee_draft_photo",
       "breakpoints": true
+    },
+    {
+      "idx": 11020,
+      "version": "7",
+      "when": 1795495007620,
+      "tag": "7620_overtime_pattern_planned_eligibility",
+      "breakpoints": true
     }
   ]
 }

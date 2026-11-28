@@ -297,6 +297,8 @@ const APPROVED_BOARD_PENDING_TAIL:Entry[]=[
  {idx:11000,version:'7',when:1795495007600,tag:'7600_app_user_merge',breakpoints:true},
  // Board 2c1b2fba — Draft Employee page photo side table.
  {idx:11010,version:'7',when:1795495007610,tag:'7610_employee_draft_photo',breakpoints:true},
+ // Board 4197534a — the Overtime Pattern draft's planned Eligibility (nullable column and its reference trigger).
+ {idx:11020,version:'7',when:1795495007620,tag:'7620_overtime_pattern_planned_eligibility',breakpoints:true},
 ];
 
 it('stops on a cross-tenant row, then validates every company/tenant key without changing data or grants',async()=>{
@@ -1479,6 +1481,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    {fn:'app.payroll_group_tax_opening(uuid,text,uuid[])',app:true},
    // 7570 (board 5084d02e): the Form TP3 Import Log read, bounded by app.is_admin_for over each job's companies.
    {fn:'app.tp3_import_log(uuid[],uuid,timestamp with time zone,uuid,integer)',app:true},
+   // 7620 (board 4197534a): the planned-Eligibility reference trigger function; triggers need no EXECUTE grant.
+   {fn:'app.check_overtime_planned_eligibility()',app:false},
   ];
   //6610 deliberately removes the old unchecked template writer from application execution.
   // Canonical legacy/shared writer retains its combined-release ACL; the deferred protocol guard prevents v2 metadata loss.

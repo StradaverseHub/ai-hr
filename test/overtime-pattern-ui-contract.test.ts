@@ -33,8 +33,11 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
  });
  it('uses fresh server context for every public operation and never accepts a computed amount for transfer',()=>{
   const names=[...action.matchAll(/export async function (\w+)/g)].map(match=>match[1]);
-  // b31981c0: the editor no longer exposes validate/activate/fork/stop/archive, so no hidden endpoint remains for them.
-  expect(names).toEqual(['initializeOvertimeStartersAction','saveOvertimeDraftAction','saveOvertimeAssignmentAction','closeOvertimeAssignmentAction','overtimeChoicesAction','previewOvertimeEmployeeAction','previewOvertimeSampleAction','readOvertimeTransferAction','calculateOvertimeDayAction','transferOvertimePayrollAction','overtimePositionChoicesAction']);
+  // 4197534a: no starter initializer and no free-form assignment writer; activation, edit (new draft), delete and the
+  // Eligibility cancel are explicit, each deriving authority from the server session.
+  expect(names).toEqual(['saveOvertimeDraftAction','previewOvertimeEligibilityAction','activateOvertimePatternAction','editOvertimePatternAction','deleteOvertimePatternAction','cancelOvertimeAssignmentAction','closeOvertimeAssignmentAction','overtimeChoicesAction','previewOvertimeEmployeeAction','previewOvertimeSampleAction','readOvertimeTransferAction','calculateOvertimeDayAction','transferOvertimePayrollAction','overtimePositionChoicesAction']);
+  // New saves keep the app frame: they return the next address instead of revalidating (lib/action-navigation.ts).
+  for(const name of ['saveOvertimeDraftAction','activateOvertimePatternAction','editOvertimePatternAction','deleteOvertimePatternAction']){const start=action.indexOf(`export async function ${name}`);const next=action.indexOf('\nexport async function',start+1);expect(action.slice(start,next),name).toContain('navigate:');}
   for(const name of names){const start=action.indexOf(`export async function ${name}`);const next=action.indexOf('\nexport async function',start+1);const body=action.slice(start,next<0?action.length:next);expect(body.length).toBeGreaterThan(100);expect(body,`${name} derives server authority`).toContain('await scopedAdmin()');}
   const transferStart=action.indexOf('export async function transferOvertimePayrollAction');
   const transferEnd=action.indexOf('\nfunction makeSampleInput',transferStart);
@@ -55,19 +58,21 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
   const controls=read('components/overtime-patterns/rule-controls.tsx');
   expect(controls).toContain('OVERTIME_SELECTION_FIELDS');expect(controls).toContain('OVERTIME_ASSIGNMENT_SELECTION_FIELDS');expect(controls).toContain('OVERTIME_ASSIGNMENT_CONDITION_TYPES');
   expect(controls).not.toContain('<textarea');expect(controls).not.toMatch(/\beval\s*\(|new Function/);
-  expect(workspace).toContain('savedRevision={savedRevision}');expect(workspace).toContain('data-attendance-saved-receipt={assignmentReceipt}');
+  expect(workspace).toContain('savedRevision={savedRevision}');
  });
- it('keeps incomplete drafts non-executable while the three-step flow validates before progression',()=>{
+ it('keeps incomplete drafts non-executable while the three steps stay freely navigable (4197534a)',()=>{
   expect(workspace).toContain('validateOvertimePatternDraft(props.version.definition)');
   expect(workspace).toContain("OVERTIME_WORKSPACE_SECTIONS=['basic','eligibility','preview']");
-  expect(workspace).toContain("if(complete&&!checkStep('eligibility'))return");
+  // Free navigation: no step gate before moving between tabs.
+  expect(workspace).toContain('function moveTab(next:Section) {setSection(next);}');expect(workspace).not.toContain('checkStep(');
   expect(workspace).toContain('validateOvertimePatternDraft(pattern)');
-  expect(workspace).toContain('save(true)');
-  // b31981c0: hidden configuration has no control, handler or posted field in the editor.
-  for(const removed of ['OvertimeRatesSection','OvertimeFormulaSection','OvertimeMappingSection',"t('creationCompany')","t('companies')","t('currency')","t('minorScale')","t('eligibilityBasis')","t('durationAllocation')","guided.manageLifecycle",'activateOvertimeAction','stopOvertimeAction','archiveOvertimeAction','forkOvertimeDraftAction','validateOvertimeAction','setCompanyIds','setCreationCompanyId'])expect(workspace,removed).not.toContain(removed);
-  expect(workspace).toContain('const draft:OvertimeEditorDraft={code,name,description,definition:pattern}');
-  expect(workspace).not.toContain('setPrepared(');
+  // Saved values the table cannot express are never rewritten; the lifecycle runs through explicit, audited actions.
+  expect(workspace).toContain('definitionToOvertimeSettings(initialDefinition)');
+  for(const removed of ['OvertimeRatesSection','OvertimeFormulaSection','OvertimeMappingSection',"t('creationCompany')","t('currency')","t('minorScale')","t('eligibilityBasis')","t('durationAllocation')",'stopOvertimeAction','archiveOvertimeAction','validateOvertimeAction','setCreationCompanyId','saveOvertimeAssignmentAction'])expect(workspace,removed).not.toContain(removed);
+  expect(workspace).toContain('const draft:OvertimeEditorDraft={code,name,description,definition:pattern,companyIds');
   expect(existsSync(resolve(root,'lib/overtime-pattern-ui-shape.ts'))).toBe(false);
+  expect(existsSync(resolve(root,'components/overtime-patterns/starter-initializer.tsx'))).toBe(false);
+  expect(page).not.toContain('OvertimeStarterInitializer');
   const controls=read('components/overtime-patterns/rule-controls.tsx');expect(controls).toContain("t('recordedWorkStart')");expect(controls).toContain("t('recordedWorkEnd')");
  });
  it.each(['en','ms','ta','th','vi','zh'])('has every selectable field and section label in %s',locale=>{
@@ -77,6 +82,15 @@ describe('Overtime Patterns uses the existing Attendance access and storage owne
   for(const step of ['general','eligibility','preview'])expect(words.guided[step]).toBeTruthy();
   expect(words.guided.rates,`${locale} read-only saved rates heading`).toBeTruthy();
   expect(words.guided.draftOnlyNote).toBeTruthy();expect(words.chooseOneCompany).toBeTruthy();
+  // 4197534a: every new message exists in every locale with the same ICU placeholders as English.
+  const english=JSON.parse(read('messages/en.json')).overtimePatterns;
+  const leaves=(value:unknown,prefix=''):[string,string][]=>value&&typeof value==='object'?Object.entries(value as Record<string,unknown>).flatMap(([key,item])=>leaves(item,prefix?prefix+'.'+key:key)):[[prefix,String(value)]];
+  const placeholders=(text:string)=>[...new Set([...text.matchAll(/(?<!\b(?:zero|one|two|few|many|other|yes|no|=\d+)\s*)\{(\w+)\s*[,}]/g)].map(match=>match[1]))].sort();
+  for(const group of ['settingsTable','eligibilityStep','previewStep','editor','refusal','listing']){
+   const mine=new Map(leaves(words[group]));
+   for(const [key,text] of leaves(english[group])){expect(mine.get(key),`${locale} ${group}.${key}`).toBeTruthy();expect(placeholders(mine.get(key)??''),`${locale} ${group}.${key} placeholders`).toEqual(placeholders(text));}
+  }
+  expect(words.status.scheduled).toBeTruthy();expect(english.guided.patternLabel).toBe('Overtime Pattern Code *');
   for(const section of Object.values(words.sections))expect(typeof section==='string'&&section.length>0).toBe(true);
   expect(catalogue.attendanceSettingsHub.overtimePatterns.title).toBe(words.title);
  });

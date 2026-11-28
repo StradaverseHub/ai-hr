@@ -1,3 +1,17 @@
+# Board 4197534a: Overtime Patterns planned Eligibility, 27 November 2026
+
+Reserve `7620_overtime_pattern_planned_eligibility`, journal index `11020`, timestamp `1795495007620`, SQL SHA-256
+`6faf85476c67e873dfabde8a28130eab8be54ed3d5ae5fdaf579cebfe514356d`. Allocated by the board batch coordinator (slots 7590-7620 for the 27 November board
+batch; 7580 is reserved ahead of it for `claude/prod-slow-pages`). Built on main 240adad5c. Recheck both installations'
+watermarks and any competing reservation at admission (staging's ledger maximum observed 7570 on 27 November 2026).
+
+Adds the nullable `overtime_pattern_version.planned_eligibility` jsonb (a draft's Eligibility step until activation turns
+it into assignment rows), a CHECK (object, at most 262,144 bytes, `criteria` an object and `employmentIds` an array),
+and the trigger `overtime_pattern_version_planned_eligibility_refs` with its function
+`app.check_overtime_planned_eligibility()`, which validates the ids inside it through the existing
+`app.check_overtime_references`. No table, policy, grant, existing function or row changes; every existing version reads
+NULL. Depends on none of 7580-7610. This entry carries no deployment authority.
+
 # Board 2c1b2fba: Draft Employee page photo side table, 28 November 2026
 
 Reserve `7610_employee_draft_photo`, journal index `11010`, timestamp `1795495007610`, SQL SHA-256

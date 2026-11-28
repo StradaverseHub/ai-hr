@@ -95,6 +95,8 @@ const PAYROLL_REVIEW_TAIL:readonly Entry[]=[
  {idx:11000,version:'7',when:1795495007600,tag:'7600_app_user_merge',breakpoints:true},
  // Board 2c1b2fba — Draft Employee page photo side table.
  {idx:11010,version:'7',when:1795495007610,tag:'7610_employee_draft_photo',breakpoints:true},
+ // Board 4197534a — the Overtime Pattern draft's planned Eligibility (nullable column and its reference trigger).
+ {idx:11020,version:'7',when:1795495007620,tag:'7620_overtime_pattern_planned_eligibility',breakpoints:true},
 ];
 const REPORTING_INDEX_TAIL:readonly Entry[]=[
  {idx:10480,version:'7',when:1795028007080,tag:'7080_job_run_deterministic_order',breakpoints:true},

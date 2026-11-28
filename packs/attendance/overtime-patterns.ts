@@ -32,7 +32,10 @@ import type {RecordedPolicyClockSource} from './policy-clock-input';
 import type {PolicyRawClockReplay} from './policy-clock-replay';
 import {validateAttendanceGroupPolicy} from '../../lib/attendance-group-policy';
 import {labelUsableByCompany,visibleLabelIdsCondition} from '../../core/system-labels';
-import {OVERTIME_STARTERS,overtimeStarterSeed} from '../../lib/overtime-pattern-starters';
+import {parsePlannedEligibility,plannedEligibilityTargets,plannedEligibilityFromAssignments,selectionOnlyCriteria,OVERTIME_ELIGIBILITY_FIELDS,type OvertimePlannedEligibility,type OvertimeEligibilityCriteria,type OvertimeEligibilityField} from '../../lib/overtime-pattern-eligibility';
+import {uuidArrayParam} from '../../db/sql-arrays';
+import {overtimeStarter,overtimeStarterSeed,readOvertimeStarterSeed,type OvertimeStarterKey} from '../../lib/overtime-pattern-starters';
+import {LIST_COUNT_CAP,cappedTotal,type ListTotal} from '../../lib/pagination';
 import {todayInKualaLumpur} from '../../lib/hr-date';
 import {isCalendarDate} from '../../lib/calendar-date';
 import {currencyMinorScale} from '../../lib/currencies';
@@ -42,10 +45,16 @@ import {resolveOvertimePattern,evaluateOvertimePattern,evaluateOvertimePatternDu
 import {overtimeDurationProofInput} from '../../lib/overtime-duration-input';
 import {OVERTIME_LIMITS,OvertimePatternError,type OvertimePattern,type OvertimeAssignmentTarget,type OvertimeCandidate,type OvertimeFacts,type OvertimeInput,type OvertimeEvaluation,type OvertimeDurationEvaluation,type OvertimeField,type OvertimeResolution,type OvertimeIssue} from '../../lib/overtime-pattern-model';
 
-export type OvertimePatternDraft={code:string;creationCompanyId:string;name:string;description?:string;companyIds:string[];definition:OvertimePattern};
+/** companyIds may be empty for a draft (board 4197534a: Save Draft needs only the Code and Name); activation needs them. */
+export type OvertimePatternDraft={code:string;creationCompanyId:string;name:string;description?:string;companyIds:string[];definition:OvertimePattern;plannedEligibility?:unknown};
 export type OvertimePatternStatus='draft'|'active'|'inactive'|'archived';
-export type OvertimePatternVersionView=typeof s.overtimePatternVersion.$inferSelect & {companyIds:string[];status:OvertimePatternStatus;effectiveFrom:string|null;states:(typeof s.overtimePatternVersionState.$inferSelect)[]};
-export type OvertimePatternListItem=typeof s.overtimePattern.$inferSelect & {latestVersion:OvertimePatternVersionView|null;matchingVersion:OvertimePatternVersionView|null;writable:boolean};
+export type OvertimePatternVersionView=typeof s.overtimePatternVersion.$inferSelect & {companyIds:string[];status:OvertimePatternStatus;effectiveFrom:string|null;states:(typeof s.overtimePatternVersionState.$inferSelect)[];plannedEligibility?:unknown};
+/** One listing row, read in one set-based statement (board 4197534a). Status is the pattern's: its live (most recently
+ * activated) version's state today, 'scheduled' when that activation starts later, otherwise 'draft'. */
+export type OvertimePatternListStatus=OvertimePatternStatus|'scheduled';
+export type OvertimePatternListItem={id:string;kind:'formula'|'legacy';code:string|null;legacyRuleId:string|null;revision:number;archived:boolean;name:string|null;
+ latestVersionId:string|null;latestDraft:boolean;liveVersionId:string|null;liveFrom:string|null;status:OvertimePatternListStatus;pendingDraft:boolean;
+ companyCount:number;companyIds:string[];companyNames:string[];writable:boolean};
 export type OvertimePatternDetail={pattern:typeof s.overtimePattern.$inferSelect;versions:OvertimePatternVersionView[];assignments:(typeof s.overtimePatternAssignment.$inferSelect)[];writable:boolean};
 export type OvertimeSetupOption={id:string;label:string};
 export type OvertimePatternSetup={companies:{id:string;name:string;currency:string;minorScale:number}[];employees:{id:string;companyId:string;employeeCode:string|null;name:string}[];employeeNextCursor:string|null;earningItems:OvertimeSetupOption[];choices:Partial<Record<OvertimeField,OvertimeSetupOption[]>>;readerLimitations:string[]};
@@ -55,8 +64,10 @@ export type CanonicalOvertimeSnapshot={input:CanonicalOvertimeInput;resolvedLega
 export type CanonicalOvertimeReader=(tx:Tx,ctx:SessionContext,p:{employmentId:string;date:string})=>Promise<CanonicalOvertimeSnapshot>;
 declare const preparedBrand:unique symbol;
 export type PreparedOvertimeCalculation={readonly [preparedBrand]:true};
-export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy',message:string){super(message);this.name='OvertimeOwnerError';}}
-function fail(code:OvertimeOwnerError['code'],message:string):never{throw new OvertimeOwnerError(code,message);}
+/** A plain, translatable explanation the screen can show (reason key + values), never raw database text. */
+export type OvertimeRefusalDetail={reason:string;values?:Record<string,string|number>;issues?:OvertimeIssue[]};
+export class OvertimeOwnerError extends Error{constructor(readonly code:'permission'|'stale'|'invalid'|'unavailable'|'conflict'|'closed'|'limit'|'busy',message:string,readonly detail?:OvertimeRefusalDetail){super(message);this.name='OvertimeOwnerError';}}
+function fail(code:OvertimeOwnerError['code'],message:string,detail?:OvertimeRefusalDetail):never{throw new OvertimeOwnerError(code,message,detail);}
 const json=(value:unknown)=>JSON.parse(JSON.stringify(value)) as Record<string,unknown>;
 const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,v])=>[key,canonical(v)])):value;
 const digest=(value:unknown)=>createHash('sha256').update(JSON.stringify(canonical(value))).digest('hex');
@@ -137,75 +148,124 @@ export function legacyOvertimePatternIdForRule(ctx:SessionContext,ruleId:string)
  const [row]=await tx.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.kind,'legacy'),eq(s.overtimePattern.legacyRuleRef,uuid(ruleId)))).limit(1);
  return row?.id??null;
 });}
-export function getOvertimePattern(ctx:SessionContext,patternId:string):Promise<OvertimePatternDetail|null>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);const [pattern]=await tx.select().from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.id,uuid(patternId)),sql`(${s.overtimePattern.kind}='legacy' OR app.is_admin_for(${s.overtimePattern.creationCompanyId}) OR EXISTS(SELECT 1 FROM overtime_pattern_version v JOIN overtime_pattern_version_company co ON co.version_id=v.id WHERE v.pattern_id=${s.overtimePattern.id} AND app.is_admin_for(co.company_id)))`)).limit(1);if(!pattern)return null;const versions=bounded(await tx.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(101),100);const ids=versions.map(v=>v.id),assignments=ids.length?bounded(await tx.select().from(s.overtimePatternAssignment).where(inArray(s.overtimePatternAssignment.versionId,ids)).orderBy(asc(s.overtimePatternAssignment.validFrom),asc(s.overtimePatternAssignment.id)).limit(501),500):[];return {pattern,versions:await Promise.all(versions.map(v=>versionView(tx,v))),assignments,writable:await patternWritable(tx,ctx,pattern)};});}
-export function listOvertimePatterns(ctx:SessionContext,p:{companyIds?:string[];search?:string;status?:OvertimePatternStatus;method?:'hourly'|'flat'|'formula';assignmentSearch?:string;cursor?:string;limit?:number}={}):Promise<{items:OvertimePatternListItem[];nextCursor:string|null}>{return withAttendanceTenant(ctx,async tx=>{
- await configurationReader(tx);if(p.limit!==undefined&&(!Number.isInteger(p.limit)||p.limit<1||p.limit>100))fail('invalid','Choose a whole-number page size from one to 100.');const limit=Math.max(1,Math.min(100,p.limit??25));if(p.companyIds)await administerCompanies(tx,ctx,p.companyIds);if(p.cursor)uuid(p.cursor);const search=(p.search??'').trim().slice(0,160),assignmentSearch=(p.assignmentSearch??'').trim().slice(0,160);
- const conditions:SQL[]=[eq(s.overtimePattern.tenantId,ctx.tenantId),sql`(${s.overtimePattern.kind}='legacy' AND app.is_admin() OR app.is_admin_for(${s.overtimePattern.creationCompanyId}) OR EXISTS(SELECT 1 FROM overtime_pattern_version v JOIN overtime_pattern_version_company co ON co.version_id=v.id WHERE v.pattern_id=${s.overtimePattern.id} AND app.is_admin_for(co.company_id)))`];
- if(p.companyIds)conditions.push(sql`(${s.overtimePattern.kind}='legacy' or exists(select 1 from overtime_pattern_version v join overtime_pattern_version_company co on co.version_id=v.id where v.pattern_id=${s.overtimePattern.id} and ${inArray(sql<string>`co.company_id`,p.companyIds)}))`);
- if(search)conditions.push(sql`(${s.overtimePattern.code} ilike ${'%'+search+'%'} or exists(select 1 from overtime_pattern_version v where v.pattern_id=${s.overtimePattern.id} and v.name ilike ${'%'+search+'%'}))`);
- const versionMatch:SQL[]=[sql`v.pattern_id=${s.overtimePattern.id}`];
- if(p.companyIds)versionMatch.push(sql`(v.kind='legacy' or exists(select 1 from overtime_pattern_version_company co where co.version_id=v.id and ${inArray(sql<string>`co.company_id`,p.companyIds)}))`);
- if(p.method){if(!['hourly','flat','formula'].includes(p.method))fail('invalid','Choose a supported payment method.');versionMatch.push(sql`v.definition @? ${'$.rates[*].tiers[*].payment ? (@.method == "'+p.method+'")'}::jsonpath`);}
- if(assignmentSearch)versionMatch.push(sql`exists(select 1 from overtime_pattern_assignment a where a.version_id=v.id and a.superseded_at is null and a.target::text ilike ${'%'+assignmentSearch+'%'})`);
- if(p.status&&p.status!=='archived')conditions.push(isNull(s.overtimePattern.archivedAt));
- if(p.status==='draft')versionMatch.push(sql`v.activated_at is null`);else if(p.status==='archived')conditions.push(sql`${s.overtimePattern.archivedAt} is not null`);else if(p.status){if(!['active','inactive'].includes(p.status))fail('invalid','Choose a supported pattern status.');versionMatch.push(sql`(select state from overtime_pattern_version_state st where st.version_id=v.id and st.effective_from<=${todayInKualaLumpur()}::date order by st.effective_from desc,st.sequence desc limit 1)=${p.status}`);}
- if(p.method||p.status||assignmentSearch||p.companyIds)conditions.push(sql`exists(select 1 from overtime_pattern_version v where ${and(...versionMatch)})`);
- if(p.cursor)conditions.push(gt(s.overtimePattern.id,p.cursor));const rows=await tx.select().from(s.overtimePattern).where(and(...conditions)).orderBy(asc(s.overtimePattern.id)).limit(limit+1),hasMore=rows.length>limit,items:OvertimePatternListItem[]=[];
- for(const row of rows.slice(0,limit)){const [latest]=await tx.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,row.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);const versionCondition=and(...versionMatch.map(condition=>condition));
- const matches=await tx.execute(sql`select v.id from overtime_pattern_version v join overtime_pattern on overtime_pattern.id=v.pattern_id where overtime_pattern.id=${row.id}::uuid and ${versionCondition} order by v.ordinal desc limit 1`) as unknown as {id:string}[];
- const matching=matches[0]?await versionRow(tx,ctx,matches[0].id):null;items.push({...row,latestVersion:latest?await versionView(tx,latest):null,matchingVersion:matching?await versionView(tx,matching):null,writable:await patternWritable(tx,ctx,row)});}return {items,nextCursor:hasMore?items.at(-1)!.id:null};
+export function getOvertimePattern(ctx:SessionContext,patternId:string):Promise<OvertimePatternDetail|null>{return withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);const [pattern]=await tx.select().from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.id,uuid(patternId)),sql`(${s.overtimePattern.kind}='legacy' OR app.is_admin_for(${s.overtimePattern.creationCompanyId}) OR EXISTS(SELECT 1 FROM overtime_pattern_version v JOIN overtime_pattern_version_company co ON co.version_id=v.id WHERE v.pattern_id=${s.overtimePattern.id} AND app.is_admin_for(co.company_id)))`)).limit(1);if(!pattern)return null;const versions=bounded(await tx.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(101),100);const ids=versions.map(v=>v.id),assignments=ids.length?bounded(await tx.select().from(s.overtimePatternAssignment).where(inArray(s.overtimePatternAssignment.versionId,ids)).orderBy(asc(s.overtimePatternAssignment.validFrom),asc(s.overtimePatternAssignment.id)).limit(501),500):[];const planned=await plannedEligibilityTx(tx,ids);return {pattern,versions:(await Promise.all(versions.map(v=>versionView(tx,v)))).map(view=>({...view,plannedEligibility:planned.get(view.id)??null})),assignments,writable:await patternWritable(tx,ctx,pattern)};});}
+/** Board 4197534a — one set-based page statement: latest version, live version and status, company count and the first
+ * 20 company names, and whether the reader may edit (administers the creation company and every company in any
+ * version). No per-row read. Archived (deleted) patterns leave the default list; status 'archived' shows them. */
+export function listOvertimePatterns(ctx:SessionContext,p:{companyIds?:string[];search?:string;status?:OvertimePatternListStatus;method?:'hourly'|'flat'|'formula';assignmentSearch?:string;cursor?:string;limit?:number}={}):Promise<{items:OvertimePatternListItem[];nextCursor:string|null}>{return withAttendanceTenant(ctx,async tx=>{
+ await configurationReader(tx);if(p.limit!==undefined&&(!Number.isInteger(p.limit)||p.limit<1||p.limit>100))fail('invalid','Choose a whole-number page size from one to 100.');const limit=Math.max(1,Math.min(100,p.limit??25));if(p.companyIds)await administerCompanies(tx,ctx,p.companyIds);if(p.cursor)uuid(p.cursor);const search=(p.search??'').trim().slice(0,160),assignmentSearch=(p.assignmentSearch??'').trim().slice(0,160),today=todayInKualaLumpur();
+ if(p.status&&!['draft','active','inactive','archived','scheduled'].includes(p.status))fail('invalid','Choose a supported pattern status.');
+ const conditions:SQL[]=[sql`pat.tenant_id=${ctx.tenantId}::uuid`,sql`(pat.kind='legacy' and app.is_admin() or app.is_admin_for(pat.creation_company_id) or exists(select 1 from overtime_pattern_version v join overtime_pattern_version_company co on co.version_id=v.id where v.pattern_id=pat.id and app.is_admin_for(co.company_id)))`];
+ if(p.companyIds)conditions.push(sql`(pat.kind='legacy' or exists(select 1 from overtime_pattern_version v join overtime_pattern_version_company co on co.version_id=v.id where v.pattern_id=pat.id and co.company_id=any(${uuidArrayParam([...new Set(p.companyIds)])})))`);
+ if(search)conditions.push(sql`(pat.code ilike ${'%'+search+'%'} or exists(select 1 from overtime_pattern_version v where v.pattern_id=pat.id and v.name ilike ${'%'+search+'%'}))`);
+ if(p.method){if(!['hourly','flat','formula'].includes(p.method))fail('invalid','Choose a supported payment method.');conditions.push(sql`exists(select 1 from overtime_pattern_version v where v.pattern_id=pat.id and v.definition @? ${'$.rates[*].tiers[*].payment ? (@.method == "'+p.method+'")'}::jsonpath)`);}
+ if(assignmentSearch)conditions.push(sql`exists(select 1 from overtime_pattern_assignment a join overtime_pattern_version v on v.id=a.version_id where v.pattern_id=pat.id and a.superseded_at is null and a.target::text ilike ${'%'+assignmentSearch+'%'})`);
+ conditions.push(p.status==='archived'?sql`pat.archived_at is not null`:sql`pat.archived_at is null`);
+ const rows=await tx.execute(sql`select * from (select pat.id,pat.kind,pat.code,pat.legacy_rule_id,pat.revision,
+   lv.id as latest_id,lv.name as latest_name,(lv.id is not null and lv.activated_at is null) as latest_draft,
+   live.id as live_id,live.state as live_state,live.effective_from as live_from,
+   case when pat.archived_at is not null then 'archived' when live.id is not null then live.state when lv.activated_at is not null then 'scheduled' else 'draft' end as status,
+   (select count(*)::int from overtime_pattern_version_company co where co.version_id=lv.id) as company_count,
+   coalesce((select array_agg(co.company_id::text order by co.company_id) from overtime_pattern_version_company co where co.version_id=lv.id),'{}'::text[]) as company_ids,
+   coalesce((select array_agg(n.legal_name order by n.legal_name) from (select c.legal_name from overtime_pattern_version_company co join company c on c.id=co.company_id where co.version_id=lv.id order by c.legal_name limit 20) n),'{}'::text[]) as company_names,
+   (pat.kind='formula' and coalesce(app.is_admin_for(pat.creation_company_id),false) and not exists(select 1 from overtime_pattern_version v2 join overtime_pattern_version_company co2 on co2.version_id=v2.id where v2.pattern_id=pat.id and not app.is_admin_for(co2.company_id))) as writable
+  from overtime_pattern pat
+  left join lateral (select v.id,v.name,v.activated_at from overtime_pattern_version v where v.pattern_id=pat.id order by v.ordinal desc limit 1) lv on true
+  left join lateral (select v.id,st.state,(select to_char(min(s2.effective_from),'YYYY-MM-DD') from overtime_pattern_version_state s2 where s2.version_id=v.id and s2.state='active') as effective_from
+    from overtime_pattern_version v cross join lateral (select st.state from overtime_pattern_version_state st where st.version_id=v.id and st.effective_from<=${today}::date order by st.effective_from desc,st.sequence desc limit 1) st
+    where v.pattern_id=pat.id and v.activated_at is not null order by v.ordinal desc limit 1) live on true
+  where ${and(...conditions)}) x
+ where ${p.status&&p.status!=='archived'?sql`x.status=${p.status}`:sql`true`} ${p.cursor?sql`and x.id>${p.cursor}::uuid`:sql``}
+ order by x.id limit ${limit+1}`) as unknown as {id:string;kind:'formula'|'legacy';code:string|null;legacy_rule_id:string|null;revision:number;latest_id:string|null;latest_name:string|null;latest_draft:boolean;live_id:string|null;live_state:'active'|'inactive'|null;live_from:string|null;status:OvertimePatternListStatus;company_count:number;company_ids:string[];company_names:string[];writable:boolean}[];
+ const items:OvertimePatternListItem[]=rows.slice(0,limit).map(row=>({id:row.id,kind:row.kind,code:row.code,legacyRuleId:row.legacy_rule_id,revision:Number(row.revision),archived:row.status==='archived',name:row.latest_name,
+  latestVersionId:row.latest_id,latestDraft:Boolean(row.latest_draft),liveVersionId:row.live_id,liveFrom:row.live_from,status:row.status,pendingDraft:Boolean(row.latest_draft&&row.live_id),
+  companyCount:Number(row.company_count),companyIds:row.company_ids??[],companyNames:row.company_names??[],writable:Boolean(row.writable)}));
+ return {items,nextCursor:rows.length>limit?items.at(-1)!.id:null};
  });}
-/** Stable, company-bound seed identities survive edits and archival. They never identify an
- * assignment or authorize a calculation. The namespace is local to this initialization contract. */
-function starterIdentity(tenantId:string,companyId:string,key:string){
+/** Stable, company-bound identities of the retired per-company standard starting drafts (board 4197534a stopped
+ * creating them). Kept so the operator consolidation script can recognise exactly those seeds. */
+export function overtimeStarterIdentity(tenantId:string,companyId:string,key:string){
  const bytes=createHash('sha256').update(`aihr:overtime-standard-draft:v1:${tenantId}:${companyId}:${key}`).digest();
  bytes[6]=(bytes[6]&15)|128;bytes[8]=(bytes[8]&63)|128;
  const hex=bytes.subarray(0,16).toString('hex');
  return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
 }
-/** The workspace invokes this as an authenticated mutation, never while rendering/prefetching GET.
- * Only missing entries are created. Existing edits, versions, assignments and archives are untouched. */
-export function ensureOvertimePatternStarters(ctx:SessionContext,p:{companyIds:string[]}){return withAttendanceTenant(ctx,async tx=>{
- // Same Access/profile barrier as current principal/relationship writers, before configuration locks.
- await tx.execute(sql`select app.access_profile_policy_write_lock()`);
- const [principal]=await tx.execute(sql`select app.principal_snapshot_current() as allowed`) as unknown as {allowed:boolean}[];
- if(!ctx.userId||!principal?.allowed)fail('permission','Your administrator access changed. Reload before preparing drafts.');
- await lockConfiguration(tx,ctx);await configurationReader(tx);
- if(!p||!Array.isArray(p.companyIds))fail('invalid','Choose the companies for these starting drafts.');
- const companies=await administerCompanies(tx,ctx,bounded(p.companyIds,500));
- const seeds=companies.flatMap(company=>OVERTIME_STARTERS.map(starter=>({
-  id:starterIdentity(ctx.tenantId,company.id,starter.key),companyId:company.id,starter,
-  code:`STD_${starter.key.toUpperCase()}_${company.id}`,
- })));
- const existing=await tx.select().from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),inArray(s.overtimePattern.id,seeds.map(seed=>seed.id))));
- const byId=new Map(existing.map(row=>[row.id,row]));
- for(const seed of seeds){const row=byId.get(seed.id);if(row&&(row.kind!=='formula'||row.creationCompanyId!==seed.companyId||row.code!==seed.code))fail('conflict','A standard starting identity is already occupied. Existing configuration was not changed.');}
- const missing=seeds.filter(seed=>!byId.has(seed.id));
- if(!missing.length)return {created:0};
- const created=await tx.insert(s.overtimePattern).values(missing.map(seed=>({id:seed.id,tenantId:ctx.tenantId,kind:'formula' as const,code:seed.code,creationCompanyId:seed.companyId,revision:2}))).onConflictDoNothing().returning({id:s.overtimePattern.id});
- if(created.length!==missing.length)fail('conflict','A standard starting code is already occupied. Existing configuration was not changed.');
- const versions=await tx.insert(s.overtimePatternVersion).values(missing.map(seed=>{
-  const definition=overtimeStarterSeed(seed.starter.key),name=seed.starter.name,description='';
-  return {tenantId:ctx.tenantId,patternId:seed.id,kind:'formula' as const,creationCompanyId:seed.companyId,
-   ordinal:1,name,description,definition,digest:digest({name,description,definition,companyIds:[seed.companyId]})};
- })).returning();
- await tx.insert(s.overtimePatternVersionCompany).values(versions.map(version=>({tenantId:ctx.tenantId,versionId:version.id,companyId:version.creationCompanyId!})));
- await appendEvents(tx,versions.map(version=>({tenantId:ctx.tenantId,aggregateType:'overtime-pattern',aggregateId:version.patternId,
-  eventType:'overtime.draft.saved',actor:actorOf(ctx),payload:{versionId:version.id,ordinal:version.ordinal,revision:version.revision,
-   digest:version.digest,companyIds:[version.creationCompanyId],starterKey:version.definition.starterKey,
-   reason:'Initialize missing standard starting draft'}})));
- return {created:created.length};
- });}
+/** The one shared pattern the consolidation script creates per starter key (STD_OT15 etc.), stable per tenant. */
+export function consolidatedOvertimeStarterIdentity(tenantId:string,key:string){
+ const bytes=createHash('sha256').update(`aihr:overtime-standard-pattern:v1:${tenantId}:${key}`).digest();
+ bytes[6]=(bytes[6]&15)|128;bytes[8]=(bytes[8]&63)|128;
+ const hex=bytes.subarray(0,16).toString('hex');
+ return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+}
+
+/** overtime_pattern_version.planned_eligibility (migration 7620) is read and written here with plain SQL, outside the
+ * shared Drizzle schema module, so the covered AI source closure (scripts/ai-provider-data-source-manifest.mjs) is
+ * unchanged by this column. One statement each. */
+async function plannedEligibilityTx(tx:Tx,versionIds:readonly string[]):Promise<Map<string,unknown>>{
+ if(!versionIds.length)return new Map();
+ const rows=await tx.execute(sql`select id,planned_eligibility from overtime_pattern_version where id=any(${uuidArrayParam(versionIds)})`) as unknown as {id:string;planned_eligibility:unknown}[];
+ return new Map(rows.map(row=>[row.id,row.planned_eligibility??null]));
+}
+async function writePlannedEligibilityTx(tx:Tx,versionId:string,planned:OvertimePlannedEligibility|null){
+ await tx.execute(sql`update overtime_pattern_version set planned_eligibility=${planned?JSON.stringify(planned):null}::jsonb where id=${versionId}::uuid`);
+}
+function parsedPlanned(raw:unknown):OvertimePlannedEligibility{try{return parsePlannedEligibility(raw);}catch(error){if(error instanceof OvertimePatternError)fail('invalid','Correct the Eligibility step.',{reason:'eligibilityInvalid',issues:[error.issue]});throw error;}}
+/** Set-based reference checks for planned eligibility: one statement per kind of reference (at most seven), never one
+ * per value. With companies chosen, organisation codes must be usable in at least one of them and named employees
+ * must belong to them and be administrable. */
+async function plannedReferencesTx(tx:Tx,ctx:SessionContext,planned:OvertimePlannedEligibility,companyIds:readonly string[]){
+ const c=planned.criteria,ids=[...companyIds];
+ const labelled=[['departmentId',s.department,'department'],['businessUnitId',s.businessUnit,'business_unit'],['positionId',s.position,'position']] as const;
+ for(const [field,table,kind] of labelled){const values=c[field];if(!values?.length)continue;
+  const rows=await tx.select({id:table.id}).from(table).where(and(eq(table.tenantId,ctx.tenantId),sql`${table.id}=any(${uuidArrayParam(values)})`,ids.length?visibleLabelIdsCondition(table,kind,ids):undefined));
+  if(rows.length!==values.length)fail('unavailable','A selected organisation code is unavailable in the pattern companies.',{reason:'eligibilityReference'});}
+ if(c.gradeId?.length){const rows=await tx.select({id:s.jobGrade.id}).from(s.jobGrade).where(and(eq(s.jobGrade.tenantId,ctx.tenantId),sql`${s.jobGrade.id}=any(${uuidArrayParam(c.gradeId)})`));if(rows.length!==c.gradeId.length)fail('unavailable','A selected job grade is unavailable.',{reason:'eligibilityReference'});}
+ if(c.employmentType?.some(value=>!(PERSONNEL_EMPLOYMENT_TYPES as readonly string[]).includes(value)))fail('invalid','Choose a listed employment type.',{reason:'eligibilityReference'});
+ const profile=(Object.entries(PROFILE_FIELDS) as [keyof typeof PROFILE_FIELDS,string][]).filter(([field])=>c[field]?.length);
+ if(profile.length){const wanted=profile.flatMap(([field,category])=>c[field]!.map(value=>category+'\u0000'+value));
+  const rows=await tx.select({category:s.profileOption.category,value:s.profileOption.value}).from(s.profileOption).where(and(eq(s.profileOption.tenantId,ctx.tenantId),eq(s.profileOption.isActive,true),sql`(${s.profileOption.category}||chr(0)||${s.profileOption.value})=any(array(select jsonb_array_elements_text(${JSON.stringify(wanted)}::jsonb)))`));
+  if(new Set(rows.map(row=>row.category+'\u0000'+row.value)).size!==new Set(wanted).size)fail('unavailable','A Personnel choice is inactive or unavailable.',{reason:'eligibilityReference'});}
+ if(planned.employmentIds.length&&ids.length){const rows=await tx.select({id:s.employment.id}).from(s.employment).where(and(eq(s.employment.tenantId,ctx.tenantId),sql`${s.employment.id}=any(${uuidArrayParam(planned.employmentIds)})`,sql`${s.employment.companyId}=any(${uuidArrayParam(ids)})`,sql`app.can_admin_employment(${s.employment.id})`));
+  if(rows.length!==planned.employmentIds.length)fail('permission','A named employee is outside the pattern companies or your administrator scope.',{reason:'eligibilityEmployee'});}
+}
 
 export function saveOvertimePatternDraft(ctx:SessionContext,p:{patternId?:string;versionId?:string;expectedRevision?:number;draft:OvertimePatternDraft}){return withAttendanceTenant(ctx,async tx=>{
- await lockConfiguration(tx,ctx);const draft=p.draft,code=text(draft.code,64),name=text(draft.name,160),description=draft.description??'';if(description.length>2000)fail('invalid','Description exceeds 2,000 characters.');const definition=draftStructure(draft.definition),companies=await administerCompanies(tx,ctx,bounded(draft.companyIds,100));await administerCompanies(tx,ctx,[draft.creationCompanyId]);await validateReferencesTx(tx,ctx,definition,companies.map(c=>c.id));
- let pattern:typeof s.overtimePattern.$inferSelect;if(p.patternId){pattern=await patternRow(tx,ctx,p.patternId,true);if(pattern.kind!=='formula'||pattern.code!==code||pattern.creationCompanyId!==draft.creationCompanyId||pattern.archivedAt)fail('invalid','Keep the saved pattern identity and creation company.');if(!(await patternWritable(tx,ctx,pattern)))fail('permission','You cannot change every company affected by this pattern.');}else{[pattern]=await tx.insert(s.overtimePattern).values({tenantId:ctx.tenantId,kind:'formula',code,creationCompanyId:draft.creationCompanyId}).returning();}
+ await lockConfiguration(tx,ctx);const draft=p.draft,code=text(draft.code,64),name=text(draft.name,160),description=draft.description??'';if(description.length>2000)fail('invalid','Description exceeds 2,000 characters.');const definition=draftStructure(draft.definition);
+ if(!Array.isArray(draft.companyIds))fail('invalid','Choose the companies for this pattern.');
+ const companies=draft.companyIds.length?await administerCompanies(tx,ctx,bounded(draft.companyIds,500)):[],companyIds=companies.map(c=>c.id).sort();
+ if(new Set(companies.map(c=>c.currency)).size>1)fail('invalid','Choose companies that pay in one currency.',{reason:'mixedCurrency'});
+ await administerCompanies(tx,ctx,[draft.creationCompanyId]);await validateReferencesTx(tx,ctx,definition,companyIds);
+ const planned=draft.plannedEligibility===undefined||draft.plannedEligibility===null?null:parsedPlanned(draft.plannedEligibility);
+ if(planned)await plannedReferencesTx(tx,ctx,planned,companyIds);
+ let pattern:typeof s.overtimePattern.$inferSelect;if(p.patternId){pattern=await patternRow(tx,ctx,p.patternId,true);if(pattern.kind!=='formula'||pattern.code!==code||pattern.creationCompanyId!==draft.creationCompanyId||pattern.archivedAt)fail('invalid','Keep the saved pattern identity and creation company.');if(!(await patternWritable(tx,ctx,pattern)))fail('permission','You cannot change every company affected by this pattern.');}
+ else{
+  // Explicit pre-check for a plain message; the unique index overtime_pattern_code_uq (tenant, lower(code)) where
+  // formula and not archived stays the backstop. An archived (deleted) pattern's code is free again.
+  const [taken]=await tx.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.kind,'formula'),isNull(s.overtimePattern.archivedAt),sql`lower(${s.overtimePattern.code})=lower(${code})`)).limit(1);
+  if(taken)fail('conflict',`Pattern Code ${code} already exists.`,{reason:'duplicateCode',values:{code}});
+  [pattern]=await tx.insert(s.overtimePattern).values({tenantId:ctx.tenantId,kind:'formula',code,creationCompanyId:draft.creationCompanyId}).returning();}
+ const versionDigest=digest({name,description,definition,companyIds});
  let version:typeof s.overtimePatternVersion.$inferSelect;
- if(p.versionId){version=await versionRow(tx,ctx,p.versionId,true);if(version.patternId!==pattern.id||version.activatedAt)fail('invalid','Fork an activated version before editing.');if(version.revision!==p.expectedRevision)fail('stale','The draft changed. Reload before saving.');await assertVersionAdmin(tx,ctx,version);[version]=await tx.update(s.overtimePatternVersion).set({name,description,definition,digest:digest({name,description,definition,companyIds:companies.map(c=>c.id).sort()}),revision:version.revision+1}).where(eq(s.overtimePatternVersion.id,version.id)).returning();await tx.delete(s.overtimePatternVersionCompany).where(eq(s.overtimePatternVersionCompany.versionId,version.id));}
- else{const [last]=await tx.select({ordinal:s.overtimePatternVersion.ordinal}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);[version]=await tx.insert(s.overtimePatternVersion).values({tenantId:ctx.tenantId,patternId:pattern.id,kind:'formula',creationCompanyId:pattern.creationCompanyId,ordinal:(last?.ordinal??0)+1,name,description,definition,digest:digest({name,description,definition,companyIds:companies.map(c=>c.id).sort()})}).returning();}
- await tx.insert(s.overtimePatternVersionCompany).values(companies.map(company=>({tenantId:ctx.tenantId,versionId:version.id,companyId:company.id})));await tx.update(s.overtimePattern).set({revision:pattern.revision+1}).where(eq(s.overtimePattern.id,pattern.id));await event(tx,ctx,pattern.id,'draft.saved',{versionId:version.id,ordinal:version.ordinal,revision:version.revision,digest:version.digest,companyIds:companies.map(c=>c.id)});return {patternId:pattern.id,versionId:version.id,revision:version.revision};
+ if(p.versionId){version=await versionRow(tx,ctx,p.versionId,true);if(version.patternId!==pattern.id||version.activatedAt)fail('invalid','Fork an activated version before editing.');if(version.revision!==p.expectedRevision)fail('stale','The draft changed. Reload before saving.');await assertVersionAdmin(tx,ctx,version);[version]=await tx.update(s.overtimePatternVersion).set({name,description,definition,digest:versionDigest,revision:version.revision+1}).where(eq(s.overtimePatternVersion.id,version.id)).returning();await tx.delete(s.overtimePatternVersionCompany).where(eq(s.overtimePatternVersionCompany.versionId,version.id));}
+ else{const [last]=await tx.select({ordinal:s.overtimePatternVersion.ordinal}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);[version]=await tx.insert(s.overtimePatternVersion).values({tenantId:ctx.tenantId,patternId:pattern.id,kind:'formula',creationCompanyId:pattern.creationCompanyId,ordinal:(last?.ordinal??0)+1,name,description,definition,digest:versionDigest}).returning();}
+ await writePlannedEligibilityTx(tx,version.id,planned);
+ if(companyIds.length)await tx.insert(s.overtimePatternVersionCompany).values(companyIds.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));await tx.update(s.overtimePattern).set({revision:pattern.revision+1}).where(eq(s.overtimePattern.id,pattern.id));
+ await event(tx,ctx,pattern.id,'draft.saved',{versionId:version.id,ordinal:version.ordinal,revision:version.revision,digest:version.digest,companyIds,
+  eligibility:planned?{fields:Object.keys(planned.criteria),namedEmployees:planned.employmentIds.length,priority:planned.priority,from:planned.from}:null});
+ return {patternId:pattern.id,versionId:version.id,revision:version.revision};
  });}
-export function forkOvertimePatternDraft(ctx:SessionContext,p:{versionId:string;expectedPatternRevision:number}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);const old=await versionRow(tx,ctx,p.versionId,true),pattern=await assertVersionAdmin(tx,ctx,old);if(pattern.revision!==p.expectedPatternRevision||pattern.archivedAt)fail('stale','The pattern changed. Reload before creating a draft.');const companyIds=await companiesForVersion(tx,old.id),[last]=await tx.select({ordinal:s.overtimePatternVersion.ordinal}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);const [version]=await tx.insert(s.overtimePatternVersion).values({tenantId:ctx.tenantId,patternId:pattern.id,kind:'formula',creationCompanyId:pattern.creationCompanyId,ordinal:(last?.ordinal??0)+1,name:old.name,description:old.description,definition:old.definition,digest:old.digest}).returning();await tx.insert(s.overtimePatternVersionCompany).values(companyIds.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));await tx.update(s.overtimePattern).set({revision:pattern.revision+1}).where(eq(s.overtimePattern.id,pattern.id));await event(tx,ctx,pattern.id,'draft.forked',{fromVersionId:old.id,versionId:version.id});return {patternId:pattern.id,versionId:version.id,revision:version.revision};});}
+/** Edit of an activated version: a new draft carrying the same rules, companies and (when its live assignments are plain
+ * criteria) the same Eligibility, with no start date chosen yet. The current rules keep applying until the new draft is
+ * activated from its own date. An existing unactivated draft of the pattern is returned instead of a second one. */
+export function forkOvertimePatternDraft(ctx:SessionContext,p:{versionId:string;expectedPatternRevision:number}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);const old=await versionRow(tx,ctx,p.versionId,true),pattern=await assertVersionAdmin(tx,ctx,old);if(pattern.revision!==p.expectedPatternRevision||pattern.archivedAt)fail('stale','The pattern changed. Reload before creating a draft.');
+ const [pending]=await tx.select().from(s.overtimePatternVersion).where(and(eq(s.overtimePatternVersion.patternId,pattern.id),isNull(s.overtimePatternVersion.activatedAt))).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);
+ if(pending)return {patternId:pattern.id,versionId:pending.id,revision:pending.revision};
+ const today=todayInKualaLumpur(),companyIds=await companiesForVersion(tx,old.id),[last]=await tx.select({ordinal:s.overtimePatternVersion.ordinal}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,pattern.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);
+ const live=bounded(await tx.select({target:s.overtimePatternAssignment.target,priority:s.overtimePatternAssignment.priority,validFrom:s.overtimePatternAssignment.validFrom}).from(s.overtimePatternAssignment).where(and(eq(s.overtimePatternAssignment.versionId,old.id),isNull(s.overtimePatternAssignment.supersededAt),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,today)))).orderBy(asc(s.overtimePatternAssignment.id)).limit(501),500);
+ let planned:OvertimePlannedEligibility|null=live.length?plannedEligibilityFromAssignments(live.map(row=>({target:row.target as unknown as OvertimeAssignmentTarget,priority:row.priority,validFrom:row.validFrom}))):null;
+ const oldPlanned=planned?null:(await plannedEligibilityTx(tx,[old.id])).get(old.id);
+ if(!planned&&oldPlanned){try{planned={...parsePlannedEligibility(oldPlanned),from:null};}catch{planned=null;}}
+ const [version]=await tx.insert(s.overtimePatternVersion).values({tenantId:ctx.tenantId,patternId:pattern.id,kind:'formula',creationCompanyId:pattern.creationCompanyId,ordinal:(last?.ordinal??0)+1,name:old.name,description:old.description,definition:old.definition,digest:old.digest}).returning();await writePlannedEligibilityTx(tx,version.id,planned);if(companyIds.length)await tx.insert(s.overtimePatternVersionCompany).values(companyIds.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));await tx.update(s.overtimePattern).set({revision:pattern.revision+1}).where(eq(s.overtimePattern.id,pattern.id));await event(tx,ctx,pattern.id,'draft.forked',{fromVersionId:old.id,versionId:version.id,eligibilityCopied:Boolean(planned)});return {patternId:pattern.id,versionId:version.id,revision:version.revision};});}
 
 /** Position catalogues can exceed the selection bound: page the choices, never reject the workspace. */
 async function positionChoicesTx(tx:Tx,ctx:SessionContext,companyIds:string[],p:{search?:string;cursor?:string;selectedIds?:string[]}={}){
@@ -251,7 +311,7 @@ async function validateActivationTx(tx:Tx,ctx:SessionContext,p:{versionId:string
 export function validateOvertimePatternActivation(ctx:SessionContext,p:{versionId:string;expectedRevision:number}){return withAttendanceTenant(ctx,tx=>validateActivationTx(tx,ctx,p));}
 export function activateOvertimePattern(ctx:SessionContext,p:{versionId:string;expectedRevision:number;validationDigest:string;effectiveFrom:string}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);date(p.effectiveFrom);if(p.effectiveFrom<todayInKualaLumpur())fail('invalid','Activation cannot backdate a new policy into historical attendance.');const row=await versionRow(tx,ctx,p.versionId,true),check=await validateActivationTx(tx,ctx,p);if(!check.validationDigest||p.validationDigest!==check.validationDigest)fail('stale','Validation or references changed. Validate again before activation.');await tx.update(s.overtimePatternVersion).set({activatedAt:new Date(),activatedBy:ctx.userId??null}).where(eq(s.overtimePatternVersion.id,row.id));await tx.insert(s.overtimePatternVersionState).values({tenantId:ctx.tenantId,versionId:row.id,sequence:1,state:'active',effectiveFrom:p.effectiveFrom,reason:'Validated activation',createdBy:ctx.userId??null});await event(tx,ctx,row.patternId,'version.activated',{versionId:row.id,digest:row.digest,effectiveFrom:p.effectiveFrom,validationDigest:check.validationDigest});return {versionId:row.id};});}
 export function stopOvertimePatternVersion(ctx:SessionContext,p:{versionId:string;expectedRevision:number;effectiveFrom:string;reason:string}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);date(p.effectiveFrom);reason(p.reason);const row=await versionRow(tx,ctx,p.versionId,true);await assertVersionAdmin(tx,ctx,row);const view=await versionView(tx,row);if(view.revision!==p.expectedRevision||!row.activatedAt)fail('stale','The activated version changed.');if(p.effectiveFrom<todayInKualaLumpur()||view.states.some(state=>state.effectiveFrom>p.effectiveFrom))fail('invalid','Stop overtime prospectively; retain recorded results.');await tx.insert(s.overtimePatternVersionState).values({tenantId:ctx.tenantId,versionId:row.id,sequence:view.states.length+1,state:'inactive',effectiveFrom:p.effectiveFrom,reason:p.reason,createdBy:ctx.userId??null});await event(tx,ctx,row.patternId,'version.stopped',{versionId:row.id,effectiveFrom:p.effectiveFrom,reason:p.reason});return {versionId:row.id};});}
-export function archiveOvertimePattern(ctx:SessionContext,p:{patternId:string;expectedRevision:number;reason:string}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);reason(p.reason);const row=await patternRow(tx,ctx,p.patternId,true);if(row.revision!==p.expectedRevision)fail('stale','The pattern changed.');if(!(await patternWritable(tx,ctx,row)))fail('permission','You cannot archive a pattern affecting other companies.');if(await tx.select({id:s.overtimePatternAssignment.id}).from(s.overtimePatternAssignment).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternAssignment.versionId)).where(and(eq(s.overtimePatternVersion.patternId,row.id),isNull(s.overtimePatternAssignment.supersededAt),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,todayInKualaLumpur())))).limit(1).then(rows=>rows.length))fail('conflict','Close active and future assignments before archiving.');await tx.update(s.overtimePattern).set({archivedAt:new Date(),revision:row.revision+1}).where(eq(s.overtimePattern.id,row.id));await event(tx,ctx,row.id,'pattern.archived',{reason:p.reason});return {patternId:row.id};});}
+// archiveOvertimePattern (delete as archive) is defined with the board 4197534a eligibility owners below.
 
 async function activeVersionOn(tx:Tx,id:string,on:string){const [state]=await tx.select().from(s.overtimePatternVersionState).where(and(eq(s.overtimePatternVersionState.versionId,id),lte(s.overtimePatternVersionState.effectiveFrom,on))).orderBy(desc(s.overtimePatternVersionState.effectiveFrom),desc(s.overtimePatternVersionState.sequence)).limit(1);return state?.state==='active';}
 export function saveOvertimePatternAssignment(ctx:SessionContext,p:{assignmentId?:string;expectedRevision?:number;versionId:string;target:OvertimeAssignmentTarget;priority:number;from:string;to:string|null;reason?:string}){return withAttendanceTenant(ctx,async tx=>{
@@ -268,8 +328,16 @@ export async function resolveOvertimePatternTx(tx:Tx,ctx:SessionContext,p:{emplo
  gate(ctx);uuid(p.employmentId);date(p.date);const [source]=await tx.select().from(s.attendanceOvertimeSource).where(and(eq(s.attendanceOvertimeSource.tenantId,ctx.tenantId),eq(s.attendanceOvertimeSource.employmentId,p.employmentId),eq(s.attendanceOvertimeSource.attendanceDate,p.date))).limit(1);
  if(source?.currentCalculationId){const [recorded]=await tx.select().from(s.attendanceOvertimeCalculation).where(eq(s.attendanceOvertimeCalculation.id,source.currentCalculationId)).limit(1);if(recorded?.versionId&&recorded.assignmentId)return {status:'selected',patternVersionId:recorded.versionId,assignmentId:recorded.assignmentId,trace:[{kind:'assignment',id:recorded.assignmentId,data:{source:'recordedCalculation',calculationId:recorded.id}}]};}
  const company=p.recordedFacts.companyId;if(company?.state!=='known'||!company.value)return {status:'refused',issues:[{code:'unknown',path:'companyId',severity:'error',detail:'The dated company is unavailable.'}],trace:[]};
- const rows=bounded(await tx.select().from(s.overtimePatternAssignment).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),sql`exists(select 1 from overtime_pattern_version_company co join overtime_pattern_version v on v.id=co.version_id join overtime_pattern pat on pat.id=v.pattern_id where co.version_id=${s.overtimePatternAssignment.versionId} and co.company_id=${company.value}::uuid and pat.archived_at is null and (select st.state from overtime_pattern_version_state st where st.version_id=v.id and st.effective_from<=${p.date}::date order by st.effective_from desc,st.sequence desc limit 1)='active')`,isNull(s.overtimePatternAssignment.supersededAt),lte(s.overtimePatternAssignment.validFrom,p.date),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,p.date)))).orderBy(asc(s.overtimePatternAssignment.id)).limit(OVERTIME_LIMITS.candidates+1),OVERTIME_LIMITS.candidates);
- const candidates:OvertimeCandidate[]=[];for(const row of rows){if(!(await activeVersionOn(tx,row.versionId,p.date)))continue;const version=await versionRow(tx,ctx,row.versionId),pattern=await patternRow(tx,ctx,version.patternId);if(pattern.archivedAt)continue;candidates.push({assignmentId:row.id,patternVersionId:row.versionId,priority:row.priority,from:row.validFrom,to:row.validTo,companyIds:await companiesForVersion(tx,row.versionId),target:row.target as unknown as OvertimeAssignmentTarget});}
+ // Board 4197534a: one statement reads every candidate with its company set (assignment + version companies + the
+ // version's latest state on the date + the archived filter), feeding the unchanged pure resolver. No per-candidate read.
+ const rows=bounded(await tx.execute(sql`select a.id,a.version_id,a.priority,to_char(a.valid_from,'YYYY-MM-DD') as valid_from,to_char(a.valid_to,'YYYY-MM-DD') as valid_to,a.target,
+   (select array_agg(co.company_id::text order by co.company_id) from overtime_pattern_version_company co where co.version_id=a.version_id) as companies
+  from overtime_pattern_assignment a join overtime_pattern_version v on v.id=a.version_id join overtime_pattern pat on pat.id=v.pattern_id
+  where a.tenant_id=${ctx.tenantId}::uuid and a.superseded_at is null and a.valid_from<=${p.date}::date and (a.valid_to is null or a.valid_to>${p.date}::date) and pat.archived_at is null
+   and exists(select 1 from overtime_pattern_version_company co where co.version_id=a.version_id and co.company_id=${company.value}::uuid)
+   and (select st.state from overtime_pattern_version_state st where st.version_id=v.id and st.effective_from<=${p.date}::date order by st.effective_from desc,st.sequence desc limit 1)='active'
+  order by a.id limit ${OVERTIME_LIMITS.candidates+1}`) as unknown as {id:string;version_id:string;priority:number;valid_from:string;valid_to:string|null;target:OvertimeAssignmentTarget;companies:string[]}[],OVERTIME_LIMITS.candidates);
+ const candidates:OvertimeCandidate[]=rows.map(row=>({assignmentId:row.id,patternVersionId:row.version_id,priority:Number(row.priority),from:row.valid_from,to:row.valid_to,companyIds:row.companies??[],target:row.target}));
  const resolved=resolveOvertimePattern(candidates,p.recordedFacts,p.date);if(resolved.status!=='none')return resolved;
  if(!p.resolvedLegacyRuleId)return {status:'legacy',versionId:null,ruleId:null,reason:'compatibility_unavailable',trace:resolved.trace};
  const [binding]=await tx.select({versionId:s.overtimePatternLegacyBinding.versionId}).from(s.overtimePatternLegacyBinding).innerJoin(s.overtimePatternVersion,eq(s.overtimePatternVersion.id,s.overtimePatternLegacyBinding.versionId)).innerJoin(s.attendanceRule,eq(s.attendanceRule.id,s.overtimePatternLegacyBinding.ruleId)).where(and(eq(s.overtimePatternLegacyBinding.tenantId,ctx.tenantId),eq(s.overtimePatternLegacyBinding.ruleId,uuid(p.resolvedLegacyRuleId)),lte(s.overtimePatternLegacyBinding.effectiveFrom,p.date))).orderBy(desc(s.overtimePatternLegacyBinding.effectiveFrom),desc(s.overtimePatternVersion.ordinal)).limit(1);
@@ -688,4 +756,327 @@ export async function readOvertimePolicyDurationTx(tx:Tx,ctx:SessionContext,p:{e
 export async function lockOvertimePayrollBatchContextTx(tx:Tx,ctx:SessionContext,batchId:string){
  uuid(batchId);
  await tx.execute(sql`select app.lock_overtime_payroll_batch_context(${batchId}::uuid)`);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Board 4197534a — Eligibility preview, activation with eligibility, delete-as-archive and assignment cancel.
+// Matching is compiled once to SQL over the same sources the canonical overtime reader uses (the dated assignment row
+// for company, department, business unit, position and employment type; the employment record, as captured on the
+// day, for grade, organisation axes and employment category), and every returned page row is re-checked with the
+// pure resolveOvertimePattern used by the real calculation. One statement per concern; never one per employee.
+
+/** Columns of the population row (overtimePopulationSql) each criterion reads. */
+const POPULATION_COLUMN:Record<OvertimeEligibilityField,string>={businessUnitId:'business_unit_id',departmentId:'department_id',positionId:'position_id',employmentType:'employment_type',
+ gradeId:'grade_id',orgDivision:'org_division',orgBranch:'org_branch',orgRegion:'org_region',orgLine:'org_line',orgSection:'org_section',orgTeam:'org_team',orgBase:'org_base',employmentCategory:'employment_category'};
+export type OvertimePopulationRow={employment_id:string;employee_code:string|null;full_name:string;company_id:string;department_id:string|null;business_unit_id:string|null;position_id:string|null;employment_type:string|null;
+ grade_id:string|null;org_division:string|null;org_branch:string|null;org_region:string|null;org_line:string|null;org_section:string|null;org_team:string|null;org_base:string|null;employment_category:string|null;attendance_rule_id:string|null};
+/** Employees of the companies on `on`, with their dated assignment row. A NULL assignment company falls back to the
+ * employment's company exactly as core/employment-company.ts does. */
+function overtimePopulationSql(ctx:SessionContext,companyIds:readonly string[],on:string):SQL{
+ const companies=uuidArrayParam(companyIds);
+ return sql`select e.id as employment_id,e.employee_code,pe.full_name,coalesce(a.company_id,e.company_id) as company_id,a.department_id,a.business_unit_id,a.position_id,a.employment_type::text as employment_type,
+  e.grade_id,e.org_division,e.org_branch,e.org_region,e.org_line,e.org_section,e.org_team,e.org_base,e.employment_category,e.attendance_rule_id
+ from employment e join person pe on pe.id=e.person_id
+ join lateral (select a.company_id,a.department_id,a.business_unit_id,a.position_id,a.employment_type from assignment a where a.tenant_id=e.tenant_id and a.employment_id=e.id and a.superseded_at is null and a.valid_from<=${on}::date and (a.valid_to is null or a.valid_to>${on}::date) order by a.valid_from desc,a.id desc limit 1) a on true
+ where e.tenant_id=${ctx.tenantId}::uuid and e.company_id=any(${companies}) and coalesce(a.company_id,e.company_id)=any(${companies}) and (e.terminated_on is null or e.terminated_on>=${on}::date) and (e.hired_on is null or e.hired_on<=${on}::date)`;
+}
+const textList=(values:readonly string[])=>sql`array(select jsonb_array_elements_text(${JSON.stringify(values)}::jsonb))`;
+function criteriaSql(criteria:OvertimeEligibilityCriteria):SQL{
+ const parts=OVERTIME_ELIGIBILITY_FIELDS.filter(field=>criteria[field]?.length).map(field=>sql`coalesce(${sql.raw('pop.'+POPULATION_COLUMN[field])}::text=any(${textList(criteria[field]!)}),false)`);
+ return parts.length?sql`(${sql.join(parts,sql` and `)})`:sql`true`;
+}
+const inCompanies=(companyIds:readonly string[])=>sql`pop.company_id=any(${uuidArrayParam(companyIds)})`;
+/** What one assignment target matches, as SQL over the population (advanced targets: null, decided on the day). */
+function targetSql(target:OvertimeAssignmentTarget,companyIds:readonly string[]):SQL|null{
+ if(target.type==='individual')return sql`(${inCompanies(companyIds)} and pop.employment_id=any(${uuidArrayParam(target.employmentIds)}))`;
+ const criteria=selectionOnlyCriteria(target.condition);
+ return criteria?sql`(${inCompanies(companyIds)} and ${criteriaSql(criteria)})`:null;
+}
+/** Facts for the pure resolver from one population row: the same fields the canonical reader supplies. */
+export function overtimePreviewFacts(row:OvertimePopulationRow,on:string):OvertimeFacts{
+ const provenance={owner:'personnel' as const,reference:'employment:'+row.employment_id,asOf:on,basis:'recorded' as const};
+ const known=(value:string|null)=>({state:'known' as const,value,provenance});
+ return {companyId:known(row.company_id),employmentId:known(row.employment_id),departmentId:known(row.department_id),businessUnitId:known(row.business_unit_id),positionId:known(row.position_id),employmentType:known(row.employment_type),
+  gradeId:known(row.grade_id),orgDivision:known(row.org_division),orgBranch:known(row.org_branch),orgRegion:known(row.org_region),orgLine:known(row.org_line),orgSection:known(row.org_section),orgTeam:known(row.org_team),orgBase:known(row.org_base),employmentCategory:known(row.employment_category)};
+}
+/** The resolver candidates a planned eligibility becomes on activation (synthetic ids; preview only). */
+export function overtimePlannedCandidates(planned:OvertimePlannedEligibility,companyIds:readonly string[],on:string):OvertimeCandidate[]{
+ const targets=plannedEligibilityTargets(planned),version='00000000-0000-4000-8000-000000000001';
+ return [{assignmentId:'00000000-0000-4000-8000-000000000002',patternVersionId:version,priority:planned.priority,from:on,to:null,companyIds:[...companyIds],target:targets.group},
+  ...(targets.individual?[{assignmentId:'00000000-0000-4000-8000-000000000003',patternVersionId:version,priority:planned.priority,from:on,to:null,companyIds:[...companyIds],target:targets.individual}]:[])];
+}
+function plannedMatchSql(planned:OvertimePlannedEligibility,companyIds:readonly string[]):{group:SQL;all:SQL}{
+ const group=sql`(${inCompanies(companyIds)} and ${criteriaSql(planned.criteria)})`;
+ return {group,all:planned.employmentIds.length?sql`(${group} or (${inCompanies(companyIds)} and pop.employment_id=any(${uuidArrayParam(planned.employmentIds)})))`:group};
+}
+type ConflictCandidate={id:string;target:OvertimeAssignmentTarget;code:string|null;name:string;companies:string[]};
+export type OvertimeEligibilityConflict={code:string|null;name:string;employees:number};
+/** Other patterns' live or future assignments at the same priority and rank whose companies overlap: one candidate
+ * read, then one counting statement (plain criteria compiled; advanced targets reported as "may overlap"). */
+async function eligibilityConflictsTx(tx:Tx,ctx:SessionContext,p:{patternId:string|null;companyIds:readonly string[];planned:OvertimePlannedEligibility;from:string;on:string}):Promise<{conflicts:OvertimeEligibilityConflict[];mayOverlap:{code:string|null;name:string}[]}>{
+ if(!p.companyIds.length)return {conflicts:[],mayOverlap:[]};
+ const rows=bounded(await tx.execute(sql`select a.id,a.target,pat.code,v.name,array_agg(co.company_id::text order by co.company_id) as companies
+  from overtime_pattern_assignment a join overtime_pattern_version v on v.id=a.version_id join overtime_pattern pat on pat.id=v.pattern_id join overtime_pattern_version_company co on co.version_id=v.id
+  where a.tenant_id=${ctx.tenantId}::uuid and a.superseded_at is null and (a.valid_to is null or a.valid_to>${p.from}::date) and a.priority=${p.planned.priority} and pat.archived_at is null and v.activated_at is not null
+   ${p.patternId?sql`and pat.id<>${p.patternId}::uuid`:sql``}
+   and exists(select 1 from overtime_pattern_version_company c2 where c2.version_id=v.id and c2.company_id=any(${uuidArrayParam(p.companyIds)}))
+  group by a.id,a.target,pat.code,v.name order by a.id limit 501`) as unknown as ConflictCandidate[],500);
+ const mine=plannedMatchSql(p.planned,p.companyIds),mayOverlap:{code:string|null;name:string}[]=[],compiled:{row:ConflictCandidate;where:SQL}[]=[];
+ for(const row of rows){const target=row.target;
+  if(target.type==='individual'){if(p.planned.employmentIds.length)compiled.push({row,where:sql`(${inCompanies(p.companyIds)} and pop.employment_id=any(${uuidArrayParam(p.planned.employmentIds)}) and ${targetSql(target,row.companies)!})`});continue;}
+  const theirs=targetSql(target,row.companies);if(!theirs){mayOverlap.push({code:row.code,name:row.name});continue;}
+  compiled.push({row,where:sql`(${mine.group} and ${theirs})`});}
+ if(!compiled.length)return {conflicts:[],mayOverlap};
+ const counted=await tx.execute(sql`with pop as materialized (${overtimePopulationSql(ctx,p.companyIds,p.on)}) select ${sql.join(compiled.map((item,i)=>sql`count(*) filter (where ${item.where})::int as ${sql.raw('c'+i)}`),sql`,`)} from pop`) as unknown as Record<string,number>[];
+ const conflicts=compiled.map((item,i)=>({code:item.row.code,name:item.row.name,employees:Number(counted[0]?.['c'+i]??0)})).filter(item=>item.employees>0);
+ return {conflicts,mayOverlap};
+}
+export type OvertimeEligibilityPreviewRow={employmentId:string;employeeCode:string|null;name:string;companyId:string;companyName:string;gradeName:string|null;employmentType:string|null};
+export type OvertimeEligibilityPreview={asOf:string;matched:ListTotal;unmatched:ListTotal;scheduleGroup:{employees:ListTotal;groups:string[]};
+ conflicts:OvertimeEligibilityConflict[];mayOverlap:{code:string|null;name:string}[];rows:OvertimeEligibilityPreviewRow[];nextCursor:string|null;
+ issues:OvertimeIssue[]|null;ready:boolean};
+/** Preview of who a pattern's Eligibility covers today, its conflicts and Schedule Group overrides, and (for a saved
+ * draft) the activation checks. The draft's companies and criteria are posted as typed, so Preview works before a
+ * save; every company must be administered by the reader. Read-only: no lock, no write. */
+export function previewOvertimePatternEligibility(ctx:SessionContext,p:{patternId?:string;versionId?:string;expectedRevision?:number;companyIds:string[];plannedEligibility:unknown;search?:string;cursor?:string}):Promise<OvertimeEligibilityPreview>{return withAttendanceTenant(ctx,async tx=>{
+ await configurationReader(tx);const on=todayInKualaLumpur(),planned=parsedPlanned(p.plannedEligibility);
+ if(!Array.isArray(p.companyIds))fail('invalid','Choose the companies for this pattern.');
+ const companies=p.companyIds.length?await administerCompanies(tx,ctx,bounded(p.companyIds,500)):[],companyIds=companies.map(c=>c.id).sort();
+ if(new Set(companies.map(c=>c.currency)).size>1)fail('invalid','Choose companies that pay in one currency.',{reason:'mixedCurrency'});
+ if(p.cursor)uuid(p.cursor);const search=(p.search??'').trim().slice(0,160),patternId=p.patternId?uuid(p.patternId):null;
+ let issues:OvertimeIssue[]|null=null;
+ if(p.versionId&&p.expectedRevision!==undefined){const version=await versionRow(tx,ctx,p.versionId);if(version.activatedAt)issues=null;else{const check=await validateActivationTx(tx,ctx,{versionId:version.id,expectedRevision:p.expectedRevision});issues=check.issues.filter(issue=>issue.severity==='error');}}
+ const empty:ListTotal={count:0,capped:false};
+ if(!companyIds.length)return {asOf:on,matched:empty,unmatched:empty,scheduleGroup:{employees:empty,groups:[]},conflicts:[],mayOverlap:[],rows:[],nextCursor:null,issues,ready:false};
+ const match=plannedMatchSql(planned,companyIds).all,cap=LIST_COUNT_CAP;
+ const scheduled=sql`exists(select 1 from attendance_group_policy_revision r where r.tenant_id=${ctx.tenantId}::uuid and r.company_id=pop.company_id and r.rule_id=pop.attendance_rule_id and r.effective_from<=${on}::date)`;
+ const [counts]=await tx.execute(sql`with pop as materialized (${overtimePopulationSql(ctx,companyIds,on)})
+  select (select count(*)::int from (select 1 from pop where ${match} limit ${cap+1}) x) as matched,
+   (select count(*)::int from (select 1 from pop where not ${match} limit ${cap+1}) x) as unmatched,
+   (select count(*)::int from (select 1 from pop where ${match} and ${scheduled} limit ${cap+1}) x) as scheduled,
+   coalesce((select array_agg(g.name order by g.name) from (select distinct ar.name from pop join attendance_rule ar on ar.id=pop.attendance_rule_id where ${match} and ${scheduled} order by ar.name limit 5) g),'{}'::text[]) as groups`) as unknown as {matched:number;unmatched:number;scheduled:number;groups:string[]}[];
+ const page=await tx.execute(sql`with pop as (${overtimePopulationSql(ctx,companyIds,on)})
+  select pop.*,c.legal_name as company_name,g.name as grade_name from pop join company c on c.id=pop.company_id left join job_grade g on g.id=pop.grade_id
+  where ${match} ${search?sql`and (pop.full_name ilike ${'%'+search+'%'} or pop.employee_code ilike ${'%'+search+'%'})`:sql``} ${p.cursor?sql`and pop.employment_id>${p.cursor}::uuid`:sql``}
+  order by pop.employment_id limit 51`) as unknown as (OvertimePopulationRow&{company_name:string;grade_name:string|null})[];
+ // One logic: each listed employee must be selected by the same pure resolver the overtime calculation runs.
+ const candidates=overtimePlannedCandidates(planned,companyIds,on);
+ for(const row of page.slice(0,50)){const resolved=resolveOvertimePattern(candidates,overtimePreviewFacts(row,on),on);
+  if(resolved.status!=='selected'){const reference=`OT-${randomUUID().slice(0,8).toUpperCase()}`;console.error('[overtime eligibility preview mismatch]',reference,{employmentId:row.employment_id,status:resolved.status});fail('unavailable','Preview matching disagreed with the overtime calculation.',{reason:'previewMismatch',values:{reference}});}}
+ const conflicts=await eligibilityConflictsTx(tx,ctx,{patternId,companyIds,planned,from:planned.from??on,on});
+ const total=(n:number)=>cappedTotal(Number(n),cap);
+ const ready=Boolean(issues&&!issues.length&&planned.from&&planned.from>=on&&!conflicts.conflicts.length);
+ return {asOf:on,matched:total(counts.matched),unmatched:total(counts.unmatched),scheduleGroup:{employees:total(counts.scheduled),groups:counts.groups??[]},...conflicts,
+  rows:page.slice(0,50).map(row=>({employmentId:row.employment_id,employeeCode:row.employee_code,name:row.full_name,companyId:row.company_id,companyName:row.company_name,gradeName:row.grade_name,employmentType:row.employment_type})),
+  nextCursor:page.length>50?page[49].employment_id:null,issues,ready};
+});}
+
+/** Current or future Schedule Group Overtime Settings that name any of these versions (one statement). */
+async function groupPolicyReferencesTx(tx:Tx,ctx:SessionContext,versionIds:readonly string[]):Promise<string[]>{
+ if(!versionIds.length)return [];const today=todayInKualaLumpur();
+ const rows=await tx.execute(sql`select distinct ar.name from attendance_group_policy_revision r join attendance_rule ar on ar.id=r.rule_id
+  where r.tenant_id=${ctx.tenantId}::uuid and exists(select 1 from jsonb_each(coalesce(r.policy->'overtime'->'days','{}'::jsonb)) d where d.value->>'patternVersionId'=any(${textList(versionIds)}))
+   and (r.effective_from>${today}::date or r.effective_from=(select max(r2.effective_from) from attendance_group_policy_revision r2 where r2.tenant_id=r.tenant_id and r2.company_id=r.company_id and r2.rule_id=r.rule_id and r2.effective_from<=${today}::date))
+  order by ar.name limit 20`) as unknown as {name:string}[];
+ return rows.map(row=>row.name);
+}
+
+/** Activate a draft with its planned Eligibility from the planned Applies-from date, in one transaction: the activation
+ * checks, a refusal for any same-priority conflict, the version and its 'active' state, and the assignment rows. A
+ * previously active version of the same pattern stops from that date (its live assignments end there; ones not yet
+ * started are cancelled), refused while a Schedule Group still names it. Every step is a domain event. */
+export function activateOvertimePatternWithEligibility(ctx:SessionContext,p:{versionId:string;expectedRevision:number}){return withAttendanceTenant(ctx,async tx=>{
+ await lockConfiguration(tx,ctx);const today=todayInKualaLumpur(),row=await versionRow(tx,ctx,p.versionId,true);
+ const check=await validateActivationTx(tx,ctx,p);if(!check.validationDigest)fail('invalid','Complete every activation check first.',{reason:'activationChecks',issues:check.issues.filter(issue=>issue.severity==='error')});
+ const storedPlanned=(await plannedEligibilityTx(tx,[row.id])).get(row.id);
+ if(!storedPlanned)fail('invalid','Choose who this pattern applies to.',{reason:'eligibilityMissing'});
+ const planned=parsedPlanned(storedPlanned),from=planned.from;
+ if(!from)fail('invalid','Choose the Applies from date.',{reason:'eligibilityFromMissing'});
+ if(from<today)fail('invalid','Activation cannot backdate overtime into recorded attendance.',{reason:'eligibilityFromPast'});
+ const companyIds=await companiesForVersion(tx,row.id);await plannedReferencesTx(tx,ctx,planned,companyIds);
+ const {conflicts}=await eligibilityConflictsTx(tx,ctx,{patternId:row.patternId,companyIds,planned,from,on:today});
+ if(conflicts.length)fail('conflict','Another pattern covers the same employees at the same priority.',{reason:'eligibilityConflict',values:{patterns:conflicts.map(item=>item.code??item.name).join(', '),employees:conflicts.reduce((sum,item)=>sum+item.employees,0)}});
+ // The previously live version(s) of this pattern: latest state 'active' (bounded; normally one).
+ const previous=await tx.execute(sql`select v.id,(select max(st.effective_from)::text from overtime_pattern_version_state st where st.version_id=v.id) as last_from,(select count(*)::int from overtime_pattern_version_state st where st.version_id=v.id) as states
+  from overtime_pattern_version v where v.pattern_id=${row.patternId}::uuid and v.id<>${row.id}::uuid and v.activated_at is not null
+   and (select st.state from overtime_pattern_version_state st where st.version_id=v.id order by st.effective_from desc,st.sequence desc limit 1)='active' order by v.ordinal limit 11`) as unknown as {id:string;last_from:string;states:number}[];
+ bounded(previous,10);
+ if(previous.some(item=>item.last_from>from))fail('invalid','The current version starts after this date.',{reason:'eligibilityFromBeforeCurrent'});
+ const groups=await groupPolicyReferencesTx(tx,ctx,previous.map(item=>item.id));
+ if(groups.length)fail('conflict','A Schedule Group Overtime Setting still uses the current version.',{reason:'replaceScheduleGroup',values:{groups:groups.join(', ')}});
+ const why=`Replaced by version ${row.ordinal} from ${from}`;
+ for(const item of previous){
+  await tx.insert(s.overtimePatternVersionState).values({tenantId:ctx.tenantId,versionId:item.id,sequence:Number(item.states)+1,state:'inactive',effectiveFrom:from,reason:why,createdBy:ctx.userId??null});
+  const ended=await tx.update(s.overtimePatternAssignment).set({validTo:from,closeReason:why,revision:sql`${s.overtimePatternAssignment.revision}+1`}).where(and(eq(s.overtimePatternAssignment.versionId,item.id),isNull(s.overtimePatternAssignment.supersededAt),lt(s.overtimePatternAssignment.validFrom,from),or(isNull(s.overtimePatternAssignment.validTo),gt(s.overtimePatternAssignment.validTo,from)))).returning({id:s.overtimePatternAssignment.id});
+  const cancelled=await tx.update(s.overtimePatternAssignment).set({supersededAt:new Date(),closeReason:why,revision:sql`${s.overtimePatternAssignment.revision}+1`}).where(and(eq(s.overtimePatternAssignment.versionId,item.id),isNull(s.overtimePatternAssignment.supersededAt),gte(s.overtimePatternAssignment.validFrom,from))).returning({id:s.overtimePatternAssignment.id});
+  await event(tx,ctx,row.patternId,'version.stopped',{versionId:item.id,effectiveFrom:from,reason:why,endedAssignmentIds:ended.map(a=>a.id),cancelledAssignmentIds:cancelled.map(a=>a.id)});
+ }
+ await tx.update(s.overtimePatternVersion).set({activatedAt:new Date(),activatedBy:ctx.userId??null}).where(eq(s.overtimePatternVersion.id,row.id));
+ await tx.insert(s.overtimePatternVersionState).values({tenantId:ctx.tenantId,versionId:row.id,sequence:1,state:'active',effectiveFrom:from,reason:'Activated from Overtime Patterns',createdBy:ctx.userId??null});
+ const targets=plannedEligibilityTargets(planned),assignmentIds:string[]=[];
+ for(const target of [targets.group,targets.individual].filter((item):item is OvertimeAssignmentTarget=>item!==null)){
+  const [assigned]=await tx.insert(s.overtimePatternAssignment).values({tenantId:ctx.tenantId,versionId:row.id,target:json(validateOvertimeAssignmentTarget(target)),priority:planned.priority,validFrom:from,validTo:null,createdBy:ctx.userId??null}).returning();
+  if(target.type==='individual')await tx.insert(s.overtimePatternAssignmentEmployment).values(target.employmentIds.map(employmentId=>({tenantId:ctx.tenantId,assignmentId:assigned.id,employmentId})));
+  assignmentIds.push(assigned.id);
+ }
+ await event(tx,ctx,row.patternId,'version.activated',{versionId:row.id,digest:row.digest,effectiveFrom:from,validationDigest:check.validationDigest,assignmentIds,priority:planned.priority,replacedVersionIds:previous.map(item=>item.id)});
+ return {versionId:row.id,effectiveFrom:from,assignmentIds};
+});}
+
+/** Cancel an Eligibility assignment that has not started yet (superseded, audited). One that has started is ended
+ * from a date with closeOvertimePatternAssignment instead. */
+export function cancelOvertimePatternAssignment(ctx:SessionContext,p:{assignmentId:string;expectedRevision:number;reason:string}){return withAttendanceTenant(ctx,async tx=>{await lockConfiguration(tx,ctx);reason(p.reason);const [row]=await tx.select().from(s.overtimePatternAssignment).where(and(eq(s.overtimePatternAssignment.tenantId,ctx.tenantId),eq(s.overtimePatternAssignment.id,uuid(p.assignmentId)))).limit(1).for('update');if(!row||row.revision!==p.expectedRevision||row.supersededAt)fail('stale','The assignment changed.');const version=await versionRow(tx,ctx,row.versionId);await assertVersionAdmin(tx,ctx,version);if(row.validFrom<=todayInKualaLumpur())fail('invalid','This Eligibility has started; end it from a date instead.',{reason:'cancelStarted'});await tx.update(s.overtimePatternAssignment).set({supersededAt:new Date(),closeReason:p.reason.trim(),revision:row.revision+1}).where(eq(s.overtimePatternAssignment.id,row.id));await event(tx,ctx,version.patternId,'assignment.cancelled',{assignmentId:row.id,reason:p.reason.trim()});return {assignmentId:row.id,revision:row.revision+1};});}
+
+/** What blocks deleting a pattern: live or future assignments (with the number of employees they cover today) and
+ * current or future Schedule Group Overtime Settings that name any of its versions. Three statements. */
+async function patternDeleteBlockersTx(tx:Tx,ctx:SessionContext,patternId:string){
+ const today=todayInKualaLumpur();
+ const live=bounded(await tx.execute(sql`select a.id,a.target,to_char(a.valid_from,'YYYY-MM-DD') as valid_from,array_agg(co.company_id::text order by co.company_id) as companies
+  from overtime_pattern_assignment a join overtime_pattern_version v on v.id=a.version_id join overtime_pattern_version_company co on co.version_id=v.id
+  where v.pattern_id=${patternId}::uuid and a.superseded_at is null and (a.valid_to is null or a.valid_to>${today}::date) group by a.id order by a.valid_from,a.id limit 501`) as unknown as {id:string;target:OvertimeAssignmentTarget;valid_from:string;companies:string[]}[],500);
+ const versions=(await tx.select({id:s.overtimePatternVersion.id}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,patternId)).limit(101)).map(row=>row.id);
+ const groups=await groupPolicyReferencesTx(tx,ctx,versions);
+ let employees:ListTotal={count:0,capped:false};
+ if(live.length){const companyIds=[...new Set(live.flatMap(row=>row.companies))];
+  const parts=live.map(row=>targetSql(row.target,row.companies)??inCompanies(row.companies));
+  const [counted]=await tx.execute(sql`with pop as (${overtimePopulationSql(ctx,companyIds,today)}) select count(*)::int as n from (select 1 from pop where ${sql.join(parts,sql` or `)} limit ${LIST_COUNT_CAP+1}) x`) as unknown as {n:number}[];
+  employees=cappedTotal(Number(counted?.n??0),LIST_COUNT_CAP);}
+ return {assignments:live.length,from:live[0]?.valid_from??null,companies:new Set(live.flatMap(row=>row.companies)).size,employees,groups};
+}
+/** Delete = archive (board 4197534a). Refused for Schedule Group (legacy) patterns, while employees still follow the
+ * pattern through live or future Eligibility, or while a Schedule Group Overtime Setting uses it. The pattern leaves
+ * the list and its code is free again (the code index excludes archived rows); every version, assignment and past
+ * result stays, so recorded attendance and payroll still show it. Audited with its code and name. */
+export function archiveOvertimePattern(ctx:SessionContext,p:{patternId:string;expectedRevision:number;reason?:string;note?:string}){return withAttendanceTenant(ctx,async tx=>{
+ await lockConfiguration(tx,ctx);const row=await patternRow(tx,ctx,p.patternId,true);
+ if(row.kind!=='formula')fail('permission','A Schedule Group overtime table is kept with its Schedule Group.',{reason:'deleteLegacy'});
+ if(row.revision!==p.expectedRevision||row.archivedAt)fail('stale','The pattern changed.');
+ if(!(await patternWritable(tx,ctx,row)))fail('permission','You cannot delete a pattern affecting other companies.',{reason:'deleteNotWritable'});
+ const note=(p.note??'').trim().slice(0,400),why=p.reason!==undefined?reason(p.reason):note?`Deleted from Overtime Patterns: ${note}`:'Deleted from Overtime Patterns';
+ const blockers=await patternDeleteBlockersTx(tx,ctx,row.id);
+ if(blockers.assignments||blockers.groups.length)fail('conflict','The pattern is still in use.',{reason:'deleteBlocked',values:{assignments:blockers.assignments,employees:blockers.employees.count,employeesCapped:blockers.employees.capped?1:0,companies:blockers.companies,from:blockers.from??'',groups:blockers.groups.join(', '),groupCount:blockers.groups.length}});
+ const [latest]=await tx.select({name:s.overtimePatternVersion.name}).from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,row.id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);
+ await tx.update(s.overtimePattern).set({archivedAt:new Date(),revision:row.revision+1}).where(eq(s.overtimePattern.id,row.id));
+ await event(tx,ctx,row.id,'pattern.archived',{reason:why,code:row.code,name:latest?.name??null});
+ return {patternId:row.id};
+});}
+
+// ---------------------------------------------------------------------------------------------------------------
+// Board 4197534a — one-time consolidation of duplicate, never-used drafts (operator data step; deployment does not
+// imply it ran). Run by scripts/data/overtime-pattern-consolidate.ts under an authorized tenant administrator.
+//
+// Candidates: non-archived formula patterns with exactly one version, never activated, with no assignment, no
+// calculation, no policy part and no Schedule Group Overtime Setting naming it. The retired per-company starting
+// drafts (identified by their deterministic identity, code and seed definition) group by starter key into one
+// STD_<KEY> pattern whose draft covers every member's company; other candidates group by currency, name, description,
+// definition and planned Eligibility, the earliest created one keeping its code and taking the union of companies.
+// Members are archived ("Merged into <code>"): nothing is deleted and nothing used is ever written. A pattern that
+// was activated, used, different, out of the operator's scope or mixes currencies is left exactly as it is. Each group
+// is one short transaction that re-reads its members under the configuration lock. A second run finds no group of
+// two or more and no remaining starting draft, so it writes nothing.
+export type OvertimeConsolidationReport={tenantId:string;apply:boolean;formulaPatterns:number;candidates:number;groups:number;starterGroups:number;
+ toArchive:number;archived:number;survivorsCreated:number;survivorsUpdated:number;keptDifferent:number;keptInUse:number;skipped:{group:string;reason:'codeTaken'|'mixedCurrency'|'outOfScope'|'changed'}[]};
+type ConsolidationCandidate={id:string;code:string;created_at:string;creation_company_id:string;version_id:string;name:string;description:string;definition:Record<string,unknown>;planned:unknown;companies:string[];currencies:string[];out_of_scope:boolean};
+async function consolidationCandidatesTx(tx:Tx,ctx:SessionContext,ids?:readonly string[]):Promise<ConsolidationCandidate[]>{
+ return bounded(await tx.execute(sql`select pat.id,pat.code,to_char(pat.created_at,'YYYY-MM-DD"T"HH24:MI:SS.US') as created_at,pat.creation_company_id,v.id as version_id,v.name,v.description,v.definition,v.planned_eligibility as planned,
+   coalesce((select array_agg(co.company_id::text order by co.company_id) from overtime_pattern_version_company co where co.version_id=v.id),'{}'::text[]) as companies,
+   coalesce((select array_agg(distinct c.currency order by c.currency) from overtime_pattern_version_company co join company c on c.id=co.company_id where co.version_id=v.id),'{}'::text[]) as currencies,
+   (not coalesce(app.is_admin_for(pat.creation_company_id),false) or exists(select 1 from overtime_pattern_version_company co where co.version_id=v.id and not app.is_admin_for(co.company_id))) as out_of_scope
+  from overtime_pattern pat join overtime_pattern_version v on v.pattern_id=pat.id
+  where pat.tenant_id=${ctx.tenantId}::uuid and pat.kind='formula' and pat.archived_at is null and v.activated_at is null ${ids?sql`and pat.id=any(${uuidArrayParam(ids)})`:sql``}
+   and (select count(*) from overtime_pattern_version v2 where v2.pattern_id=pat.id)=1
+   and not exists(select 1 from overtime_pattern_assignment a where a.version_id=v.id)
+   and not exists(select 1 from attendance_overtime_calculation oc where oc.version_id=v.id)
+   and not exists(select 1 from attendance_overtime_policy_part pp where pp.version_id=v.id)
+   and not exists(select 1 from attendance_group_policy_revision r where r.tenant_id=pat.tenant_id and exists(select 1 from jsonb_each(coalesce(r.policy->'overtime'->'days','{}'::jsonb)) d where d.value->>'patternVersionId'=v.id::text))
+  order by pat.created_at,pat.id limit 20001`) as unknown as ConsolidationCandidate[],20000);
+}
+function starterMember(ctx:SessionContext,row:ConsolidationCandidate):OvertimeStarterKey|null{
+ const key=readOvertimeStarterSeed(row.definition);
+ return key&&row.id===overtimeStarterIdentity(ctx.tenantId,row.creation_company_id,key)&&row.code===`STD_${key.toUpperCase()}_${row.creation_company_id}`?key:null;
+}
+/** The consolidation identity compares what a definition does, not how its nodes are labelled. Node ids (conditions,
+ * expressions, rates, tiers, definitions) are labels only - the editor's Day types control mints them with
+ * crypto.randomUUID, so two drafts set up identically never share them - and are renamed here by position in the
+ * key-sorted tree; a definition reference (definitionId) follows the same renaming. Every other value, the structure
+ * and the order of arrays still count, so any real difference keeps patterns apart. Only the grouping key is
+ * normalised: stored definitions are never rewritten, and the survivor keeps its own. */
+function consolidationDefinitionKey(definition:unknown):unknown{
+ const tree=canonical(definition),names=new Map<string,string>();
+ const collect=(value:unknown):void=>{if(Array.isArray(value)){value.forEach(collect);return;}if(!value||typeof value!=='object')return;
+  for(const [key,item] of Object.entries(value)){if(key==='id'&&typeof item==='string'){if(!names.has(item))names.set(item,'#'+names.size);}else collect(item);}};
+ const rename=(value:unknown):unknown=>Array.isArray(value)?value.map(rename):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([key,item])=>[key,(key==='id'||key==='definitionId')&&typeof item==='string'?names.get(item)??'unresolved:'+item:rename(item)])):value;
+ collect(tree);return rename(tree);
+}
+type ConsolidationGroup={key:string;starter:OvertimeStarterKey|null;members:ConsolidationCandidate[]};
+function consolidationGroups(ctx:SessionContext,rows:ConsolidationCandidate[]):ConsolidationGroup[]{
+ const groups=new Map<string,ConsolidationGroup>();
+ for(const row of rows){const starter=starterMember(ctx,row);
+  const key=starter?'starter:'+starter:'same:'+digest({currencies:row.currencies,name:row.name,description:row.description,definition:consolidationDefinitionKey(row.definition),planned:row.planned??null});
+  const group=groups.get(key)??{key,starter,members:[]};group.members.push(row);groups.set(key,group);}
+ return [...groups.values()].filter(group=>group.starter||group.members.length>1);
+}
+export async function consolidateOvertimePatterns(ctx:SessionContext,p:{apply:boolean}):Promise<OvertimeConsolidationReport>{
+ const plan=await withAttendanceTenant(ctx,async tx=>{await configurationReader(tx);
+  const [{n:formula}]=await tx.execute(sql`select count(*)::int as n from overtime_pattern where tenant_id=${ctx.tenantId}::uuid and kind='formula' and archived_at is null`) as unknown as {n:number}[];
+  const candidates=await consolidationCandidatesTx(tx,ctx);return {formula:Number(formula),candidates,groups:consolidationGroups(ctx,candidates)};});
+ const report:OvertimeConsolidationReport={tenantId:ctx.tenantId,apply:p.apply,formulaPatterns:plan.formula,candidates:plan.candidates.length,groups:plan.groups.length,starterGroups:plan.groups.filter(group=>group.starter).length,
+  toArchive:0,archived:0,survivorsCreated:0,survivorsUpdated:0,keptDifferent:0,keptInUse:plan.formula-plan.candidates.length,skipped:[]};
+ const grouped=new Set(plan.groups.flatMap(group=>group.members.map(member=>member.id)));report.keptDifferent=plan.candidates.filter(row=>!grouped.has(row.id)).length;
+ for(const group of plan.groups){
+  const label=group.starter?`STD_${group.starter.toUpperCase()}`:group.members[0].code;
+  if(group.members.some(member=>member.out_of_scope)){report.skipped.push({group:label,reason:'outOfScope'});continue;}
+  if(new Set(group.members.flatMap(member=>member.currencies)).size>1){report.skipped.push({group:label,reason:'mixedCurrency'});continue;}
+  report.toArchive+=group.starter?group.members.length:group.members.length-1;
+  if(!p.apply)continue;
+  const outcome=await withAttendanceTenant(ctx,tx=>consolidateGroupTx(tx,ctx,group));
+  if(outcome.skipped){report.skipped.push({group:label,reason:outcome.skipped});continue;}
+  report.archived+=outcome.archived;if(outcome.created)report.survivorsCreated++;else report.survivorsUpdated++;
+ }
+ return report;
+}
+async function consolidateGroupTx(tx:Tx,ctx:SessionContext,group:ConsolidationGroup):Promise<{archived:number;created:boolean;skipped?:'codeTaken'|'changed'}>{
+ await lockConfiguration(tx,ctx);
+ const fresh=await consolidationCandidatesTx(tx,ctx,group.members.map(member=>member.id));
+ const same=consolidationGroups(ctx,fresh).find(item=>item.key===group.key);
+ if(!same||same.members.length!==group.members.length||same.members.some(member=>member.out_of_scope))return {archived:0,created:false,skipped:'changed'};
+ const companies=[...new Set(same.members.flatMap(member=>member.companies))].sort();
+ let survivorPattern:string,survivorVersion:string,survivorCode:string,created=false,members=same.members;
+ if(same.starter){
+  const id=consolidatedOvertimeStarterIdentity(ctx.tenantId,same.starter),code=`STD_${same.starter.toUpperCase()}`;
+  const [existing]=await tx.select().from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.id,id))).limit(1);
+  const [taken]=await tx.select({id:s.overtimePattern.id}).from(s.overtimePattern).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),eq(s.overtimePattern.kind,'formula'),isNull(s.overtimePattern.archivedAt),sql`lower(${s.overtimePattern.code})=lower(${code})`,sql`${s.overtimePattern.id}<>${id}::uuid`)).limit(1);
+  if(taken||existing&&(existing.archivedAt||existing.code!==code))return {archived:0,created:false,skipped:'codeTaken'};
+  if(existing){
+   const [version]=await tx.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.patternId,id)).orderBy(desc(s.overtimePatternVersion.ordinal)).limit(1);
+   if(!version||version.activatedAt)return {archived:0,created:false,skipped:'codeTaken'};
+   survivorPattern=id;survivorVersion=version.id;survivorCode=code;
+   const union=[...new Set([...await companiesForVersion(tx,version.id),...companies])].sort();
+   await tx.delete(s.overtimePatternVersionCompany).where(eq(s.overtimePatternVersionCompany.versionId,version.id));
+   await tx.insert(s.overtimePatternVersionCompany).values(union.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));
+   await tx.update(s.overtimePatternVersion).set({digest:digest({name:version.name,description:version.description,definition:version.definition,companyIds:union}),revision:version.revision+1}).where(eq(s.overtimePatternVersion.id,version.id));
+   await tx.update(s.overtimePattern).set({revision:existing.revision+1}).where(eq(s.overtimePattern.id,id));
+  }else{
+   const creation=same.members[0].creation_company_id,name=overtimeStarter(same.starter)!.name,definition=json(overtimeStarterSeed(same.starter));
+   await tx.insert(s.overtimePattern).values({id,tenantId:ctx.tenantId,kind:'formula',code,creationCompanyId:creation,revision:2});
+   const [version]=await tx.insert(s.overtimePatternVersion).values({tenantId:ctx.tenantId,patternId:id,kind:'formula',creationCompanyId:creation,ordinal:1,name,description:'',definition,digest:digest({name,description:'',definition,companyIds:companies})}).returning();
+   await tx.insert(s.overtimePatternVersionCompany).values(companies.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));
+   survivorPattern=id;survivorVersion=version.id;survivorCode=code;created=true;
+  }
+ }else{
+  const [first,...rest]=same.members;survivorPattern=first.id;survivorVersion=first.version_id;survivorCode=first.code;members=rest;
+  const [version]=await tx.select().from(s.overtimePatternVersion).where(eq(s.overtimePatternVersion.id,first.version_id)).limit(1).for('update');
+  await tx.delete(s.overtimePatternVersionCompany).where(eq(s.overtimePatternVersionCompany.versionId,version.id));
+  await tx.insert(s.overtimePatternVersionCompany).values(companies.map(companyId=>({tenantId:ctx.tenantId,versionId:version.id,companyId})));
+  await tx.update(s.overtimePatternVersion).set({digest:digest({name:version.name,description:version.description,definition:version.definition,companyIds:companies}),revision:version.revision+1}).where(eq(s.overtimePatternVersion.id,version.id));
+  const [pattern]=await tx.select({revision:s.overtimePattern.revision}).from(s.overtimePattern).where(eq(s.overtimePattern.id,first.id)).limit(1);
+  await tx.update(s.overtimePattern).set({revision:pattern.revision+1}).where(eq(s.overtimePattern.id,first.id));
+ }
+ const reasonText=`Merged into ${survivorCode}`;
+ if(members.length)await tx.update(s.overtimePattern).set({archivedAt:new Date(),revision:sql`${s.overtimePattern.revision}+1`}).where(and(eq(s.overtimePattern.tenantId,ctx.tenantId),sql`${s.overtimePattern.id}=any(${uuidArrayParam(members.map(member=>member.id))})`));
+ await appendEvents(tx,[
+  {tenantId:ctx.tenantId,aggregateType:'overtime-pattern',aggregateId:survivorPattern,eventType:created?'overtime.draft.saved':'overtime.draft.consolidated',actor:actorOf(ctx),payload:{versionId:survivorVersion,companyIds:companies,mergedPatternIds:members.map(member=>member.id),reason:'Consolidated identical unused drafts (board 4197534a)'}},
+  ...members.map(member=>({tenantId:ctx.tenantId,aggregateType:'overtime-pattern',aggregateId:member.id,eventType:'overtime.pattern.archived',actor:actorOf(ctx),payload:{reason:reasonText,code:member.code,name:member.name,mergedInto:survivorPattern}})),
+ ]);
+ return {archived:members.length,created};
 }
