@@ -14,9 +14,10 @@
 import {afterAll,beforeAll,describe,expect,it} from 'vitest';
 import {randomUUID} from 'node:crypto';
 import {sql} from 'drizzle-orm';
-import {withTenant,type SessionContext,type Tx} from '../db/client';
+import {client,withTenant,type SessionContext,type Tx} from '../db/client';
 import * as s from '../db/schema';
 import {taxBasisSourceRowsTx,type TaxBasisSource} from '../core/payroll-tax-basis-read';
+import {isIdentityStatement,observeStatements,type Captured} from './helpers/statement-observer';
 import {adminCtx,closeAll,migrateTestDb,owner,resetDb,seedBase,type Base} from './harness';
 
 let b:Base;let all:string[]=[];
@@ -33,6 +34,28 @@ function previousSourceRowsTx(tx:Tx,ids:string[]){
   from payslip p join payroll_batch b on b.id=p.batch_id where p.id=any(array[${sql.join(ids.map(id=>sql`${id}::uuid`),sql`, `)}]::uuid[]) order by b.pay_period,b.batch_date,b.payroll_cycle_id,b.run_seq,b.id,p.id`);
 }
 const plain=(rows:readonly unknown[])=>JSON.parse(JSON.stringify(rows));
+
+/** Shared buffers of the one read statement a piece of work sends, replayed with EXPLAIN (ANALYZE, BUFFERS) under the
+ * reader's own identity statement and rolled back. Function calls in the select list count in the top node's buffers.
+ * The first replay warms the connection's catalog caches; the second is the measure. A runner stall cannot change it. */
+const ROLLBACK=new Error('rolled back on purpose');
+async function readBuffers(ctx:SessionContext,read:(tx:Tx)=>Promise<unknown>):Promise<number>{
+ const observed=await observeStatements(()=>withTenant(ctx,read,{readOnlySnapshot:true}));
+ const identity=observed.statements.find(s=>isIdentityStatement(s.sql))!;
+ const reads=observed.statements.filter((s:Captured)=>/payslip p join payroll_batch b/.test(s.sql));
+ expect(reads).toHaveLength(1);
+ let buffers=-1;
+ await client.begin(async tx=>{
+  await tx.unsafe(identity.sql,identity.params as never[]);
+  for(let replay=0;replay<2;replay++){
+   const [row]=await tx.unsafe(`explain (analyze, buffers, format json) ${reads[0].sql}`,reads[0].params as never[]);
+   const [plan]=(row as Record<string,unknown>)['QUERY PLAN'] as [{Plan:{'Shared Hit Blocks'?:number;'Shared Read Blocks'?:number}}];
+   buffers=(plan.Plan['Shared Hit Blocks']??0)+(plan.Plan['Shared Read Blocks']??0);
+  }
+  throw ROLLBACK;
+ }).catch(error=>{if(error!==ROLLBACK)throw error;});
+ return buffers;
+}
 
 beforeAll(async()=>{
  await migrateTestDb();await resetDb();b=await seedBase();const T=b.tenantId;
@@ -129,7 +152,15 @@ describe('tax-basis source rows: previous and set-based import revisions are ide
    lines.push(`${label} · ${setName}: ${before.rows.length} rows, ms ${before.ms}->${after.ms}`);
    if(label==='group administrator'&&setName==='two thousand slips across the group'){
     expect(before.rows.length).toBeGreaterThan(1000);
-    expect(after.ms).toBeLessThan(before.ms);
+    // Primary check: the set form reads fewer shared buffers than the per-slip call (deterministic for this fixture).
+    // Wall time is only a loose ceiling: a strict after<before comparison of two single timings failed on shared-runner
+    // noise alone, so it no longer decides the result.
+    const beforeBuffers=await readBuffers(ctx,tx=>previousSourceRowsTx(tx,ids));
+    const afterBuffers=await readBuffers(ctx,tx=>taxBasisSourceRowsTx(tx,ids));
+    console.log('TAX_SOURCE_ROWS_BUFFERS '+JSON.stringify({before:beforeBuffers,after:afterBuffers,beforeMs:before.ms,afterMs:after.ms}));
+    expect(afterBuffers).toBeGreaterThan(0);
+    expect(afterBuffers).toBeLessThan(beforeBuffers);
+    expect(after.ms).toBeLessThanOrEqual(before.ms*1.5+250);
    }
   }
   console.log('[payroll-tax-source-rows]\n'+lines.join('\n'));
