@@ -2668,6 +2668,8 @@ it('stops on a cross-tenant row, then validates every company/tenant key without
    'employee_cp38_revision':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ar/OWNER}'},
    // 7560 (124a979e): pending recalculation marks from saves by people without payroll administration; append and consume.
    'payroll_recalc_pending':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=ard/OWNER}'},
+   // 7600 (0735d1b7): append-only login merge facts; no application grant, read and written only by the 7600 definer functions.
+   'app_user_merge':{rls:true,force:false,acl:'{OWNER=arwdDxt/OWNER}'},
    // 7610 (2c1b2fba): a draft's profile photo, readable and written exactly where its draft is.
    'employee_draft_photo':{rls:true,force:true,acl:'{OWNER=arwdDxt/OWNER,ai_hr_app=arwd/OWNER}'},
   };
