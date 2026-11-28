@@ -17,7 +17,7 @@ vi.mock('../components/derived-organisation-fields',()=>({useDerivedOrganisation
  * MISSING_MESSAGE check for every new string on these tabs. jsdom: logic and markup only, no layout.
  */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { NextIntlClientProvider } from 'next-intl';
 import messages from '../messages/en.json';
@@ -112,7 +112,14 @@ const shownPanel = () => {
   expect(open, 'exactly one panel is shown at a time').toHaveLength(1);
   return open[0];
 };
-const save = () => userEvent.click(screen.getByRole('button', { name: wizard.saveDraft }));
+/** Save, then wait until the save has SETTLED: while it is in flight the wizard deliberately disables every
+ *  field (fieldset disabled={busy}) and relabels the button "Saving…", so the next edit must not start sooner. */
+const save = async () => {
+  const calls = saveDraftAction.mock.calls.length;
+  await userEvent.click(screen.getByRole('button', { name: wizard.saveDraft }));
+  expect(saveDraftAction.mock.calls.length, 'Save Draft called the save action').toBe(calls + 1);
+  await waitFor(() => expect((screen.getByRole('button', { name: wizard.saveDraft }) as HTMLButtonElement).disabled).toBe(false));
+};
 const savedData = () => (saveDraftAction.mock.calls.at(-1) as unknown as [string, EmployeeDraftData, number])[1];
 const activateBtn = () => screen.getByRole('button', { name: wizard.activate }) as HTMLButtonElement;
 const outstanding = () => screen.queryByText(wizard.activateNeeds)?.parentElement?.textContent ?? '';
